@@ -209,6 +209,8 @@ import ShortvideoComment from '../views/admin/ShortvideoComment.vue'
 import ShortvideoCommentReply from '../views/admin/ShortvideoCommentReply.vue'
 import ShortvideoPoster from '../views/admin/ShortvideoPoster.vue'
 import ShortvideoSysset from '../views/admin/ShortvideoSysset.vue'
+// ===== 自定义表单（平台扩展 bid=0 / 商户聚合 bid>0 双挂同一 FormIndex） =====
+import FormIndex from '../views/admin/FormIndex.vue'
 // ===== 知识付费七页（批次5-D1 任务197：分类/课程/章节/订单/学习记录/海报/设置；题库考试留 D2） =====
 import KechengCategory from '../views/admin/KechengCategory.vue'
 import KechengList from '../views/admin/KechengList.vue'
@@ -348,7 +350,7 @@ export const tenantMenus: MenuNode[] = [
       // 文章/短视频列表已按商户过滤视图双挂；自定义表单商户视图（批次8 任务231 接线）
       { name: '文章列表', key: 'article-index-showtype-2', component: merchantViewOf('Article', ArticleList) },
       { name: '短视频列表', key: 'shortvideo-index-showtype-2', component: merchantViewOf('ShortvideoList', ShortvideoList) },
-      { name: '自定义表单', key: 'form-index-showtype-2', component: merchantViewOf('FormIndex', defineAsyncComponent(() => import('../views/admin/FormIndex.vue'))) },
+      { name: '自定义表单', key: 'form-index-showtype-2', component: merchantViewOf('FormIndex', FormIndex) },
       { name: '余额明细', key: 'business-money-moneylog', component: defineAsyncComponent(() => import('../views/admin/BusinessMoneyLog.vue')) },
       { name: '提现记录', key: 'business-money-withdrawlog', component: defineAsyncComponent(() => import('../views/admin/BusinessWithdrawLog.vue')) },
       { name: '通知公告', key: 'business-notice-index', component: defineAsyncComponent(() => import('../views/admin/BusinessNotice.vue')) },
@@ -722,7 +724,8 @@ export const tenantMenus: MenuNode[] = [
           { name: '订单统计', key: 'cashier-order-tongji', component: CashierStat },
         ],
       },
-      { name: '自定义表单', key: 'form-index', component: defineAsyncComponent(() => import('../views/admin/FormIndex.vue')) },
+      // 扩展端=平台表单(bid=0)，与商户聚合(bid>0)成对；平台在此添加的表单 bid=0，不进商户列表
+      { name: '自定义表单', key: 'form-index', component: platformViewOf('Form', FormIndex) },
       {
         name: '礼品卡',
         key: 'lipin',

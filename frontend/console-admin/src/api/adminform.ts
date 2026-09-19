@@ -77,7 +77,7 @@ export interface FormRecordQuery {
 }
 
 export function getFormList(params: FormListQuery) {
-  return request.get<unknown, { list: FormItem[]; total: number }>('/admin/form/list', { params })
+  return request.get<unknown, { list: FormItem[]; total: number; business_options?: { id: number; name: string }[] }>('/admin/form/list', { params })
 }
 
 export function getFormDetail(id: number) {
@@ -110,4 +110,17 @@ export function formRecordSetst(ids: number[], st: number, reason = '') {
 
 export function formRecordDel(ids: number[]) {
   return request.post<unknown, null>('/admin/form/recorddel', { ids })
+}
+
+// 表单数据新增/编辑（对照 canzhao recordsave）
+export function saveFormRecord(data: Record<string, unknown>) {
+  return request.post<unknown, null>('/admin/form/recordsave', data)
+}
+
+// 表单数据导出（xlsx 下载）
+export function exportFormRecord(params: Record<string, unknown>) {
+  return request.get<unknown, Blob>('/admin/form/recordexcel', {
+    params,
+    responseType: 'blob',
+  })
 }

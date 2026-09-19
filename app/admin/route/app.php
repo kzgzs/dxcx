@@ -1239,6 +1239,8 @@ Route::get('form/record', 'Form/record');
 Route::get('form/recorddetail', 'Form/recorddetail');
 Route::post('form/recordsetst', 'Form/recordsetst');
 Route::post('form/recorddel', 'Form/recorddel');
+Route::post('form/recordsave', 'Form/recordsave');
+Route::get('form/recordexcel', 'Form/recordexcel');
 
 // 视频管理（批次8-5 任务225：video_list 本地视频/微信视频号，对标参考系统 VideoList）
 Route::get('videoList/list', 'VideoList/list');

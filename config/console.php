@@ -12,5 +12,6 @@ return [
         'demo:products' => \app\command\DemoProducts::class, // 生成7个营销模块示例商品（平台自营+商户各2个，幂等；--purge 清除；部署迁移也会自动生成）
         'demo:articles' => \app\command\DemoArticles::class, // 生成商户文章列表演示文章（幂等，--purge 清除；部署迁移也会自动生成）
         'demo:shortvideos' => \app\command\DemoShortvideos::class, // 生成商户短视频列表演示视频（幂等，--purge 清除；部署迁移也会自动生成）
+        'demo:forms' => \app\command\DemoForms::class, // 生成商户自定义表表演示表单与提交数据（幂等，--purge 清除；部署迁移也会自动生成）
     ],
 ];
