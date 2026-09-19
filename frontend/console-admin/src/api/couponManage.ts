@@ -16,6 +16,9 @@ import type {
   SignSetData,
 } from './types'
 
+// 供组件直接从本模块导入列表项类型
+export type { CouponManageItem }
+
 // ============ 优惠券管理（参考系统口径补全） ============
 
 // 券列表

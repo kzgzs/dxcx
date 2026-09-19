@@ -322,14 +322,7 @@ function moveScoreshopUp(index: number) {
   data[index] = temp
 }
 
-/** 移动商品下移 */
-function moveScoreshopDown(index: number) {
-  if (index >= (selected.value?.data?.length || 0) - 1 || !selected.value) return
-  const data = selected.value.data || []
-  const temp = data[index]
-  data[index] = data[index + 1]
-  data[index + 1] = temp
-}
+
 
 /** 删除商品 */
 function removeScoreshopItem(index: number) {
@@ -446,13 +439,7 @@ function removeDataItem(mod: DesignerModule, index: number) {
   mod.data.splice(index, 1)
 }
 
-// ============ 优惠券设置（严格参照 yhq.png 图片及功能逻辑） ============
-const couponName = ref('')
-const couponType = ref('count')
-const couponStock = ref(0)
 
-// 背景样式缩略图（存储选中的图标 URL）
-const bgStyleThumbs = ref(['', '', '', ''])
 
 // 优惠券组件相关状态（商品组设置口径）
 const couponPickerVisible = ref(false)
@@ -529,23 +516,7 @@ function getTypeTag(type: any): string {
   return map[String(type)] || ''
 }
 
-/** 获取优惠券金额显示 */
-function getCouponValue(coupon: any): string {
-  if (!coupon) return '-'
-  const type = String(coupon.type || coupon.coupon_type || '1')
-  const val = coupon.value || coupon.coupon_value || coupon.money || coupon.deduction || 0
-  if (type === '1' || type === 'cash') {
-    const yuan = Number(val) > 1000 ? (Number(val) / 100).toFixed(2) : Number(val).toFixed(2)
-    return '¥' + yuan
-  }
-  if (type === '2' || type === 'discount' || type === '10') {
-    return Number(val) + '折'
-  }
-  if (type === '3' || type === 'count') {
-    return Number(val) + '次'
-  }
-  return val || '-'
-}
+
 
 
 

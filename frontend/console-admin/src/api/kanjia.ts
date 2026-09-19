@@ -53,7 +53,6 @@ export interface KanjiaProductRow {
   detail: string
   starttime: number
   endtime: number
-  sellpoint: string
   ischecked: number
   check_reason: string
   bname: string
@@ -95,7 +94,6 @@ export interface KanjiaProductSaveData {
   sort?: number
   status?: number
   detail?: string
-  sellpoint?: string
   kjdata?: KanjiaProductKjRow[]
 }
 

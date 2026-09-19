@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 页面设计器 - 组件库定义（共 21 个可添加组件 + 固定 topbar，任务245 P27-1 扩容版）
  * 组件统一结构 {id:'M'+时间戳, temp, params, data}
  * params 通用字段：margin_x/margin_y/padding_x/padding_y/bgcolor
@@ -276,12 +276,11 @@ export function defaultModule(temp: string): DesignerModule {
         id, temp,
         params: {
           // 顶部：与上方距离 + 样式选择（默认双排）
-          margin_y: '0', style: '2',
+          style: '2',
           // 标题样式
           titleshow: '1', titletext: '积分兑换', titlefontsize: '14', titlecolor: '#000000',
           notetext: '查看更多', notefontsize: '12', notecolor: '#999999',
           arrowshow: '1', hrefurl: '', hrefname: '',
-          padding_x: '8', padding_y: '8',
           // 商品样式
           productnameshow: '1', productnamefontsize: '16', productnamecolor: '#000000', productnamebold: 'normal',
           priceshow: '1', pricecolortype: '1', pricecolor: '#000000', pricecustomcolor: '#FF4400', pricebold: 'normal',

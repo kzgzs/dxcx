@@ -29,9 +29,10 @@ Thumbs.db
 /tools/composer.phar
 /tools/PID
 
-# 用户上传文件（运行时产物）
+# 用户上传文件（运行时产物），但放行随仓提交的示例商品图目录
 /public/upload/
-/public/uploads/
+/public/uploads/*
+!/public/uploads/demo/
 
 # 前端依赖与构建产物
 frontend/*/node_modules/

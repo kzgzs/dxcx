@@ -187,7 +187,7 @@ const emptyForm = () => ({
   sort: 0,
   status: 1,
   detail: '',
-  sellpoint: '',
+
 })
 const form = reactive(emptyForm())
 const kjRows = ref<KanjiaProductKjRow[]>([])
@@ -227,7 +227,7 @@ async function openEdit(row: KanjiaProductRow) {
       sort: d.sort,
       status: d.status,
       detail: d.detail || '',
-      sellpoint: d.sellpoint || '',
+
     })
     const kj = (d.kjdata_list || []).map((k) => ({
       startnum: Number(k.startnum) || 0,
@@ -279,7 +279,7 @@ async function handleSubmit() {
         sort: Number(form.sort),
         status: form.status ? 1 : 0,
         detail: form.detail,
-        sellpoint: form.sellpoint,
+
         kjdata: kjRows.value.map((r) => ({
           startnum: Number(r.startnum) || 0,
           endnum: Number(r.endnum) || 0,
@@ -327,20 +327,19 @@ onMounted(fetchList)
 <template>
   <!-- ================= 列表 ================= -->
   <div v-if="viewMode === 'list'">
-    <el-card shadow="never" class="option-bar">
-      <el-button v-if="!isMerchantView" type="success" @click="openAdd">添加</el-button>
-      <el-button @click="batchDelete">删除</el-button>
-      <el-button @click="batchStatus(1)">上架</el-button>
-      <el-button @click="batchStatus(0)">下架</el-button>
-    </el-card>
-
-    <el-card shadow="never" class="search-bar">
-      <el-form inline @submit.prevent>
+    <el-card shadow="never" class="toolbar">
+      <div class="toolbar-left">
+        <el-button v-if="!isMerchantView" type="success" @click="openAdd">添加</el-button>
+        <el-button @click="batchDelete">删除</el-button>
+        <el-button @click="batchStatus(1)">上架</el-button>
+        <el-button @click="batchStatus(0)">下架</el-button>
+      </div>
+      <el-form inline class="toolbar-search" @submit.prevent>
         <el-form-item label="商品名称">
-          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 180px" @keyup.enter="handleSearch" />
+          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 130px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 96px">
             <el-option label="已上架" :value="1" />
             <el-option label="未上架" :value="0" />
           </el-select>
@@ -355,12 +354,12 @@ onMounted(fetchList)
 
     <el-card shadow="never">
       <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange" @sort-change="handleSortChange">
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="id" label="ID" width="80" sortable="custom" />
-        <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="120">
+        <el-table-column type="selection" width="45" align="center" />
+        <el-table-column prop="id" label="ID" width="70" sortable="custom" align="center" />
+        <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="120" align="center">
           <template #default="{ row }">{{ row.bname }}</template>
         </el-table-column>
-        <el-table-column label="商品信息" min-width="300">
+        <el-table-column label="商品信息" min-width="260">
           <template #default="{ row }">
             <div class="goods-info">
               <el-image v-if="row.pic" :src="row.pic" :preview-src-list="[row.pic]" fit="cover" class="goods-info-img" preview-teleported />
@@ -373,18 +372,18 @@ onMounted(fetchList)
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存" width="80" />
-        <el-table-column prop="sales" label="已成功" width="90" sortable="custom" />
-        <el-table-column prop="saleing" label="砍价中" width="90" sortable="custom" />
-        <el-table-column label="活动时间" width="250">
+        <el-table-column prop="stock" label="库存" width="80" align="center" />
+        <el-table-column prop="sales" label="已成功" width="80" sortable="custom" align="center" />
+        <el-table-column prop="saleing" label="砍价中" width="80" sortable="custom" align="center" />
+        <el-table-column label="活动时间" width="220" align="center">
           <template #default="{ row }">{{ fmtTs(row.starttime) }} ~ {{ fmtTs(row.endtime) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <span :class="activityClass(row)">{{ activityText(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="isMerchantView" label="审核状态" width="100">
+        <el-table-column v-if="isMerchantView" label="审核状态" width="90" align="center">
           <template #default="{ row }">
             <el-tooltip :content="row.check_reason" :disabled="!row.check_reason" placement="top">
               <span :class="row.ischecked === 1 ? 'ck-pass' : row.ischecked === 2 ? 'ck-reject' : 'ck-pending'">
@@ -393,7 +392,7 @@ onMounted(fetchList)
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="220" fixed="right">
+        <el-table-column label="操作" width="150" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -450,9 +449,7 @@ onMounted(fetchList)
               <el-button size="small" @click="openMultiPick">+ 添加轮播图</el-button>
             </div>
           </el-form-item>
-          <el-form-item label="商品卖点">
-            <el-input v-model="form.sellpoint" maxlength="60" style="width: 400px" placeholder="一句话卖点（选填）" />
-          </el-form-item>
+
           <el-form-item label="原价" required>
             <el-input-number v-model="form.sell_price" :min="0" :precision="2" :controls="false" style="width: 140px" />
             <span class="ge-unit">元</span>
@@ -530,12 +527,13 @@ onMounted(fetchList)
 </template>
 
 <style scoped>
-.option-bar { margin-bottom: 10px; }
-.option-bar :deep(.el-card__body) { padding: 12px 16px; }
-.option-bar .el-button { margin-left: 0; margin-right: 8px; }
-.search-bar { margin-bottom: 12px; }
-.search-bar :deep(.el-card__body) { padding: 14px 16px 2px; }
-.search-bar :deep(.el-form-item) { margin-bottom: 12px; }
+.toolbar { margin-bottom: 12px; }
+.toolbar :deep(.el-card__body) { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
+.toolbar-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.toolbar-left .el-button { margin: 0; }
+.toolbar-search { display: flex; align-items: center; flex-wrap: nowrap; margin: 0; }
+.toolbar-search :deep(.el-form-item) { margin-bottom: 0; margin-right: 10px; }
+.toolbar-search :deep(.el-form-item:last-child) { margin-right: 0; }
 .search-icon-btn { padding: 8px 14px; }
 .search-icon-btn svg { display: block; }
 
@@ -555,7 +553,7 @@ onMounted(fetchList)
 .ck-pass { color: #21ba45; }
 .ck-reject { color: #f56c6c; }
 
-.row-ops { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.4; }
+.row-ops { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 10px; line-height: 1.4; }
 .row-ops :deep(.el-button) { height: auto; padding: 1px 0; margin: 0; font-size: 12px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
 

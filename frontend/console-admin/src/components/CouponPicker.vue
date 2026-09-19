@@ -3,7 +3,7 @@
  * 优惠券选择器组件（设计器优惠券组件属性面板用）
  * 弹窗展示优惠券列表，每行一个"选择"按钮，点击即选并关闭
  */
-import { ref, reactive, watch, onMounted } from 'vue'
+import { ref, watch, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getCouponManageList, type CouponManageItem } from '../api/couponManage'
 

@@ -240,7 +240,7 @@ class BargainService
         if ($endtime > 0 && $endtime <= $starttime) {
             throw new BusinessException('活动结束时间须晚于开始时间');
         }
-        $sellpoint = trim((string) ($data['sellpoint'] ?? ''));
+
 
         $helpgiveType    = (int) ($data['helpgive_type'] ?? 0);
         $helpgivePercent = round((float) ($data['helpgive_percent'] ?? 0), 2);
@@ -302,7 +302,7 @@ class BargainService
             'detail'           => (string) ($data['detail'] ?? ''),
             'starttime'        => $starttime,
             'endtime'          => $endtime,
-            'sellpoint'        => $sellpoint,
+
         ];
 
         if ($id > 0) {

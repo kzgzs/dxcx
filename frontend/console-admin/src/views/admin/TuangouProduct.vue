@@ -458,33 +458,31 @@ onMounted(() => {
 
 <template>
   <div v-if="viewMode === 'list'">
-    <!-- 操作栏 -->
-    <el-card class="option-bar" shadow="never">
-      <el-button v-if="!isMerchant" type="success" @click="openAdd">添加</el-button>
-      <el-button @click="handleBatchDelete">删除</el-button>
-      <el-button @click="handleBatchStatus(1)">上架</el-button>
-      <el-button @click="handleBatchStatus(0)">下架</el-button>
-    </el-card>
-
-    <!-- 搜索栏 -->
-    <el-card class="search-bar" shadow="never">
-      <el-form :inline="true" @submit.prevent>
+    <!-- 操作 + 搜索 同一行 -->
+    <el-card class="toolbar" shadow="never">
+      <div class="toolbar-left">
+        <el-button v-if="!isMerchant" type="success" @click="openAdd">添加</el-button>
+        <el-button @click="handleBatchDelete">删除</el-button>
+        <el-button @click="handleBatchStatus(1)">上架</el-button>
+        <el-button @click="handleBatchStatus(0)">下架</el-button>
+      </div>
+      <el-form :inline="true" class="toolbar-search" @submit.prevent>
         <el-form-item label="商品名称">
-          <el-input v-model="query.keyword" placeholder="商品名称" clearable @keyup.enter="handleSearch" />
+          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 140px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="分类">
-          <el-select v-model="query.cid" placeholder="全部" clearable style="width: 180px">
+          <el-select v-model="query.cid" placeholder="全部" clearable style="width: 132px">
             <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 120px">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 96px">
             <el-option label="已上架" :value="1" />
             <el-option label="未上架" :value="0" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="isMerchant" label="审核状态">
-          <el-select v-model="query.checked" placeholder="全部" clearable style="width: 130px">
+          <el-select v-model="query.checked" placeholder="全部" clearable style="width: 104px">
             <el-option label="待审核" :value="0" />
             <el-option label="已通过" :value="1" />
             <el-option label="已驳回" :value="2" />
@@ -503,12 +501,12 @@ onMounted(() => {
     <!-- 表格 -->
     <el-card shadow="never">
       <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange" @sort-change="handleSortChange">
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="id" label="ID" width="70" sortable="custom" />
-        <el-table-column v-if="isMerchant" label="所属商户" width="120">
+        <el-table-column type="selection" width="45" align="center" />
+        <el-table-column prop="id" label="ID" width="70" sortable="custom" align="center" />
+        <el-table-column v-if="isMerchant" label="所属商户" width="120" align="center">
           <template #default="{ row }">{{ row.bname || '平台自营' }}</template>
         </el-table-column>
-        <el-table-column label="商品信息" min-width="220">
+        <el-table-column label="商品信息" min-width="240">
           <template #default="{ row }">
             <div class="goods-info">
               <el-image v-if="row.pic" :src="row.pic" fit="cover" class="goods-info-img" />
@@ -531,25 +529,25 @@ onMounted(() => {
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存" width="80" sortable="custom" />
-        <el-table-column prop="buynum" label="参与人数" width="90" />
-        <el-table-column prop="sort" label="序号" width="80" sortable="custom" />
-        <el-table-column label="创建时间" width="150" sortable="custom">
+        <el-table-column prop="stock" label="库存" width="80" sortable="custom" align="center" />
+        <el-table-column prop="buynum" label="参与人数" width="80" align="center" />
+        <el-table-column prop="sort" label="序号" width="70" sortable="custom" align="center" />
+        <el-table-column label="创建时间" width="150" sortable="custom" align="center">
           <template #default="{ row }">{{ formatDate(row.createtime) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <span :class="actStatus(row).cls">{{ actStatus(row).text }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="isMerchant" label="审核状态" width="90">
+        <el-table-column v-if="isMerchant" label="审核状态" width="90" align="center">
           <template #default="{ row }">
             <span :class="checkState(row).cls" :title="row.ischecked === 2 ? row.check_reason : ''">
               {{ checkState(row).text }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="120" fixed="right">
+        <el-table-column label="操作" width="200" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -726,12 +724,13 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.option-bar { margin-bottom: 10px; }
-.option-bar :deep(.el-card__body) { padding: 12px 16px; }
-.option-bar .el-button { margin-left: 0; margin-right: 8px; }
-.search-bar { margin-bottom: 12px; }
-.search-bar :deep(.el-card__body) { padding: 14px 16px 2px; }
-.search-bar :deep(.el-form-item) { margin-bottom: 12px; }
+.toolbar { margin-bottom: 12px; }
+.toolbar :deep(.el-card__body) { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
+.toolbar-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.toolbar-left .el-button { margin: 0; }
+.toolbar-search { display: flex; align-items: center; flex-wrap: nowrap; margin: 0; }
+.toolbar-search :deep(.el-form-item) { margin-bottom: 0; margin-right: 10px; }
+.toolbar-search :deep(.el-form-item:last-child) { margin-right: 0; }
 .search-icon-btn { padding: 8px 14px; }
 .search-icon-btn svg { display: block; }
 
@@ -752,7 +751,7 @@ onMounted(() => {
 .check-pending { color: #409eff; }
 .activity-empty { color: #c0c4cc; }
 
-.row-ops { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.4; }
+.row-ops { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 10px; line-height: 1.4; }
 .row-ops :deep(.el-button) { height: auto; padding: 1px 0; margin: 0; font-size: 12px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
 
