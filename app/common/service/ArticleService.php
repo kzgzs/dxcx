@@ -16,9 +16,10 @@ use think\facade\Db;
  */
 class ArticleService
 {
-    /** 文章保存白名单字段 */
+    /** 文章保存白名单字段（readcount/createtime 对照参考系统 Article::save，允许后台编辑阅读量与发布时间） */
     private const ARTICLE_FIELDS = [
         'cid', 'name', 'subname', 'pic', 'author', 'content', 'sort', 'sendtime',
+        'readcount', 'createtime',
         'status', 'showname', 'showsubname', 'showreadcount', 'showsendtime', 'showauthor',
         'canpl', 'canplrp', 'pinglun_check', 'showtj', 'pcid', 'fujian', 'mid',
     ];
@@ -113,6 +114,12 @@ class ArticleService
                 $data['showtj'] = '-1';
             }
         }
+        if (array_key_exists('readcount', $data)) {
+            $data['readcount'] = max(0, (int) $data['readcount']);
+        }
+        if (array_key_exists('createtime', $data)) {
+            $data['createtime'] = (int) $data['createtime'];
+        }
         if (array_key_exists('name', $data) && '' === trim((string) $data['name'])) {
             throw new BusinessException('请填写文章标题');
         }
@@ -125,9 +132,11 @@ class ArticleService
             }
             Db::name('article')->where('id', $id)->where('aid', $aid)->update($data);
         } else {
-            $data['aid']        = $aid;
-            $data['bid']        = (int) ($info['bid'] ?? 0);
-            $data['createtime'] = time();
+            $data['aid']    = $aid;
+            $data['bid']    = (int) ($info['bid'] ?? 0);
+            // 发布时间允许后台指定（编辑页时间选择器），未传则取当前时间
+            $data['createtime'] = !empty($data['createtime']) ? (int) $data['createtime'] : time();
+            $data['readcount']  = isset($data['readcount']) ? max(0, (int) $data['readcount']) : 0;
             $data['status']     = (int) ($data['status'] ?? 1);
             $id                 = (int) Db::name('article')->insertGetId($data);
         }
@@ -205,6 +214,33 @@ class ArticleService
         $article['name']       = '复制-' . (string) $article['name'];
         $article['status']     = 0;
         $article['createtime'] = time();
+
+        // 内容为页面设计器 JSON：其中选项卡组件（temp=tab）的子内容独立存于 designerpage_tab
+        // （按 tabid=组件id 关联），复制文章需同步复制并重映射 tabid，避免新旧文章共用同一份选项内容。
+        // 口径对照参考系统 Article::artcopy。
+        $content = json_decode((string) $article['content'], true);
+        if (is_array($content)) {
+            foreach ($content as $k => $mod) {
+                if (!is_array($mod) || ($mod['temp'] ?? '') !== 'tab' || empty($mod['id'])) {
+                    continue;
+                }
+                $oldTabId = (string) $mod['id'];
+                $tabRows  = Db::name('designerpage_tab')->where('aid', $aid)->where('tabid', $oldTabId)->select()->toArray();
+                if (!$tabRows) {
+                    continue;
+                }
+                $newTabId = $oldTabId . time() . $k;
+                $content[$k]['id'] = $newTabId;
+                foreach ($tabRows as $tabRow) {
+                    unset($tabRow['id']);
+                    $tabRow['aid']        = $aid;
+                    $tabRow['tabid']      = $newTabId;
+                    $tabRow['updatetime'] = time();
+                    Db::name('designerpage_tab')->insert($tabRow);
+                }
+            }
+            $article['content'] = json_encode($content, JSON_UNESCAPED_UNICODE);
+        }
 
         $newId = (int) Db::name('article')->insertGetId($article);
 

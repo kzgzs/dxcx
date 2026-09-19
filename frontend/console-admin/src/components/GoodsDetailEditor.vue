@@ -19,7 +19,13 @@ import {
 import DesignerPageRender from './DesignerPageRender.vue'
 import ModulePropPanel from './ModulePropPanel.vue'
 
-const props = defineProps<{ modelValue: DesignerModule[] }>()
+const props = withDefaults(defineProps<{
+  modelValue: DesignerModule[]
+  /** 手机预览顶栏标题（商品详情默认“商品详情”，文章详情传“文章详情”） */
+  title?: string
+}>(), {
+  title: '商品详情',
+})
 const emit = defineEmits<{ (e: 'update:modelValue', v: DesignerModule[]): void }>()
 
 // ============ 模块数组（本地唯一真源，初始化深拷贝一次） ============
@@ -38,7 +44,7 @@ const selectedId = ref(modules.value.length ? modules.value[0].id : '')
 const selected = computed<DesignerModule | null>(
   () => modules.value.find((m) => m.id === selectedId.value) || null,
 )
-const topbar = defaultTopbar('商品详情')
+const topbar = computed(() => defaultTopbar(props.title || '商品详情'))
 
 // ============ 组件增删 / 排序 / 选中 ============
 function addModule(temp: string) {

@@ -109,6 +109,8 @@ export interface ArticleSaveParams {
   author?: string
   content?: string
   sort?: number
+  readcount?: number
+  createtime?: number
   status?: number
   showname?: number
   showsubname?: number

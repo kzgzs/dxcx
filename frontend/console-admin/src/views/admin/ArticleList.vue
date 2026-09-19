@@ -1,10 +1,11 @@
 <script setup lang="ts">
-// 文章列表（批次5-A 任务194）：搜索/编辑/删除/上下架/审核/复制
-// bid prop 由 merchantViewOf 注入（'gt0' 商户过滤视图），缺省不过滤
-import { computed, onMounted, reactive, ref, shallowRef, watch } from 'vue'
-import { ElMessage, ElMessageBox, type UploadRequestOptions } from 'element-plus'
-import '@wangeditor/editor/dist/css/style.css'
-import { Editor, Toolbar } from '@wangeditor/editor-for-vue'
+// 文章列表（对照点大 Article 控制器 / article 视图）
+// - 平台「扩展→文章管理→文章列表」预置 bid='0'（仅平台文章，可添加）；
+// - 平台「商户→文章列表」预置 bid='gt0'（仅商户文章，平台只管理、不提供添加，列表多“所属商户”列）；
+//   二者是同一张 article 表按 bid 过滤的两个视图，记录各自独立，故 ID 不连续/不相同。
+// - 编辑页两个选项卡：基本信息 / 内容编辑（内容为页面设计器 JSON，复用 GoodsDetailEditor）。
+import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   copyArticle,
   deleteArticle,
@@ -12,17 +13,19 @@ import {
   getArticleDetail,
   getArticleList,
   saveArticle,
-  setArticleCheckst,
   setArticleSt,
   type ArticleCategoryItem,
   type ArticleItem,
 } from '../../api/article'
-import { getMemberLevelList } from '../../api/member'
-import { uploadFile } from '../../api/goods'
-import { formatTime } from '../../utils/time'
+import type { DesignerModule } from '../../api/designer'
+import { defaultModule } from './designerModules'
+import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import { formatTime } from '../../utils/time'
 
 const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
+/** 商户视图：平台在「商户」菜单下查看各商户文章（bid>0），不提供“添加” */
+const isMerchantView = computed(() => props.bid === 'gt0')
 
 // ============ 列表 ============
 const loading = ref(false)
@@ -33,11 +36,8 @@ const query = reactive({
   pagesize: 10,
   keyword: '',
   status: '',
-  cid: 0,
-  start_time: 0,
-  end_time: 0,
+  cid: 0 as number,
 })
-const dateRange = ref<[number, number] | null>(null)
 const selected = ref<ArticleItem[]>([])
 
 // ============ 分类 ============
@@ -56,21 +56,9 @@ const categoryTree = computed(() => {
   }))
 })
 
-// ============ 会员等级（showtj 多选用） ============
-const levels = ref<{ id: number; name: string }[]>([])
-
-// ============ 加载 ============
 async function loadCategories() {
   const res = await getArticleCategoryList()
   categories.value = res.list || []
-}
-async function loadLevels() {
-  try {
-    const res = await getMemberLevelList()
-    levels.value = (res.list || []).map((l) => ({ id: l.id, name: l.name }))
-  } catch {
-    levels.value = []
-  }
 }
 async function load() {
   loading.value = true
@@ -83,22 +71,15 @@ async function load() {
   }
 }
 function handleSearch() {
-  query.start_time = dateRange.value ? Math.floor(dateRange.value[0] / 1000) : 0
-  query.end_time = dateRange.value ? Math.floor(dateRange.value[1] / 1000) : 0
   query.page = 1
   load()
 }
-function handleReset() {
-  query.keyword = ''
-  query.status = ''
-  query.cid = 0
-  dateRange.value = null
-  handleSearch()
-}
 
-// ============ 编辑弹窗 ============
+// ============ 编辑（基本信息 / 内容编辑 两个选项卡） ============
 const dialogVisible = ref(false)
 const saving = ref(false)
+const activeTab = ref<'base' | 'content'>('base')
+
 const form = reactive({
   id: 0,
   cid: 0,
@@ -107,7 +88,9 @@ const form = reactive({
   pic: '',
   author: '',
   content: '',
-  sort: 1,
+  readcount: 0,
+  sort: 0,
+  createtime: 0,
   status: 1,
   showname: 1,
   showsubname: 1,
@@ -117,39 +100,75 @@ const form = reactive({
   canpl: 1,
   canplrp: 1,
   pinglun_check: 0,
-  showtj: ['-1'] as string[],
-  fujian: '',
-  mid: 0,
+  showtj: '-1',
 })
 
-const editorRef = shallowRef()
-const toolbarConfig = {}
-const editorConfig = { placeholder: '请输入文章内容...', MENU_CONF: {} }
-function handleCreated(editor: any) {
-  editorRef.value = editor
-}
+/** 内容设计器模块数组（article.content 存其 JSON） */
+const contentModules = ref<DesignerModule[]>([])
 
+/** 发布时间（表单用毫秒，库内为秒） */
+const createTimeMs = computed<number>({
+  get: () => (form.createtime ? form.createtime * 1000 : Date.now()),
+  set: (v) => {
+    form.createtime = v ? Math.floor(new Date(v).getTime() / 1000) : 0
+  },
+})
+
+/** 详情页显示：四个开关 ↔ 复选按钮组 */
+const detailShow = computed<string[]>({
+  get: () => {
+    const arr: string[] = []
+    if (form.showname) arr.push('showname')
+    if (form.showreadcount) arr.push('showreadcount')
+    if (form.showsendtime) arr.push('showsendtime')
+    if (form.showauthor) arr.push('showauthor')
+    return arr
+  },
+  set: (vals) => {
+    form.showname = vals.includes('showname') ? 1 : 0
+    form.showreadcount = vals.includes('showreadcount') ? 1 : 0
+    form.showsendtime = vals.includes('showsendtime') ? 1 : 0
+    form.showauthor = vals.includes('showauthor') ? 1 : 0
+  },
+})
+
+function defaultContentModules(): DesignerModule[] {
+  return [defaultModule('richtext')]
+}
+function parseContent(content: string): DesignerModule[] {
+  try {
+    const arr = JSON.parse(content)
+    if (Array.isArray(arr) && arr.length) return arr as DesignerModule[]
+  } catch {
+    // 非法/空内容则回落为默认富文本
+  }
+  return defaultContentModules()
+}
 function resetForm() {
-  form.id = 0
-  form.cid = 0
-  form.name = ''
-  form.subname = ''
-  form.pic = ''
-  form.author = ''
-  form.content = ''
-  form.sort = 1
-  form.status = 1
-  form.showname = 1
-  form.showsubname = 1
-  form.showreadcount = 1
-  form.showsendtime = 1
-  form.showauthor = 1
-  form.canpl = 1
-  form.canplrp = 1
-  form.pinglun_check = 0
-  form.showtj = ['-1']
-  form.fujian = ''
-  form.mid = 0
+  Object.assign(form, {
+    id: 0,
+    cid: 0,
+    name: '',
+    subname: '',
+    pic: '',
+    author: '',
+    content: '',
+    readcount: 0,
+    sort: 0,
+    createtime: Math.floor(Date.now() / 1000),
+    status: 1,
+    showname: 1,
+    showsubname: 1,
+    showreadcount: 1,
+    showsendtime: 1,
+    showauthor: 1,
+    canpl: 1,
+    canplrp: 1,
+    pinglun_check: 0,
+    showtj: '-1',
+  })
+  contentModules.value = defaultContentModules()
+  activeTab.value = 'base'
 }
 function openAdd() {
   resetForm()
@@ -160,19 +179,46 @@ async function openEdit(row: ArticleItem) {
   const detail = await getArticleDetail(row.id)
   Object.assign(form, {
     ...detail,
-    showtj: String(detail.showtj ?? '-1').split(',').filter((v) => v !== ''),
+    showtj: String(detail.showtj ?? '-1'),
+    cid: Number(detail.cid) || 0,
+    readcount: Number(detail.readcount) || 0,
+    sort: Number(detail.sort) || 0,
   })
+  contentModules.value = parseContent(detail.content || '')
   dialogVisible.value = true
 }
+
 async function handleSave() {
   if (!form.name.trim()) {
     ElMessage.warning('请填写文章标题')
+    activeTab.value = 'base'
     return
   }
   saving.value = true
   try {
-    await saveArticle({ ...form, id: form.id || undefined, content: form.content })
-    ElMessage.success('保存成功')
+    await saveArticle({
+      id: form.id || undefined,
+      cid: Number(form.cid) || 0,
+      name: form.name,
+      subname: form.subname,
+      pic: form.pic,
+      author: form.author,
+      content: JSON.stringify(contentModules.value || []),
+      readcount: Number(form.readcount) || 0,
+      sort: Number(form.sort) || 0,
+      createtime: form.createtime || Math.floor(Date.now() / 1000),
+      status: form.status,
+      showname: form.showname,
+      showsubname: form.showsubname,
+      showreadcount: form.showreadcount,
+      showsendtime: form.showsendtime,
+      showauthor: form.showauthor,
+      canpl: form.canpl,
+      canplrp: form.canplrp,
+      pinglun_check: form.pinglun_check,
+      showtj: form.showtj,
+    })
+    ElMessage.success(form.id ? '保存成功' : '新增成功')
     dialogVisible.value = false
     load()
   } finally {
@@ -180,16 +226,7 @@ async function handleSave() {
   }
 }
 
-// showtj 互斥逻辑：选中 -1 时清空其它
-function handleShowtjChange(vals: string[]) {
-  if (vals.length > 1 && vals[vals.length - 1] === '-1') {
-    form.showtj = ['-1']
-  } else if (vals.length > 1 && vals.includes('-1')) {
-    form.showtj = vals.filter((v) => v !== '-1')
-  }
-}
-
-// ============ 选图（ImgIconPicker 统一选图） ============
+// ============ 选图（ImgIconPicker） ============
 const imgPickerVisible = ref(false)
 let imgPickerSetter: ((url: string) => void) | null = null
 function openImgPicker(setter: (url: string) => void) {
@@ -201,146 +238,141 @@ function onImgPick(urls: string[]) {
   imgPickerSetter = null
 }
 
-// ============ 附件上传 ============
-async function uploadFujian(options: UploadRequestOptions) {
-  try {
-    const res = await uploadFile(options.file)
-    form.fujian = res.url
-  } catch {
-    ElMessage.error('附件上传失败')
-  }
-}
-// wangEditor 内嵌图片上传
-const editorUploadConfig = {
-  async customUpload(file: File, insertFn: (url: string) => void) {
-    try {
-      const res = await uploadFile(file)
-      insertFn(res.url)
-    } catch {
-      ElMessage.error('图片上传失败')
-    }
-  },
-}
-editorConfig.MENU_CONF = { uploadImage: editorUploadConfig }
-
 // ============ 行操作 ============
 async function handleSetst(row: ArticleItem) {
-  await setArticleSt([row.id], row.status === 1 ? 0 : 1)
-  ElMessage.success(row.status === 1 ? '已下架' : '已上架')
+  const next = row.status === 1 ? 0 : 1
+  await setArticleSt([row.id], next)
+  ElMessage.success(next === 1 ? '已开启' : '已关闭')
   load()
 }
 async function handleCopy(row: ArticleItem) {
+  await ElMessageBox.confirm('确定要复制该文章吗？', '操作确认', { type: 'warning' })
   await copyArticle(row.id)
   ElMessage.success('复制成功')
   load()
 }
 async function handleDelete(rows: ArticleItem[]) {
-  await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 篇文章？关联评论等数据将一并删除`, '提示', { type: 'warning' })
+  if (!rows.length) {
+    ElMessage.warning('请选择数据')
+    return
+  }
+  await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 篇文章？删除后无法恢复！`, '操作确认', { type: 'warning' })
   await deleteArticle(rows.map((r) => r.id))
   ElMessage.success('删除成功')
-  load()
-}
-async function handleCheck(row: ArticleItem, st: 1 | 2) {
-  let reason = ''
-  if (st === 2) {
-    const { value } = await ElMessageBox.prompt('请输入驳回原因', '审核驳回', { inputType: 'textarea' })
-    reason = value || ''
-  }
-  await setArticleCheckst(row.id, st, reason)
-  ElMessage.success(st === 1 ? '已通过' : '已驳回')
+  selected.value = []
   load()
 }
 async function handleBatchSetst(st: number) {
-  if (!selected.value.length) return
-  await setArticleSt(selected.value.map((r) => r.id), st)
-  ElMessage.success(st === 1 ? '已上架' : '已下架')
+  if (!selected.value.length) {
+    ElMessage.warning('请选择数据')
+    return
+  }
+  await ElMessageBox.confirm(`确定要${st === 1 ? '开启' : '关闭'}选中的文章吗？`, '操作确认', { type: 'warning' })
+  await setArticleSt(
+    selected.value.map((r) => r.id),
+    st,
+  )
+  ElMessage.success(st === 1 ? '已开启' : '已关闭')
   load()
 }
 
 // ============ 展示辅助 ============
-function showtjText(v: string) {
-  const arr = String(v ?? '').split(',').filter((x) => x !== '')
-  if (!arr.length || arr.includes('-1')) return '全部会员'
-  return arr
-    .map((x) => (x === '0' ? '关注会员' : levels.value.find((l) => String(l.id) === x)?.name || `等级${x}`))
-    .join('，')
+function fmtDate(ts: number | string): string {
+  const n = Number(ts)
+  if (!n) return ''
+  return formatTime(n).slice(0, 10)
 }
 
 watch(
   () => props.bid,
-  () => handleSearch()
+  () => handleSearch(),
 )
 
 onMounted(() => {
   loadCategories()
-  loadLevels()
   load()
 })
 </script>
 
 <template>
   <div class="article-list">
+    <!-- 工具栏：左操作 / 右搜索，强制一行 -->
     <div class="toolbar">
-      <el-input v-model="query.keyword" placeholder="文章标题/副标题" clearable style="width: 200px" @keyup.enter="handleSearch" />
-      <el-select v-model="query.status" placeholder="状态" clearable style="width: 120px">
-        <el-option label="待审核" value="0" />
-        <el-option label="已上架" value="1" />
-        <el-option label="已驳回" value="2" />
-      </el-select>
-      <el-select v-model="query.cid" placeholder="分类" clearable style="width: 160px">
-        <el-option v-for="top in categoryTree" :key="top.id" :label="top.name" :value="top.id" />
-        <template v-for="top in categoryTree" :key="`c${top.id}`">
-          <el-option v-for="c in top.children" :key="c.id" :label="`　${top.name} / ${c.name}`" :value="c.id" />
-        </template>
-      </el-select>
-      <el-date-picker v-model="dateRange" type="datetimerange" range-separator="至" start-placeholder="开始时间" end-placeholder="结束时间" value-format="x" />
-      <el-button type="primary" @click="handleSearch">搜索</el-button>
-      <el-button @click="handleReset">重置</el-button>
-      <div class="toolbar-right">
-        <el-button type="primary" @click="openAdd">新增文章</el-button>
-        <el-button @click="handleBatchSetst(1)" :disabled="!selected.length">批量上架</el-button>
-        <el-button @click="handleBatchSetst(0)" :disabled="!selected.length">批量下架</el-button>
-        <el-button type="danger" @click="handleDelete(selected)" :disabled="!selected.length">批量删除</el-button>
+      <div class="tb-left">
+        <el-button v-if="!isMerchantView" type="primary" @click="openAdd">添加</el-button>
+        <el-button :disabled="!selected.length" @click="handleDelete(selected)">删除</el-button>
+        <el-button :disabled="!selected.length" @click="handleBatchSetst(1)">开启</el-button>
+        <el-button :disabled="!selected.length" @click="handleBatchSetst(0)">关闭</el-button>
+      </div>
+      <div class="tb-right">
+        <span class="tb-label">标题</span>
+        <el-input
+          v-model="query.keyword"
+          placeholder="标题"
+          clearable
+          class="tb-kw"
+          @keyup.enter="handleSearch"
+        />
+        <span class="tb-label">分类</span>
+        <el-select v-model="query.cid" placeholder="全部" clearable class="tb-cid">
+          <el-option v-for="top in categoryTree" :key="top.id" :label="top.name" :value="top.id" />
+          <template v-for="top in categoryTree" :key="`c${top.id}`">
+            <el-option v-for="c in top.children" :key="c.id" :label="`　${top.name} / ${c.name}`" :value="c.id" />
+          </template>
+        </el-select>
+        <span class="tb-label">状态</span>
+        <el-select v-model="query.status" placeholder="全部" clearable class="tb-st">
+          <el-option label="开启" value="1" />
+          <el-option label="关闭" value="0" />
+        </el-select>
+        <el-button type="primary" @click="handleSearch">搜索</el-button>
       </div>
     </div>
 
-    <el-table v-loading="loading" :data="list" border stripe @selection-change="(rows: ArticleItem[]) => (selected = rows)">
-      <el-table-column type="selection" width="42" />
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column label="封面" width="80">
+    <el-table
+      v-loading="loading"
+      :data="list"
+      border
+      stripe
+      @selection-change="(rows: ArticleItem[]) => (selected = rows)"
+    >
+      <el-table-column type="selection" width="44" />
+      <el-table-column prop="id" label="ID" width="80" sortable />
+      <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="140" show-overflow-tooltip>
+        <template #default="{ row }">{{ row.bname || '-' }}</template>
+      </el-table-column>
+      <el-table-column label="文章信息" min-width="340">
         <template #default="{ row }">
-          <el-image v-if="row.pic" :src="row.pic" style="width: 56px; height: 40px" fit="cover" />
-          <span v-else>-</span>
+          <div class="art-cell">
+            <el-image v-if="row.pic" :src="row.pic" class="art-pic" fit="cover" />
+            <div v-else class="art-pic art-pic-empty">-</div>
+            <div class="art-meta">
+              <div class="art-title">
+                <span v-if="categoryMap[row.cid]" class="art-cname">[{{ categoryMap[row.cid] }}] </span>
+                <span class="art-name">{{ row.name }}</span>
+              </div>
+              <div v-if="row.subname" class="art-sub">{{ row.subname }}</div>
+              <div class="art-date">{{ fmtDate(row.createtime) }}</div>
+            </div>
+          </div>
         </template>
       </el-table-column>
-      <el-table-column prop="name" label="标题" min-width="180" show-overflow-tooltip />
-      <el-table-column label="分类" width="110">
-        <template #default="{ row }">{{ categoryMap[row.cid] || '-' }}</template>
+      <el-table-column prop="readcount" label="阅读量" width="90" sortable />
+      <el-table-column prop="sort" label="序号" width="80" sortable />
+      <el-table-column label="创建时间" width="150">
+        <template #default="{ row }">{{ row.createtime ? formatTime(Number(row.createtime)) : '-' }}</template>
       </el-table-column>
-      <el-table-column prop="readcount" label="阅读" width="80" />
-      <el-table-column prop="zan" label="点赞" width="80" />
-      <el-table-column label="可见" width="110">
-        <template #default="{ row }">{{ showtjText(row.showtj) }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="90">
+      <el-table-column label="状态" width="95">
         <template #default="{ row }">
-          <el-tag v-if="row.status === 1" type="success">已上架</el-tag>
-          <el-tag v-else-if="row.status === 2" type="danger">已驳回</el-tag>
-          <el-tag v-else type="warning">待审核</el-tag>
+          <el-button v-if="row.status === 1" size="small" type="primary" @click="handleSetst(row)">已开启</el-button>
+          <el-button v-else-if="row.status === 0" size="small" type="danger" @click="handleSetst(row)">已关闭</el-button>
+          <el-tag v-else type="danger">已驳回</el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="发布时间" width="150">
-        <template #default="{ row }">{{ formatTime(row.sendtime || row.createtime) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="300" fixed="right">
+      <el-table-column label="操作" width="170" fixed="right">
         <template #default="{ row }">
+          <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
           <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="handleSetst(row)">
-            {{ row.status === 1 ? '下架' : '上架' }}
-          </el-button>
-          <el-button v-if="row.status !== 1" link type="success" @click="handleCheck(row, 1)">通过</el-button>
-          <el-button v-if="row.status !== 2" link type="danger" @click="handleCheck(row, 2)">驳回</el-button>
-          <el-button link @click="handleCopy(row)">复制</el-button>
           <el-button link type="danger" @click="handleDelete([row])">删除</el-button>
         </template>
       </el-table-column>
@@ -357,85 +389,101 @@ onMounted(() => {
       @change="load"
     />
 
-    <!-- 编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑文章' : '新增文章'" width="860px" destroy-on-close>
-      <el-form label-width="100px">
-        <el-form-item label="标题" required>
-          <el-input v-model="form.name" placeholder="文章标题" maxlength="100" show-word-limit />
-        </el-form-item>
-        <el-form-item label="副标题">
-          <el-input v-model="form.subname" placeholder="副标题（可选）" maxlength="100" />
-        </el-form-item>
-        <el-form-item label="所属分类">
-          <el-select v-model="form.cid" placeholder="选择分类" style="width: 260px">
-            <el-option v-for="top in categoryTree" :key="top.id" :label="top.name" :value="top.id" />
-            <template v-for="top in categoryTree" :key="`f${top.id}`">
-              <el-option v-for="c in top.children" :key="c.id" :label="`　${top.name} / ${c.name}`" :value="c.id" />
-            </template>
-          </el-select>
-        </el-form-item>
-        <el-form-item label="封面图">
-          <div class="pic-uploader">
-            <el-image v-if="form.pic" :src="form.pic" style="width: 120px; height: 80px" fit="cover" />
-            <el-button size="small" @click="openImgPicker((u) => (form.pic = u))">{{ form.pic ? '更换' : '选择图片' }}</el-button>
+    <!-- 编辑（全屏，两个选项卡） -->
+    <el-dialog
+      v-model="dialogVisible"
+      :title="form.id ? '编辑文章' : '添加文章'"
+      fullscreen
+      :close-on-click-modal="false"
+      class="art-edit-dialog"
+    >
+      <el-tabs v-model="activeTab" class="art-tabs">
+        <!-- ===== 基本信息 ===== -->
+        <el-tab-pane label="基本信息" name="base">
+          <el-form label-width="92px" class="art-base-form">
+            <el-form-item label="标题" required>
+              <el-input v-model="form.name" maxlength="100" show-word-limit style="width: 500px" placeholder="请输入文章标题" />
+            </el-form-item>
+            <el-form-item label="描述">
+              <el-input v-model="form.subname" maxlength="200" style="width: 500px" />
+              <span class="tip">用于转发分享描述</span>
+            </el-form-item>
+            <el-form-item label="作者">
+              <el-input v-model="form.author" maxlength="50" style="width: 240px" />
+            </el-form-item>
+            <el-form-item label="图片">
+              <div class="pic-row">
+                <el-button @click="openImgPicker((u) => (form.pic = u))">上传图片</el-button>
+                <span class="tip">建议尺寸：600×430像素</span>
+              </div>
+              <div class="pic-preview">
+                <el-image v-if="form.pic" :src="form.pic" class="pic-preview-img" fit="cover" />
+                <div v-else class="pic-preview-empty">暂无图片</div>
+              </div>
+            </el-form-item>
+            <el-form-item label="分类">
+              <el-select v-model="form.cid" placeholder="--请选择--" clearable style="width: 240px">
+                <el-option v-for="top in categoryTree" :key="top.id" :label="top.name" :value="top.id" />
+                <template v-for="top in categoryTree" :key="`f${top.id}`">
+                  <el-option v-for="c in top.children" :key="c.id" :label="`　${top.name} / ${c.name}`" :value="c.id" />
+                </template>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="阅读量">
+              <el-input-number v-model="form.readcount" :min="0" :controls="false" style="width: 200px" />
+            </el-form-item>
+            <el-form-item label="序号">
+              <el-input-number v-model="form.sort" :min="0" :controls="false" style="width: 200px" />
+              <span class="tip">用于排序，越大越靠前</span>
+            </el-form-item>
+            <el-form-item label="发布时间">
+              <el-date-picker
+                v-model="createTimeMs"
+                type="datetime"
+                placeholder="选择发布时间"
+                format="YYYY-MM-DD HH:mm:ss"
+                style="width: 240px"
+              />
+            </el-form-item>
+            <el-form-item label="详情页显示">
+              <el-checkbox-group v-model="detailShow" class="art-show-group">
+                <el-checkbox-button value="showname">标题</el-checkbox-button>
+                <el-checkbox-button value="showreadcount">阅读量</el-checkbox-button>
+                <el-checkbox-button value="showsendtime">发布时间</el-checkbox-button>
+                <el-checkbox-button value="showauthor">作者</el-checkbox-button>
+              </el-checkbox-group>
+            </el-form-item>
+            <el-form-item label="文章评论">
+              <el-switch v-model="form.canpl" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
+            </el-form-item>
+            <el-form-item v-if="form.canpl === 1" label="评论回复">
+              <el-switch v-model="form.canplrp" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
+            </el-form-item>
+            <el-form-item v-if="form.canpl === 1" label="评论审核">
+              <el-switch v-model="form.pinglun_check" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
+            </el-form-item>
+            <el-form-item label="状态">
+              <el-radio-group v-model="form.status">
+                <el-radio :value="1">开启</el-radio>
+                <el-radio :value="0">关闭</el-radio>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item>
+              <el-button type="primary" @click="activeTab = 'content'">下一步:编辑文章详情</el-button>
+              <el-button type="danger" :loading="saving" @click="handleSave">提 交</el-button>
+            </el-form-item>
+          </el-form>
+        </el-tab-pane>
+
+        <!-- ===== 内容编辑（页面设计器，与商品详情装修同源） ===== -->
+        <el-tab-pane label="内容编辑" name="content" lazy>
+          <GoodsDetailEditor v-if="activeTab === 'content'" v-model="contentModules" title="文章详情" />
+          <div class="content-footer">
+            <el-button type="primary" @click="activeTab = 'base'">上一步:编辑基本信息</el-button>
+            <el-button type="danger" :loading="saving" @click="handleSave">提 交</el-button>
           </div>
-        </el-form-item>
-        <el-form-item label="作者">
-          <el-input v-model="form.author" placeholder="作者（可选）" style="width: 260px" />
-        </el-form-item>
-        <el-form-item label="内容">
-          <div class="editor-wrap">
-            <Toolbar :editor="editorRef" :defaultConfig="toolbarConfig" style="border-bottom: 1px solid #e4e7ed" />
-            <Editor
-              v-model="form.content"
-              :defaultConfig="editorConfig"
-              style="height: 300px; overflow-y: hidden"
-              @onCreated="handleCreated"
-            />
-          </div>
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort" :min="0" :max="9999" />
-        </el-form-item>
-        <el-form-item label="附件">
-          <div style="display: flex; gap: 8px; align-items: center">
-            <el-input v-model="form.fujian" placeholder="附件地址（可选）" style="width: 360px" />
-            <el-upload :show-file-list="false" :http-request="uploadFujian">
-              <el-button size="small">上传附件</el-button>
-            </el-upload>
-          </div>
-        </el-form-item>
-        <el-form-item label="打赏收款会员">
-          <el-input-number v-model="form.mid" :min="0" placeholder="会员ID，0 表示不开启打赏" />
-          <span class="tip">填会员ID开启打赏，0 为不开启</span>
-        </el-form-item>
-        <el-form-item label="可见会员">
-          <el-select v-model="form.showtj" multiple placeholder="选择可见范围" style="width: 360px" @change="handleShowtjChange">
-            <el-option label="全部会员" value="-1" />
-            <el-option label="关注会员" value="0" />
-            <el-option v-for="l in levels" :key="l.id" :label="l.name" :value="String(l.id)" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="显示开关">
-          <el-checkbox v-model="form.showname" :true-value="1" :false-value="0">显示标题</el-checkbox>
-          <el-checkbox v-model="form.showsubname" :true-value="1" :false-value="0">显示副标题</el-checkbox>
-          <el-checkbox v-model="form.showauthor" :true-value="1" :false-value="0">显示作者</el-checkbox>
-          <el-checkbox v-model="form.showsendtime" :true-value="1" :false-value="0">显示发布时间</el-checkbox>
-          <el-checkbox v-model="form.showreadcount" :true-value="1" :false-value="0">显示阅读数</el-checkbox>
-        </el-form-item>
-        <el-form-item label="评论设置">
-          <el-checkbox v-model="form.canpl" :true-value="1" :false-value="0">允许评论</el-checkbox>
-          <el-checkbox v-model="form.canplrp" :true-value="1" :false-value="0">允许回复</el-checkbox>
-          <el-checkbox v-model="form.pinglun_check" :true-value="1" :false-value="0">评论需审核</el-checkbox>
-        </el-form-item>
-        <el-form-item label="上架状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="上架" inactive-text="下架" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
-      </template>
+        </el-tab-pane>
+      </el-tabs>
     </el-dialog>
 
     <ImgIconPicker v-model:visible="imgPickerVisible" default-tab="library" @pick="onImgPick" />
@@ -446,30 +494,140 @@ onMounted(() => {
 .article-list {
   padding: 12px;
 }
+/* 工具栏强制一行：左侧操作，右侧搜索 */
 .toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
   margin-bottom: 12px;
 }
-.toolbar-right {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
-}
-.pic-uploader {
+.tb-left {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 8px;
+  flex-shrink: 0;
 }
-.editor-wrap {
-  border: 1px solid #e4e7ed;
-  width: 100%;
+.tb-right {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+.tb-label {
+  color: #606266;
+  font-size: 13px;
+  white-space: nowrap;
+}
+.tb-kw {
+  width: 170px;
+}
+.tb-cid {
+  width: 150px;
+}
+.tb-st {
+  width: 104px;
+}
+/* 文章信息单元格 */
+.art-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.art-pic {
+  width: 60px;
+  height: 43px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: #f5f7fa;
+}
+.art-pic-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c0c4cc;
+  font-size: 12px;
+}
+.art-meta {
+  flex: 1;
+  min-width: 0;
+  line-height: 20px;
+}
+.art-title {
+  font-size: 13px;
+  color: #303133;
+  font-weight: 600;
+  word-break: break-all;
+}
+.art-cname {
+  color: #f56c6c;
+  font-weight: 400;
+}
+.art-name {
+  font-weight: 600;
+}
+.art-sub {
+  font-size: 12px;
+  color: #999;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.art-date {
+  font-size: 12px;
+  color: #999;
 }
 .tip {
-  margin-left: 8px;
+  margin-left: 10px;
   color: #909399;
   font-size: 12px;
+}
+/* 编辑弹窗 */
+.art-base-form {
+  max-width: 780px;
+}
+.pic-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+.pic-preview {
+  width: 100px;
+  height: 71px;
+}
+.pic-preview-img {
+  width: 100px;
+  height: 71px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+.pic-preview-empty {
+  width: 100px;
+  height: 71px;
+  border: 1px dashed #dcdfe6;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #c0c4cc;
+  font-size: 12px;
+  background: #fafafa;
+}
+.art-show-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.content-footer {
+  margin-top: 16px;
+  padding-left: 92px;
+}
+.art-edit-dialog :deep(.el-dialog__body) {
+  height: calc(100vh - 55px);
+  overflow-y: auto;
+  padding-top: 10px;
 }
 </style>

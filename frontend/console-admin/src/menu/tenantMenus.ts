@@ -263,6 +263,17 @@ function merchantViewOf(tag: string, comp: Component) {
 }
 
 /**
+ * 平台自营视图组件工厂：为列表页预置 bid='0'（仅平台数据），
+ * 与「商户」分组下 merchantViewOf 的 bid='gt0' 视图成对（如文章列表：平台文章 / 商户文章）。
+ */
+function platformViewOf(tag: string, comp: Component) {
+  return defineComponent({
+    name: `${tag}-Platform`,
+    render: () => h(comp, { bid: '0' }),
+  })
+}
+
+/**
  * 活动评价组件工厂（批次4-E 任务190）：拼团/秒杀评价双挂 ActivityComment，各自独立避免 KeepAlive 串档
  */
 function activityCommentOf(type: 'collage' | 'seckill') {
@@ -587,7 +598,7 @@ export const tenantMenus: MenuNode[] = [
         name: '文章管理',
         key: 'article',
         child: [
-          { name: '文章列表', key: 'article-index', component: ArticleList },
+          { name: '文章列表', key: 'article-index', component: platformViewOf('Article', ArticleList) },
           { name: '文章分类', key: 'article-category-index', component: ArticleCategory },
           { name: '评论列表', key: 'article-pinglun-index', component: ArticlePinglun },
           { name: '回评列表', key: 'article-plreply-index', component: ArticlePlreply },
