@@ -9,6 +9,6 @@ return [
         'schedule:run' => \app\command\ScheduleRun::class, // 统一调度（Redis 锁防并发；Windows 计划任务每分钟触发）
         'pay:reconcile' => \app\command\PayReconcile::class, // 支付查单补偿（对账捞回，幂等）
         'data:migrate' => \app\command\DataMigrate::class, // 旧系统数据迁移（列交集分批拷贝，幂等）
-        'demo:products' => \app\command\DemoProducts::class, // 生成7个营销模块的平台自营示例商品（幂等）
+        'demo:products' => \app\command\DemoProducts::class, // 生成7个营销模块示例商品（平台自营+商户各2个，幂等；--purge 清除；部署迁移也会自动生成）
     ],
 ];
