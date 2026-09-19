@@ -128,6 +128,22 @@ class ShortvideoService
     }
 
     /**
+     * 分类下拉选项（按 bid 维度口径，供后台列表筛选 / 编辑回显）
+     *
+     * bid 口径与 ScopeService::applyBid 一致：''/all 全部、'0' 平台、'gt0' 商户、数字=指定商户。
+     * 点大列表/编辑的分类下拉随当前归属（aid+bid）过滤，且只取启用分类。
+     *
+     * @return array<int, array{id: int, name: string}>
+     */
+    public function categoryOptionsByScope(int $aid, string $bid): array
+    {
+        $query = ScopeService::query('shortvideo_category', $aid)->where('status', 1);
+        ScopeService::applyBid($query, $bid);
+
+        return array_map(static fn (array $v) => ['id' => (int) $v['id'], 'name' => (string) $v['name']], $query->order('sort', 'desc')->order('id', 'desc')->select()->toArray());
+    }
+
+    /**
      * 分类新增/编辑
      *
      * @param array<string, mixed> $data
@@ -192,7 +208,7 @@ class ShortvideoService
      *
      * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
      */
-    public function videoList(int $aid, string $keyword, string $status, int $cid, string $bid, int $page, int $pageSize): array
+    public function videoList(int $aid, string $keyword, string $status, int $cid, string $bid, int $page, int $pageSize, string $createtime = ''): array
     {
         $query = ScopeService::query('shortvideo', $aid);
         ScopeService::applyBid($query, $bid);
@@ -205,6 +221,13 @@ class ShortvideoService
         }
         if ($cid > 0) {
             $query->where('cid', $cid);
+        }
+        // 创建时间：点大为单日期选择，按当日 00:00:00 ~ 次日 00:00:00 过滤
+        if ('' !== trim($createtime)) {
+            $day = strtotime(substr(trim($createtime), 0, 10));
+            if (false !== $day) {
+                $query->where('createtime', '>=', $day)->where('createtime', '<', $day + 86400);
+            }
         }
 
         $total = (clone $query)->count();
@@ -278,6 +301,8 @@ class ShortvideoService
             'linkname'       => trim((string) ($data['linkname'] ?? '')),
             'comment'        => (int) ($data['comment'] ?? 1),
             'comment_check'  => (int) ($data['comment_check'] ?? 0),
+            'view_num'       => max(0, (int) ($data['view_num'] ?? 0)),
+            'zan_num'        => max(0, (int) ($data['zan_num'] ?? 0)),
             'sort'           => (int) ($data['sort'] ?? 0),
         ];
 
@@ -286,6 +311,18 @@ class ShortvideoService
             if (empty($cat)) {
                 throw new BusinessException('所选分类不存在');
             }
+        }
+
+        // 状态三态：0 待审核 / 1 已通过 / 2 已驳回（驳回必填 reason，通过清空 reason）。
+        // 平台后台保存总会显式传 status，可直接审核商户视频；needCheck 仅为未来商户端未传 status 时兜底。
+        $hasStatus = array_key_exists('status', $data) && null !== $data['status'] && '' !== $data['status'];
+        $statusVal = $hasStatus ? (int) $data['status'] : 1;
+        if (!in_array($statusVal, [0, 1, 2], true)) {
+            throw new BusinessException('状态值非法');
+        }
+        $reason = trim((string) ($data['reason'] ?? ''));
+        if (2 === $statusVal && '' === $reason) {
+            throw new BusinessException('驳回时请填写驳回原因');
         }
 
         // 商户视频审核口径（对标参考系统 business_sysset.shortvideo_check）
@@ -300,19 +337,23 @@ class ShortvideoService
                 throw new BusinessException('视频不存在', 404, 404);
             }
 
-            if ($needCheck && 0 !== (int) $exists['status']) {
-                $info['status'] = 0; // 商户改动需重新审核
-            } elseif (array_key_exists('status', $data)) {
-                $info['status'] = (int) $data['status'];
+            if ($needCheck && !$hasStatus && 0 !== (int) $exists['status']) {
+                $info['status'] = 0; // 商户端改动需重新审核
+            } elseif ($hasStatus) {
+                $info['status'] = $statusVal;
+                $info['reason'] = 2 === $statusVal ? $reason : '';
             }
 
             Db::name('shortvideo')->where('id', $id)->where('aid', $aid)->update($info);
         } else {
+            $newStatus = $hasStatus ? $statusVal : ($needCheck ? 0 : 1);
+
             $info['aid']        = $aid;
             $info['bid']        = $bid;
             $info['mid']        = 0;
             $info['createtime'] = time();
-            $info['status']     = $needCheck ? 0 : (int) ($data['status'] ?? 1);
+            $info['status']     = $newStatus;
+            $info['reason']     = 2 === $newStatus ? $reason : '';
 
             $id = (int) Db::name('shortvideo')->insertGetId($info);
         }
@@ -330,31 +371,44 @@ class ShortvideoService
         if (empty($ids)) {
             throw new BusinessException('请选择要操作的视频');
         }
+        if (!in_array($status, [0, 1, 2], true)) {
+            throw new BusinessException('状态值非法');
+        }
 
         $affected = ScopeService::query('shortvideo', $aid)->where('id', 'in', $ids)->count();
         if (0 === $affected) {
             throw new BusinessException('无可操作的视频');
         }
 
-        Db::name('shortvideo')->where('aid', $aid)->where('id', 'in', $ids)->update(['status' => $status]);
+        // 批量通过清空驳回原因；批量驳回保留各自原有原因
+        $update = ['status' => $status];
+        if (1 === $status) {
+            $update['reason'] = '';
+        }
+        Db::name('shortvideo')->where('aid', $aid)->where('id', 'in', $ids)->update($update);
     }
 
     /**
-     * 视频审核（status 1通过显示；0驳回并记录 reason）
+     * 视频审核（status 1 已通过；2 已驳回并记录 reason；对齐点大 setcheckst）
      */
     public function videoCheck(int $aid, int $id, int $status, string $reason): void
     {
+        if (!in_array($status, [1, 2], true)) {
+            throw new BusinessException('审核状态非法');
+        }
+
         $exists = ScopeService::query('shortvideo', $aid)->where('id', $id)->find();
         if (empty($exists)) {
             throw new BusinessException('视频不存在', 404, 404);
         }
 
-        if (0 === $status && '' === $reason) {
-            throw new BusinessException('驳回时请填写驳回理由');
+        $reason = trim($reason);
+        if (2 === $status && '' === $reason) {
+            throw new BusinessException('驳回时请填写驳回原因');
         }
 
         Db::name('shortvideo')->where('aid', $aid)->where('id', $id)
-            ->update(['status' => $status, 'reason' => $status === 1 ? '' : $reason]);
+            ->update(['status' => $status, 'reason' => 1 === $status ? '' : $reason]);
     }
 
     /**
@@ -1175,7 +1229,7 @@ class ShortvideoService
             'share_num'      => (int) ($row['share_num'] ?? 0),
             'sort'           => (int) ($row['sort'] ?? 0),
             'status'         => (int) $row['status'],
-            'status_text'    => 1 === (int) $row['status'] ? '显示' : '待审核/驳回',
+            'status_text'    => 1 === (int) $row['status'] ? '已通过' : (2 === (int) $row['status'] ? '已驳回' : '待审核'),
             'reason'         => (string) ($row['reason'] ?? ''),
             'createtime'     => (int) ($row['createtime'] ?? 0),
         ];

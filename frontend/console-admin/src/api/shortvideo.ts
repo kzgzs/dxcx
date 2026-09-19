@@ -148,6 +148,7 @@ export function getShortvideoList(params: {
   status?: string | number
   cid?: number
   bid?: string
+  createtime?: string
 }) {
   return request.get<unknown, ShortvideoListResult<ShortvideoItem>>('/admin/shortvideo/video/list', {
     params,

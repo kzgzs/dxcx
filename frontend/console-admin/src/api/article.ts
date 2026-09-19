@@ -39,6 +39,8 @@ export interface ArticleItem {
 // 分类行（平铺含 pid）
 export interface ArticleCategoryItem {
   id: number
+  aid?: number
+  bid?: number
   pid: number
   name: string
   pic: string

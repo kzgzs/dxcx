@@ -40,7 +40,8 @@ class Shortvideo extends BaseController
             (int) $this->request->get('cid', 0),
             trim((string) $this->request->get('bid', '')),
             $page,
-            $pageSize
+            $pageSize,
+            trim((string) $this->request->get('createtime', ''))
         ));
     }
 
@@ -87,7 +88,7 @@ class Shortvideo extends BaseController
     }
 
     /**
-     * 视频审核（status 1通过 0驳回；驳回需 reason）
+     * 视频审核（status 1 已通过；2 已驳回，驳回需 reason）
      * POST /admin/shortvideo/video/check {id,status,reason}
      */
     public function check()
@@ -95,7 +96,7 @@ class Shortvideo extends BaseController
         $aid = ScopeService::aidOf($this->request);
 
         $id     = (int) $this->request->post('id', 0);
-        $status = (int) $this->request->post('status', 0);
+        $status = (int) $this->request->post('status', 1);
         $reason = trim((string) $this->request->post('reason', ''));
 
         $this->shortvideoService->videoCheck($aid, $id, $status, $reason);

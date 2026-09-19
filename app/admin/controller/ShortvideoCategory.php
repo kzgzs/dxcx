@@ -42,17 +42,16 @@ class ShortvideoCategory extends BaseController
     }
 
     /**
-     * 启用分类下拉（视频编辑/筛选用；bid=-1 全部，其余按商户维度）
+     * 启用分类下拉（视频编辑/筛选用；bid 走商户维度口径：''/all 全部、'0' 平台、'gt0' 商户、数字=指定商户）
      * GET /admin/shortvideo/category/options?bid=
      */
     public function options()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $bidRaw = trim((string) $this->request->get('bid', ''));
-        $bid    = '' === $bidRaw ? -1 : (int) $bidRaw;
+        $bid = trim((string) $this->request->get('bid', ''));
 
-        return $this->success($this->shortvideoService->categoryOptions($aid, $bid));
+        return $this->success($this->shortvideoService->categoryOptionsByScope($aid, $bid));
     }
 
     /**

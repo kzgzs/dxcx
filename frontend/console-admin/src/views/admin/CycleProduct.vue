@@ -385,21 +385,21 @@ onMounted(() => {
       </div>
       <el-form :inline="true" class="toolbar-search" @submit.prevent>
         <el-form-item label="商品名称">
-          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 140px" @keyup.enter="handleSearch" />
+          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 120px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="分类">
-          <el-select v-model="query.cid" placeholder="全部" clearable style="width: 132px">
+          <el-select v-model="query.cid" placeholder="全部" clearable style="width: 110px">
             <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 96px">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 90px">
             <el-option label="已上架" :value="1" />
             <el-option label="未上架" :value="0" />
           </el-select>
         </el-form-item>
         <el-form-item v-if="isMerchant" label="审核状态">
-          <el-select v-model="query.checked" placeholder="全部" clearable style="width: 104px">
+          <el-select v-model="query.checked" placeholder="全部" clearable style="width: 100px">
             <el-option label="待审核" :value="0" />
             <el-option label="已通过" :value="1" />
             <el-option label="已驳回" :value="2" />
@@ -418,8 +418,8 @@ onMounted(() => {
     <!-- 表格 -->
     <el-card shadow="never">
       <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange" @sort-change="handleSortChange">
-        <el-table-column type="selection" width="45" align="center" />
-        <el-table-column prop="id" label="ID" width="70" sortable="custom" align="center" />
+        <el-table-column type="selection" width="40" align="center" />
+        <el-table-column prop="id" label="ID" width="60" sortable="custom" align="center" />
         <el-table-column v-if="isMerchant" label="所属商户" width="120" align="center">
           <template #default="{ row }">{{ row.bname || '平台自营' }}</template>
         </el-table-column>
@@ -448,14 +448,14 @@ onMounted(() => {
             <span :class="row.status === 1 ? 'status-on' : 'status-off'">{{ row.status === 1 ? '已上架' : '未上架' }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="isMerchant" label="审核状态" width="90" align="center">
+        <el-table-column v-if="isMerchant" label="审核状态" width="86" align="center">
           <template #default="{ row }">
             <span :class="checkState(row).cls" :title="row.ischecked === 2 ? row.check_reason : ''">
               {{ checkState(row).text }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="170" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" width="90" fixed="right" align="center" header-align="center">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -585,12 +585,13 @@ onMounted(() => {
 
 <style scoped>
 .toolbar { margin-bottom: 12px; }
-.toolbar :deep(.el-card__body) { padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px 16px; flex-wrap: wrap; }
-.toolbar-left { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.toolbar :deep(.el-card__body) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.toolbar-left { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .toolbar-left .el-button { margin: 0; }
-.toolbar-search { display: flex; align-items: center; flex-wrap: nowrap; margin: 0; }
-.toolbar-search :deep(.el-form-item) { margin-bottom: 0; margin-right: 10px; }
+.toolbar-search { display: flex; align-items: center; flex: 1 1 auto; justify-content: flex-end; flex-wrap: nowrap; min-width: 0; margin: 0; }
+.toolbar-search :deep(.el-form-item) { margin-bottom: 0; margin-right: 8px; }
 .toolbar-search :deep(.el-form-item:last-child) { margin-right: 0; }
+.toolbar-search :deep(.el-form-item__label) { padding-right: 6px; }
 .search-icon-btn { padding: 8px 14px; }
 .search-icon-btn svg { display: block; }
 
@@ -606,7 +607,8 @@ onMounted(() => {
 .status-off { color: #f56c6c; }
 .check-pending { color: #409eff; }
 
-.row-ops { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 2px 10px; line-height: 1.4; }
+.row-ops { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.5; }
+.row-ops .el-button { margin: 0; height: auto; min-height: 0; padding: 0; font-size: 12px; }
 .row-ops :deep(.el-button) { height: auto; padding: 1px 0; margin: 0; font-size: 12px; }
 .pagination { margin-top: 16px; justify-content: flex-end; }
 

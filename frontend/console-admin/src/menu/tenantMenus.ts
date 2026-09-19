@@ -553,7 +553,7 @@ export const tenantMenus: MenuNode[] = [
         key: 'shortvideo',
         child: [
           { name: '分类列表', key: 'shortvideo-category-index', component: ShortvideoCategory },
-          { name: '视频列表', key: 'shortvideo-index', component: ShortvideoList },
+          { name: '视频列表', key: 'shortvideo-index', component: platformViewOf('Shortvideo', ShortvideoList) },
           { name: '评论列表', key: 'shortvideo-comment-index', component: ShortvideoComment },
           { name: '回评列表', key: 'shortvideo-comment-reply-index', component: ShortvideoCommentReply },
           { name: '海报设置', key: 'shortvideo-poster-index', component: ShortvideoPoster },

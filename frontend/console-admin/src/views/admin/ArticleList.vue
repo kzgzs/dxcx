@@ -3,7 +3,9 @@
 // - 平台「扩展→文章管理→文章列表」预置 bid='0'（仅平台文章，可添加）；
 // - 平台「商户→文章列表」预置 bid='gt0'（仅商户文章，平台只管理、不提供添加，列表多“所属商户”列）；
 //   二者是同一张 article 表按 bid 过滤的两个视图，记录各自独立，故 ID 不连续/不相同。
-// - 编辑页两个选项卡：基本信息 / 内容编辑（内容为页面设计器 JSON，复用 GoodsDetailEditor）。
+// - 点大商户文章由商户登录商户后台（Backstage）自建（bid=商户ID，分类也随商户）；
+//   本项目暂无商户端入口，演示数据由 php think demo:articles 生成。
+// - 编辑/添加平铺在主区域，右上角 X 关闭；两个选项卡：基本信息 / 内容编辑（内容为页面设计器 JSON，复用 GoodsDetailEditor）。
 import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -26,6 +28,9 @@ import { formatTime } from '../../utils/time'
 const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
 /** 商户视图：平台在「商户」菜单下查看各商户文章（bid>0），不提供“添加” */
 const isMerchantView = computed(() => props.bid === 'gt0')
+
+// ============ 视图切换：列表 / 整页编辑 ============
+const viewMode = ref<'list' | 'edit'>('list')
 
 // ============ 列表 ============
 const loading = ref(false)
@@ -58,7 +63,11 @@ const categoryTree = computed(() => {
 
 async function loadCategories() {
   const res = await getArticleCategoryList()
-  categories.value = res.list || []
+  // 点大口径：文章分类随归属（bid=0 平台分类，bid>0 商户自建分类）
+  const all = res.list || []
+  categories.value = isMerchantView.value
+    ? all.filter((c) => Number(c.bid) > 0)
+    : all.filter((c) => Number(c.bid) === 0)
 }
 async function load() {
   loading.value = true
@@ -76,7 +85,6 @@ function handleSearch() {
 }
 
 // ============ 编辑（基本信息 / 内容编辑 两个选项卡） ============
-const dialogVisible = ref(false)
 const saving = ref(false)
 const activeTab = ref<'base' | 'content'>('base')
 
@@ -172,7 +180,7 @@ function resetForm() {
 }
 function openAdd() {
   resetForm()
-  dialogVisible.value = true
+  viewMode.value = 'edit'
 }
 async function openEdit(row: ArticleItem) {
   resetForm()
@@ -185,7 +193,12 @@ async function openEdit(row: ArticleItem) {
     sort: Number(detail.sort) || 0,
   })
   contentModules.value = parseContent(detail.content || '')
-  dialogVisible.value = true
+  viewMode.value = 'edit'
+}
+function backToList() {
+  viewMode.value = 'list'
+  resetForm()
+  load()
 }
 
 async function handleSave() {
@@ -219,8 +232,7 @@ async function handleSave() {
       showtj: form.showtj,
     })
     ElMessage.success(form.id ? '保存成功' : '新增成功')
-    dialogVisible.value = false
-    load()
+    backToList()
   } finally {
     saving.value = false
   }
@@ -256,7 +268,11 @@ async function handleDelete(rows: ArticleItem[]) {
     ElMessage.warning('请选择数据')
     return
   }
-  await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 篇文章？删除后无法恢复！`, '操作确认', { type: 'warning' })
+  await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 篇文章？删除后无法恢复！`, '删除确认', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
   await deleteArticle(rows.map((r) => r.id))
   ElMessage.success('删除成功')
   selected.value = []
@@ -285,7 +301,11 @@ function fmtDate(ts: number | string): string {
 
 watch(
   () => props.bid,
-  () => handleSearch(),
+  () => {
+    query.cid = 0
+    loadCategories()
+    handleSearch()
+  },
 )
 
 onMounted(() => {
@@ -295,126 +315,151 @@ onMounted(() => {
 </script>
 
 <template>
-  <div class="article-list">
-    <!-- 工具栏：左操作 / 右搜索，强制一行 -->
-    <div class="toolbar">
-      <div class="tb-left">
-        <el-button v-if="!isMerchantView" type="primary" @click="openAdd">添加</el-button>
-        <el-button :disabled="!selected.length" @click="handleDelete(selected)">删除</el-button>
-        <el-button :disabled="!selected.length" @click="handleBatchSetst(1)">开启</el-button>
-        <el-button :disabled="!selected.length" @click="handleBatchSetst(0)">关闭</el-button>
-      </div>
-      <div class="tb-right">
-        <span class="tb-label">标题</span>
-        <el-input
-          v-model="query.keyword"
-          placeholder="标题"
-          clearable
-          class="tb-kw"
-          @keyup.enter="handleSearch"
+  <div class="article-page">
+    <!-- ============ 列表视图 ============ -->
+    <div v-if="viewMode === 'list'">
+      <el-card shadow="never" class="toolbar">
+        <div class="toolbar-left">
+          <el-button v-if="!isMerchantView" type="success" @click="openAdd">添加</el-button>
+          <el-button @click="handleDelete(selected)">删除</el-button>
+          <el-button @click="handleBatchSetst(1)">开启</el-button>
+          <el-button @click="handleBatchSetst(0)">关闭</el-button>
+        </div>
+        <el-form inline class="toolbar-search" @submit.prevent>
+          <el-form-item label="标题">
+            <el-input
+              v-model="query.keyword"
+              placeholder="标题"
+              clearable
+              style="width: 120px"
+              @keyup.enter="handleSearch"
+            />
+          </el-form-item>
+          <el-form-item label="分类">
+            <el-select v-model="query.cid" placeholder="全部" clearable style="width: 110px">
+              <el-option label="全部" :value="0" />
+              <el-option v-for="top in categoryTree" :key="top.id" :label="top.name" :value="top.id" />
+              <template v-for="top in categoryTree" :key="`c${top.id}`">
+                <el-option v-for="c in top.children" :key="c.id" :label="`　${top.name} / ${c.name}`" :value="c.id" />
+              </template>
+            </el-select>
+          </el-form-item>
+          <el-form-item label="状态">
+            <el-select v-model="query.status" placeholder="全部" clearable style="width: 90px">
+              <el-option label="开启" value="1" />
+              <el-option label="关闭" value="0" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="success" class="search-icon-btn" @click="handleSearch">
+              <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
+            </el-button>
+          </el-form-item>
+        </el-form>
+      </el-card>
+
+      <el-card shadow="never">
+        <el-table
+          v-loading="loading"
+          :data="list"
+          border
+          @selection-change="(rows: ArticleItem[]) => (selected = rows)"
+        >
+          <el-table-column type="selection" width="45" />
+          <el-table-column prop="id" label="ID" width="70" sortable="custom" align="center" header-align="center" />
+          <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="120" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.bname || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="文章信息" min-width="300">
+            <template #default="{ row }">
+              <div class="art-cell">
+                <el-image v-if="row.pic" :src="row.pic" class="art-pic" fit="cover" />
+                <div v-else class="art-pic art-pic-empty">无图</div>
+                <div class="art-meta">
+                  <div class="art-title">
+                    <span v-if="categoryMap[row.cid]" class="art-cname">[{{ categoryMap[row.cid] }}] </span>
+                    <span class="art-name">{{ row.name }}</span>
+                  </div>
+                  <div v-if="row.subname" class="art-sub">{{ row.subname }}</div>
+                  <div class="art-date">{{ fmtDate(row.createtime) }}</div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="readcount" label="阅读量" width="90" sortable align="center" header-align="center" />
+          <el-table-column prop="sort" label="序号" width="80" sortable align="center" header-align="center" />
+          <el-table-column label="创建时间" width="160" align="center" header-align="center">
+            <template #default="{ row }">{{ row.createtime ? formatTime(Number(row.createtime)) : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="90" align="center" header-align="center">
+            <template #default="{ row }">
+              <el-tag
+                v-if="row.status === 1"
+                effect="dark"
+                type="primary"
+                class="st-tag"
+                @click="handleSetst(row)"
+              >已开启</el-tag>
+              <el-tag
+                v-else-if="row.status === 0"
+                effect="dark"
+                type="info"
+                class="st-tag"
+                @click="handleSetst(row)"
+              >已关闭</el-tag>
+              <el-tag v-else effect="dark" type="danger">已驳回</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="90" fixed="right" align="center" header-align="center">
+            <template #default="{ row }">
+              <div class="row-ops">
+                <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
+                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+                <el-button link type="danger" @click="handleDelete([row])">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+          <template #empty>暂无数据</template>
+        </el-table>
+
+        <el-pagination
+          v-model:current-page="query.page"
+          v-model:page-size="query.pagesize"
+          :total="total"
+          :page-sizes="[10, 20, 50]"
+          layout="total, sizes, prev, pager, next, jumper"
+          class="pagination"
+          @change="load"
         />
-        <span class="tb-label">分类</span>
-        <el-select v-model="query.cid" placeholder="全部" clearable class="tb-cid">
-          <el-option v-for="top in categoryTree" :key="top.id" :label="top.name" :value="top.id" />
-          <template v-for="top in categoryTree" :key="`c${top.id}`">
-            <el-option v-for="c in top.children" :key="c.id" :label="`　${top.name} / ${c.name}`" :value="c.id" />
-          </template>
-        </el-select>
-        <span class="tb-label">状态</span>
-        <el-select v-model="query.status" placeholder="全部" clearable class="tb-st">
-          <el-option label="开启" value="1" />
-          <el-option label="关闭" value="0" />
-        </el-select>
-        <el-button type="primary" @click="handleSearch">搜索</el-button>
-      </div>
+      </el-card>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="list"
-      border
-      stripe
-      @selection-change="(rows: ArticleItem[]) => (selected = rows)"
-    >
-      <el-table-column type="selection" width="44" />
-      <el-table-column prop="id" label="ID" width="80" sortable />
-      <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="140" show-overflow-tooltip>
-        <template #default="{ row }">{{ row.bname || '-' }}</template>
-      </el-table-column>
-      <el-table-column label="文章信息" min-width="340">
-        <template #default="{ row }">
-          <div class="art-cell">
-            <el-image v-if="row.pic" :src="row.pic" class="art-pic" fit="cover" />
-            <div v-else class="art-pic art-pic-empty">-</div>
-            <div class="art-meta">
-              <div class="art-title">
-                <span v-if="categoryMap[row.cid]" class="art-cname">[{{ categoryMap[row.cid] }}] </span>
-                <span class="art-name">{{ row.name }}</span>
-              </div>
-              <div v-if="row.subname" class="art-sub">{{ row.subname }}</div>
-              <div class="art-date">{{ fmtDate(row.createtime) }}</div>
-            </div>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="readcount" label="阅读量" width="90" sortable />
-      <el-table-column prop="sort" label="序号" width="80" sortable />
-      <el-table-column label="创建时间" width="150">
-        <template #default="{ row }">{{ row.createtime ? formatTime(Number(row.createtime)) : '-' }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="95">
-        <template #default="{ row }">
-          <el-button v-if="row.status === 1" size="small" type="primary" @click="handleSetst(row)">已开启</el-button>
-          <el-button v-else-if="row.status === 0" size="small" type="danger" @click="handleSetst(row)">已关闭</el-button>
-          <el-tag v-else type="danger">已驳回</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="170" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete([row])">删除</el-button>
-        </template>
-      </el-table-column>
-      <template #empty>暂无数据</template>
-    </el-table>
+    <!-- ============ 整页编辑 ============ -->
+    <div v-else class="goods-edit">
+      <div class="ge-head">
+        <el-button class="ge-close" circle @click="backToList">
+          <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M764.288 214.595 512 466.883 259.712 214.595a32 32 0 0 0-45.248 45.248L466.752 512 214.464 764.288a32 32 0 1 0 45.248 45.248L512 557.117l252.288 252.419a32 32 0 0 0 45.248-45.248L557.248 512l252.288-252.157a32 32 0 0 0-45.248-45.248z" /></svg>
+        </el-button>
+      </div>
 
-    <el-pagination
-      v-model:current-page="query.page"
-      v-model:page-size="query.pagesize"
-      :total="total"
-      :page-sizes="[10, 20, 50]"
-      layout="total, sizes, prev, pager, next"
-      style="margin-top: 12px; justify-content: flex-end"
-      @change="load"
-    />
-
-    <!-- 编辑（全屏，两个选项卡） -->
-    <el-dialog
-      v-model="dialogVisible"
-      :title="form.id ? '编辑文章' : '添加文章'"
-      fullscreen
-      :close-on-click-modal="false"
-      class="art-edit-dialog"
-    >
-      <el-tabs v-model="activeTab" class="art-tabs">
+      <el-tabs v-model="activeTab" class="ge-tabs">
         <!-- ===== 基本信息 ===== -->
         <el-tab-pane label="基本信息" name="base">
-          <el-form label-width="92px" class="art-base-form">
+          <el-form label-width="92px" class="ge-form">
             <el-form-item label="标题" required>
               <el-input v-model="form.name" maxlength="100" show-word-limit style="width: 500px" placeholder="请输入文章标题" />
             </el-form-item>
             <el-form-item label="描述">
               <el-input v-model="form.subname" maxlength="200" style="width: 500px" />
-              <span class="tip">用于转发分享描述</span>
+              <span class="ge-hint">用于转发分享描述</span>
             </el-form-item>
             <el-form-item label="作者">
               <el-input v-model="form.author" maxlength="50" style="width: 240px" />
             </el-form-item>
             <el-form-item label="图片">
-              <div class="pic-row">
+              <div class="ge-pic-row">
                 <el-button @click="openImgPicker((u) => (form.pic = u))">上传图片</el-button>
-                <span class="tip">建议尺寸：600×430像素</span>
+                <span class="ge-hint">建议尺寸：600×430像素</span>
               </div>
               <div class="pic-preview">
                 <el-image v-if="form.pic" :src="form.pic" class="pic-preview-img" fit="cover" />
@@ -434,7 +479,7 @@ onMounted(() => {
             </el-form-item>
             <el-form-item label="序号">
               <el-input-number v-model="form.sort" :min="0" :controls="false" style="width: 200px" />
-              <span class="tip">用于排序，越大越靠前</span>
+              <span class="ge-hint">用于排序，越大越靠前</span>
             </el-form-item>
             <el-form-item label="发布时间">
               <el-date-picker
@@ -470,7 +515,7 @@ onMounted(() => {
             </el-form-item>
             <el-form-item>
               <el-button type="primary" @click="activeTab = 'content'">下一步:编辑文章详情</el-button>
-              <el-button type="danger" :loading="saving" @click="handleSave">提 交</el-button>
+              <el-button type="warning" :loading="saving" @click="handleSave">提 交</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -478,57 +523,89 @@ onMounted(() => {
         <!-- ===== 内容编辑（页面设计器，与商品详情装修同源） ===== -->
         <el-tab-pane label="内容编辑" name="content" lazy>
           <GoodsDetailEditor v-if="activeTab === 'content'" v-model="contentModules" title="文章详情" />
-          <div class="content-footer">
+          <div class="tab-footer">
             <el-button type="primary" @click="activeTab = 'base'">上一步:编辑基本信息</el-button>
-            <el-button type="danger" :loading="saving" @click="handleSave">提 交</el-button>
+            <el-button type="warning" :loading="saving" @click="handleSave">提 交</el-button>
           </div>
         </el-tab-pane>
       </el-tabs>
-    </el-dialog>
+    </div>
 
     <ImgIconPicker v-model:visible="imgPickerVisible" default-tab="library" @pick="onImgPick" />
   </div>
 </template>
 
 <style scoped>
-.article-list {
+.article-page {
   padding: 12px;
 }
-/* 工具栏强制一行：左侧操作，右侧搜索 */
+/* 工具栏：左操作 / 右搜索，强制一行 */
 .toolbar {
+  margin-bottom: 12px;
+}
+.toolbar :deep(.el-card__body) {
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: nowrap;
-  margin-bottom: 12px;
 }
-.tb-left {
+.toolbar-left {
   display: flex;
   align-items: center;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
-.tb-right {
+.toolbar-left .el-button {
+  margin: 0;
+}
+.toolbar-search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-left: auto;
-  flex-shrink: 0;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  min-width: 0;
+  margin: 0;
 }
-.tb-label {
-  color: #606266;
-  font-size: 13px;
-  white-space: nowrap;
+.toolbar-search :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
 }
-.tb-kw {
-  width: 170px;
+.toolbar-search :deep(.el-form-item:last-child) {
+  margin-right: 0;
 }
-.tb-cid {
-  width: 150px;
+.toolbar-search :deep(.el-form-item__label) {
+  padding-right: 6px;
 }
-.tb-st {
-  width: 104px;
+.search-icon-btn {
+  padding: 8px 14px;
+}
+.search-icon-btn svg {
+  display: block;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+/* 行操作纵向排列（对标点大） */
+.row-ops {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  line-height: 1.5;
+}
+.row-ops .el-button {
+  margin: 0;
+  height: auto;
+  min-height: 0;
+  padding: 0;
+  font-size: 12px;
+}
+.st-tag {
+  cursor: pointer;
 }
 /* 文章信息单元格 */
 .art-cell {
@@ -579,19 +656,41 @@ onMounted(() => {
   font-size: 12px;
   color: #999;
 }
-.tip {
-  margin-left: 10px;
+/* 整页编辑（与商品页 ge- 范式一致） */
+.goods-edit {
+  background: #fff;
+  border-radius: 6px;
+  padding: 16px 20px;
+}
+.ge-head {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-bottom: 12px;
+}
+.ge-close {
+  border: none;
+  background: transparent;
+  color: #909399;
+}
+.ge-close:hover {
+  color: #409eff;
+  background: transparent;
+}
+.ge-form :deep(.el-form-item) {
+  margin-bottom: 15px;
+}
+.ge-hint {
   color: #909399;
   font-size: 12px;
+  line-height: 1.5;
+  margin-left: 10px;
 }
-/* 编辑弹窗 */
-.art-base-form {
-  max-width: 780px;
-}
-.pic-row {
+.ge-pic-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
   margin-bottom: 8px;
 }
 .pic-preview {
@@ -621,13 +720,11 @@ onMounted(() => {
   flex-wrap: wrap;
   gap: 8px;
 }
-.content-footer {
-  margin-top: 16px;
-  padding-left: 92px;
-}
-.art-edit-dialog :deep(.el-dialog__body) {
-  height: calc(100vh - 55px);
-  overflow-y: auto;
-  padding-top: 10px;
+.tab-footer {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  padding: 16px 0 8px;
+  border-top: 1px solid #ebeef5;
 }
 </style>
