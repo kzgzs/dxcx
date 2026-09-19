@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{$cfg.system_name} - 官网已关闭</title>
+{if $cfg.ico != ''}<link rel="shortcut icon" href="{$cfg.ico}">{/if}
+{literal}
+<style>
+:root{--bg:#0b1120;--tx:#e8edf6;--tx2:#8b96ab;--bd:rgba(255,255,255,.1)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:radial-gradient(700px 500px at 50% -10%,rgba(77,141,255,.15),transparent 60%),var(--bg);color:var(--tx);font-family:"PingFang SC","Microsoft YaHei",sans-serif;text-align:center;padding:24px}
+.box{max-width:480px}
+.ico{width:72px;height:72px;margin:0 auto 28px;border-radius:20px;border:1px solid var(--bd);background:rgba(255,255,255,.05);display:flex;align-items:center;justify-content:center;font-size:34px}
+h1{font-size:26px;font-weight:800;letter-spacing:1px}
+p{margin-top:14px;color:var(--tx2);font-size:15px;line-height:1.8}
+.footer{margin-top:44px;font-size:13px;color:var(--tx2)}
+.footer a{color:var(--tx2)}
+.footer span{margin:0 8px}
+</style>
+{/literal}
+</head>
+<body>
+<div class="box">
+  <div class="ico">🔒</div>
+  <h1>{$cfg.system_name}</h1>
+  <p>官网展示功能已关闭<br>如需访问请联系管理员在系统设置中开启官网模板</p>
+  <div class="footer">
+    {if $cfg.copyright != ''}<span>{$cfg.copyright}</span>{/if}
+    {if $cfg.beian != ''}<span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{$cfg.beian}</a></span>{/if}
+    {if $cfg.gongan_text != ''}<span><a href="http://www.beian.gov.cn/portal/registerSystemInfo?gongan_code={$cfg.gongan_code}" target="_blank" rel="noopener">{$cfg.gongan_text}</a></span>{/if}
+  </div>
+</div>
+</body>
+</html>

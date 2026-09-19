@@ -1,0 +1,113 @@
+import request from './request'
+
+// ===== 自定义表单整组（批次8-5 任务225）：form + form_order 双表，类型自包含 =====
+
+// 表单定义行（附加未处理记录数）
+export interface FormItem {
+  id: number
+  aid: number
+  bid: number
+  name: string
+  starttime: string
+  endtime: string
+  content: string
+  payset: string
+  price: string
+  priceedit: string
+  maxlimit: string
+  perlimit: string
+  sort: number
+  createtime: number
+  commissionset: string
+  commission1: string
+  commission2: string
+  commission3: string
+  commissiondata1: string
+  commissiondata2: string
+  fanwei: string
+  fanwei_lng: string
+  fanwei_lat: string
+  fanwei_range: string
+  form_query: string
+  form_query_type: string
+  form_query_bgcolor: string
+  form_query_txtcolor: string
+  submit_tourl: string
+  st0count?: number
+}
+
+// 提交记录行（form0~form50 动态字段）
+export interface FormOrderItem {
+  id: number
+  aid: number
+  bid: number
+  formid: number
+  title: string
+  mid: number
+  status: number
+  createtime: number
+  isudel: number
+  paystatus: number
+  money: string
+  ordernum: string
+  paytime: number
+  platform: string
+  reason: string
+  nickname?: string
+  headimg?: string
+  [key: string]: unknown
+}
+
+export interface FormListQuery {
+  page?: number
+  pagesize?: number
+  name?: string
+  bid?: string
+}
+
+export interface FormRecordQuery {
+  page?: number
+  pagesize?: number
+  formid?: number
+  status?: string
+  keyword?: string
+  starttime?: string
+  endtime?: string
+  bid?: string
+}
+
+export function getFormList(params: FormListQuery) {
+  return request.get<unknown, { list: FormItem[]; total: number }>('/admin/form/list', { params })
+}
+
+export function getFormDetail(id: number) {
+  return request.get<unknown, FormItem>('/admin/form/detail', { params: { id } })
+}
+
+export function saveForm(data: Record<string, unknown>) {
+  return request.post<unknown, { id: number }>('/admin/form/save', data)
+}
+
+export function deleteForm(ids: number[]) {
+  return request.post<unknown, null>('/admin/form/delete', { ids })
+}
+
+export function copyForm(id: number) {
+  return request.post<unknown, { id: number }>('/admin/form/copy', { id })
+}
+
+export function getFormRecord(params: FormRecordQuery) {
+  return request.get<unknown, { list: FormOrderItem[]; total: number }>('/admin/form/record', { params })
+}
+
+export function getFormRecordDetail(id: number) {
+  return request.get<unknown, FormOrderItem & { formdef: FormItem | null }>('/admin/form/recorddetail', { params: { id } })
+}
+
+export function formRecordSetst(ids: number[], st: number, reason = '') {
+  return request.post<unknown, null>('/admin/form/recordsetst', { ids, st, reason })
+}
+
+export function formRecordDel(ids: number[]) {
+  return request.post<unknown, null>('/admin/form/recorddel', { ids })
+}

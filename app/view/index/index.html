@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{$cfg.system_name} - 一站式多端商城解决方案</title>
+<meta name="description" content="{$cfg.system_name}，支持公众号、小程序、H5 多端商城，订单管理、会员营销、客服系统一站式解决方案。">
+{if $cfg.ico != ''}<link rel="shortcut icon" href="{$cfg.ico}">{/if}
+{literal}
+<style>
+:root{
+  --paper:#f7f4ee; --paper2:#fffdf8; --ink:#1b2432; --ink2:#5c6675;
+  --accent:#b5432c; --accent-d:#8f3220; --line:#e2dccc; --gold:#b98a2f;
+  --serif:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --sans:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.7}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1180px;margin:0 auto;padding:0 24px}
+/* 顶部导航 */
+.nav{position:sticky;top:0;z-index:50;background:rgba(247,244,238,.92);backdrop-filter:blur(8px);border-bottom:1px solid var(--line)}
+.nav .wrap{display:flex;align-items:center;height:68px;gap:36px}
+.brand{display:flex;align-items:center;gap:12px;font-family:var(--serif);font-size:22px;font-weight:700;letter-spacing:2px}
+.brand img{height:34px;width:34px;object-fit:contain}
+.brand .seal{display:inline-flex;align-items:center;justify-content:center;width:34px;height:34px;background:var(--accent);color:#fff;font-size:17px;border-radius:6px;font-family:var(--serif)}
+.nav-links{display:flex;gap:30px;margin-left:auto;font-size:15px}
+.nav-links a{position:relative;padding:6px 0;color:var(--ink2);transition:color .2s}
+.nav-links a:hover,.nav-links a.on{color:var(--accent)}
+.nav-links a::after{content:"";position:absolute;left:0;bottom:0;width:0;height:2px;background:var(--accent);transition:width .25s}
+.nav-links a:hover::after{width:100%}
+.nav-auth{display:flex;align-items:center;gap:14px;margin-left:auto;flex:none}
+.nav-links + .nav-auth{margin-left:0}
+.nav-auth .auth-login{font-size:15px;color:var(--ink2);padding:6px 2px;transition:color .2s}
+.nav-auth .auth-login:hover{color:var(--accent)}
+.nav-auth .auth-reg{display:inline-flex;align-items:center;height:36px;padding:0 22px;font-size:14px;border-radius:4px;background:var(--accent);color:#fff;transition:all .2s}
+.nav-auth .auth-reg:hover{background:var(--accent-d);transform:translateY(-2px);box-shadow:0 8px 18px rgba(181,67,44,.28)}
+/* hero */
+.hero{position:relative;overflow:hidden;border-bottom:1px solid var(--line)}
+.hero::before{content:"";position:absolute;right:-140px;top:-140px;width:480px;height:480px;border-radius:50%;background:radial-gradient(circle,rgba(181,67,44,.14),transparent 70%)}
+.hero::after{content:"";position:absolute;left:0;bottom:0;width:100%;height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+.hero .wrap{position:relative;padding:96px 24px 88px}
+.hero .kicker{font-size:14px;letter-spacing:6px;color:var(--accent);margin-bottom:18px}
+.hero h1{font-family:var(--serif);font-size:56px;line-height:1.2;font-weight:800;letter-spacing:2px}
+.hero .slogan{margin-top:22px;font-size:19px;color:var(--ink2);max-width:560px}
+.hero .btns{margin-top:40px;display:flex;gap:16px}
+.btn{display:inline-flex;align-items:center;height:50px;padding:0 34px;font-size:16px;border-radius:4px;cursor:pointer;border:1px solid transparent;transition:all .2s}
+.btn-main{background:var(--accent);color:#fff}
+.btn-main:hover{background:var(--accent-d);transform:translateY(-2px);box-shadow:0 10px 24px rgba(181,67,44,.28)}
+.btn-ghost{border-color:var(--ink);color:var(--ink);background:transparent}
+.btn-ghost:hover{background:var(--ink);color:#fff;transform:translateY(-2px)}
+.hero .stats{display:flex;gap:56px;margin-top:64px;flex-wrap:wrap}
+.hero .stats .num{font-family:var(--serif);font-size:36px;font-weight:800;color:var(--ink)}
+.hero .stats .num i{font-style:normal;color:var(--accent);font-size:22px}
+.hero .stats .lab{font-size:13px;color:var(--ink2);letter-spacing:2px;margin-top:2px}
+/* 通用节标题 */
+.sec{padding:88px 0}
+.sec-alt{background:var(--paper2)}
+.sec-head{margin-bottom:52px}
+.sec-head .no{font-family:var(--serif);color:var(--gold);font-size:15px;letter-spacing:4px}
+.sec-head h2{font-family:var(--serif);font-size:36px;font-weight:800;letter-spacing:2px;margin-top:8px}
+.sec-head p{color:var(--ink2);margin-top:10px}
+.sec-head .rule{width:56px;height:3px;background:var(--accent);margin-top:18px}
+/* 功能卡片 */
+.feat-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:22px}
+.feat{background:#fff;border:1px solid var(--line);border-radius:8px;padding:34px 30px;position:relative;overflow:hidden;transition:all .25s}
+.feat::before{content:"";position:absolute;left:0;top:0;width:3px;height:0;background:var(--accent);transition:height .3s}
+.feat:hover{transform:translateY(-6px);box-shadow:0 18px 40px rgba(27,36,50,.10)}
+.feat:hover::before{height:100%}
+.feat .ico{width:52px;height:52px;border-radius:10px;background:linear-gradient(135deg,#fbeee9,#f6d9cf);display:flex;align-items:center;justify-content:center;font-size:26px;margin-bottom:20px}
+.feat h3{font-size:19px;font-weight:700;margin-bottom:10px}
+.feat p{font-size:14px;color:var(--ink2);line-height:1.8}
+/* 业务说明 */
+.steps{display:grid;grid-template-columns:repeat(3,1fr);gap:22px;counter-reset:step}
+.step{background:var(--paper);border:1px solid var(--line);border-radius:8px;padding:36px 30px;position:relative}
+.step .n{font-family:var(--serif);font-size:44px;font-weight:800;color:transparent;-webkit-text-stroke:1.5px var(--accent);line-height:1}
+.step h3{font-size:18px;margin:16px 0 8px}
+.step p{font-size:14px;color:var(--ink2)}
+/* 帮助中心 */
+.help-list{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.help-item{display:flex;align-items:center;gap:14px;background:#fff;border:1px solid var(--line);border-radius:6px;padding:18px 22px;font-size:15px;transition:all .2s}
+.help-item:hover{border-color:var(--accent);color:var(--accent);transform:translateX(4px)}
+.help-item .dot{width:8px;height:8px;border-radius:50%;background:var(--accent);flex:none}
+.help-item .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.help-item .d{font-size:12px;color:#9aa1ab;flex:none}
+.help-empty{color:var(--ink2);font-size:14px;background:#fff;border:1px dashed var(--line);border-radius:6px;padding:36px;text-align:center}
+/* 联系我们 */
+.contact-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:36px;align-items:start}
+.form-card{background:#fff;border:1px solid var(--line);border-radius:10px;padding:38px}
+.form-row{margin-bottom:18px}
+.form-row label{display:block;font-size:14px;margin-bottom:8px;color:var(--ink)}
+.form-row label i{color:var(--accent);font-style:normal;margin-right:4px}
+.form-row input,.form-row textarea{width:100%;border:1px solid var(--line);border-radius:6px;padding:12px 14px;font-size:14px;font-family:var(--sans);background:var(--paper2);outline:none;transition:border .2s}
+.form-row input:focus,.form-row textarea:focus{border-color:var(--accent)}
+.form-row textarea{height:120px;resize:vertical}
+.form-tip{font-size:13px;margin-top:12px;display:none}
+.form-tip.ok{display:block;color:#2e7d4f}
+.form-tip.err{display:block;color:var(--accent)}
+.info-card{background:var(--ink);color:#dfe4ec;border-radius:10px;padding:38px}
+.info-card h3{font-family:var(--serif);font-size:22px;color:#fff;margin-bottom:22px;letter-spacing:2px}
+.info-card .row{display:flex;gap:12px;font-size:14px;margin-bottom:16px;line-height:1.6}
+.info-card .row .k{color:#8f99aa;flex:none;width:64px}
+.info-card .note{margin-top:26px;padding-top:20px;border-top:1px solid rgba(255,255,255,.12);font-size:13px;color:#8f99aa}
+/* 底部 */
+.footer{background:#141b27;color:#8b94a4;padding:36px 0;font-size:13px;text-align:center}
+.footer .links{margin-bottom:12px}
+.footer .links a{margin:0 14px;color:#aeb6c4}
+.footer .links a:hover{color:#fff}
+.footer .beian a{color:#8b94a4}
+.footer .beian a:hover{color:#fff}
+.footer .beian span{margin:0 10px}
+/* 动画 */
+@keyframes rise{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:none}}
+.hero .kicker,.hero h1,.hero .slogan,.hero .btns,.hero .stats{animation:rise .7s ease both}
+.hero h1{animation-delay:.08s}.hero .slogan{animation-delay:.16s}.hero .btns{animation-delay:.24s}.hero .stats{animation-delay:.32s}
+@media (max-width:900px){
+  .hero h1{font-size:38px}
+  .feat-grid,.steps,.contact-grid{grid-template-columns:1fr}
+  .help-list{grid-template-columns:1fr}
+  .nav-links{gap:16px;font-size:14px}
+  .nav-auth{gap:10px}
+  .nav-auth .auth-reg{padding:0 14px}
+  .brand{font-size:18px}
+}
+</style>
+{/literal}
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/">
+      {if $cfg.logo != ''}<img src="{$cfg.logo}" alt="logo">{else/}<span class="seal">鼎</span>{/if}
+      {$cfg.system_name}
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="on">首页</a>
+      <a href="#features">商城功能</a>
+      <a href="#help">帮助中心</a>
+      <a href="#contact">联系我们</a>
+    </nav>
+    <div class="nav-auth">
+      <a class="auth-login" href="{$frontend_url}/#/login">登录</a>
+      {if $reg_open == 1}<a class="auth-reg" href="{$frontend_url}/#/login?mode=reg">注册</a>{/if}
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <div class="kicker">MULTI-TERMINAL MALL SAAS</div>
+    <h1>{$cfg.system_name}<br>让生意遍布每一个终端</h1>
+    <p class="slogan">公众号 · 小程序 · H5 · APP 多端合一，从商品上架到订单履约、从会员营销到客服支持，一套系统全链路打通。</p>
+    <div class="btns">
+      <a class="btn btn-main" href="#contact">立即咨询</a>
+      <a class="btn btn-ghost" href="#features">查看功能</a>
+    </div>
+    <div class="stats">
+      <div><div class="num">6<i>+</i></div><div class="lab">核心功能模块</div></div>
+      <div><div class="num">3<i>端</i></div><div class="lab">多终端数据互通</div></div>
+      <div><div class="num">24<i>h</i></div><div class="lab">全天候稳定运行</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="no">壹 · FEATURES</div>
+      <h2>商城核心功能</h2>
+      <p>围绕经营全链路，提供开箱即用的能力组件</p>
+      <div class="rule"></div>
+    </div>
+    <div class="feat-grid">
+      <div class="feat"><div class="ico">🛒</div><h3>多端商城</h3><p>公众号、小程序、H5 多端覆盖，一次搭建全端互通，商品、订单、会员数据实时同步。</p></div>
+      <div class="feat"><div class="ico">📦</div><h3>订单管理</h3><p>订单全生命周期管理，支持发货、自提、退款、售后与批量操作，履约流程清晰可控。</p></div>
+      <div class="feat"><div class="ico">🎯</div><h3>会员营销</h3><p>会员等级、积分、优惠券、拼团秒杀等营销组件，拉新、转化、复购一站式运营。</p></div>
+      <div class="feat"><div class="ico">💬</div><h3>客服系统</h3><p>在线咨询与消息通知即时触达，客户问题快速响应，服务体验与口碑双提升。</p></div>
+      <div class="feat"><div class="ico">📊</div><h3>数据分析</h3><p>交易、会员、营销多维数据报表，经营状况一目了然，决策有据可依。</p></div>
+      <div class="feat"><div class="ico">🔌</div><h3>开放平台</h3><p>微信开放平台第三方能力接入，授权托管、代开发发布，规模化服务多商户。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec sec-alt" id="business">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="no">贰 · BUSINESS</div>
+      <h2>业务说明</h2>
+      <p>三步开启您的多端商城之旅</p>
+      <div class="rule"></div>
+    </div>
+    <div class="steps">
+      <div class="step"><div class="n">01</div><h3>开通账号</h3><p>提交企业信息开通商户账号，专属控制台即刻可用，基础配置向导式完成。</p></div>
+      <div class="step"><div class="n">02</div><h3>装修上架</h3><p>可视化装修店铺首页，批量导入商品并配置支付、配送与营销规则。</p></div>
+      <div class="step"><div class="n">03</div><h3>开店经营</h3><p>多端同步开卖，订单、会员、营销数据实时回流，持续运营持续增长。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="help">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="no">叁 · HELP</div>
+      <h2>帮助中心</h2>
+      <p>常见问题与使用指南，点击查看文章详情</p>
+      <div class="rule"></div>
+    </div>
+    {if count($helps) > 0}
+    <div class="help-list">
+      {volist name="helps" id="h"}
+      <a class="help-item" href="/index/help?id={$h.id}" target="_blank" rel="noopener">
+        <span class="dot"></span>
+        <span class="t">{$h.name}</span>
+        <span class="d">{$h.createtime|date='Y-m-d'}</span>
+      </a>
+      {/volist}
+    </div>
+    {else/}
+    <div class="help-empty">暂无帮助文章，敬请期待</div>
+    {/if}
+  </div>
+</section>
+
+<section class="sec sec-alt" id="contact">
+  <div class="wrap">
+    <div class="sec-head">
+      <div class="no">肆 · CONTACT</div>
+      <h2>联系我们</h2>
+      <p>留下您的需求，我们将尽快与您取得联系</p>
+      <div class="rule"></div>
+    </div>
+    <div class="contact-grid">
+      <div class="form-card">
+        <form id="msgForm" onsubmit="return submitMsg(event)">
+          <div class="form-row">
+            <label><i>*</i>姓名</label>
+            <input type="text" name="realname" maxlength="50" placeholder="请输入您的姓名" required>
+          </div>
+          <div class="form-row">
+            <label>联系方式（手机 / 微信）</label>
+            <input type="text" name="tel" maxlength="50" placeholder="方便我们与您联系">
+          </div>
+          <div class="form-row">
+            <label><i>*</i>留言内容</label>
+            <textarea name="content" maxlength="1000" placeholder="请简单描述您的需求，例如行业、期望功能等" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-main" id="msgBtn" style="border:none">提交留言</button>
+          <div class="form-tip" id="msgTip"></div>
+        </form>
+      </div>
+      <div class="info-card">
+        <h3>开发者信息</h3>
+        {if isset($cfg.company) && $cfg.company != ''}<div class="row"><span class="k">开发者名</span><span>{$cfg.company}</span></div>{/if}
+        {if isset($cfg.address) && $cfg.address != ''}<div class="row"><span class="k">公司地址</span><span>{$cfg.address}</span></div>{/if}
+        {if isset($cfg.tel) && $cfg.tel != ''}<div class="row"><span class="k">联系电话</span><span>{$cfg.tel}</span></div>{/if}
+        {if isset($cfg.email) && $cfg.email != ''}<div class="row"><span class="k">联系邮箱</span><span>{$cfg.email}</span></div>{/if}
+        {if isset($cfg.weixin) && $cfg.weixin != ''}<div class="row"><span class="k">官方微信</span><span>{$cfg.weixin}</span></div>{/if}
+        <div class="note">工作时间：周一至周五 9:00 - 18:00<br>留言我们会在 1 个工作日内回复</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="links">
+      <a href="/">首页</a><a href="#features">商城功能</a><a href="#help">帮助中心</a><a href="#contact">联系我们</a>
+    </div>
+    <div class="beian">
+      {if $cfg.copyright != ''}<span>{$cfg.copyright}</span>{/if}
+      {if $cfg.beian != ''}<span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{$cfg.beian}</a></span>{/if}
+      {if $cfg.gongan_text != ''}<span><a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode={$cfg.gongan_code}" target="_blank" rel="noopener">{$cfg.gongan_text}</a></span>{/if}
+    </div>
+  </div>
+</footer>
+
+{literal}
+<script>
+function submitMsg(ev){
+  ev.preventDefault();
+  var form=document.getElementById('msgForm');
+  var tip=document.getElementById('msgTip');
+  var btn=document.getElementById('msgBtn');
+  var body=new URLSearchParams(new FormData(form)).toString();
+  btn.disabled=true;btn.textContent='提交中…';
+  tip.className='form-tip';
+  fetch('/index/message',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+    .then(function(r){return r.json()})
+    .then(function(res){
+      if(res.code===0){
+        tip.className='form-tip ok';tip.textContent=res.msg||'留言提交成功，我们会尽快与您联系';form.reset();
+      }else{
+        tip.className='form-tip err';tip.textContent=res.msg||'提交失败，请稍后再试';
+      }
+    })
+    .catch(function(){tip.className='form-tip err';tip.textContent='网络异常，请稍后再试';})
+    .finally(function(){btn.disabled=false;btn.textContent='提交留言';});
+  return false;
+}
+</script>
+{/literal}
+</body>
+</html>

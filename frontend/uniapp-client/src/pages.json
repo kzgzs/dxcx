@@ -1,0 +1,2596 @@
+{
+	"pages": [
+		{
+			"path": "pages/index/index",
+			"style": {
+				"navigationBarTitleText": "首页"
+			}
+		},
+		{
+			"path": "pages/category/category",
+			"style": {
+				"navigationBarTitleText": "分类"
+			}
+		},
+		{
+			"path": "pages/cart/cart",
+			"style": {
+				"navigationBarTitleText": "购物车"
+			}
+		},
+		{
+			"path": "pages/my/my",
+			"style": {
+				"navigationBarTitleText": "会员中心"
+			}
+		},
+		{
+			"path": "pages/login/login",
+			"style": {
+				"navigationBarTitleText": "登录"
+			}
+		},
+		{
+			"path": "pages/designer/custom",
+			"style": {
+				"navigationBarTitleText": "自定义页"
+			}
+		},
+		{
+			"path": "pages/index/main",
+			"style": {
+				"navigationBarTitleText": "页面"
+			}
+		}
+	],
+	"subPackages": [
+		{
+			"root": "pagesM",
+			"pages": [
+				{
+					"path": "index/index",
+					"style": {
+						"navigationBarTitleText": "商城"
+					}
+				},
+				{
+					"path": "product/detail",
+					"style": {
+						"navigationBarTitleText": "商品详情"
+					}
+				},
+				{
+					"path": "order/buy",
+					"style": {
+						"navigationBarTitleText": "确认订单"
+					}
+				},
+				{
+					"path": "pay/pay",
+					"style": {
+						"navigationBarTitleText": "收银台"
+					}
+				},
+				{
+					"path": "order/list",
+					"style": {
+						"navigationBarTitleText": "我的订单"
+					}
+				},
+				{
+					"path": "order/detail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				},
+				{
+					"path": "refund/apply",
+					"style": {
+						"navigationBarTitleText": "申请退款"
+					}
+				},
+				{
+					"path": "address/list",
+					"style": {
+						"navigationBarTitleText": "收货地址"
+					}
+				},
+				{
+					"path": "address/edit",
+					"style": {
+						"navigationBarTitleText": "编辑地址"
+					}
+				},
+				{
+					"path": "coupon/mine",
+					"style": {
+						"navigationBarTitleText": "我的优惠券"
+					}
+				},
+				{
+					"path": "coupon/center",
+					"style": {
+						"navigationBarTitleText": "领券中心"
+					}
+				},
+					{
+						"path": "coupon/detail",
+						"style": {
+							"navigationBarTitleText": "优惠券详情"
+						}
+					},
+				{
+					"path": "score/log",
+					"style": {
+						"navigationBarTitleText": "积分明细"
+					}
+				},
+				{
+					"path": "member/profile",
+					"style": {
+						"navigationBarTitleText": "个人资料"
+					}
+				},
+				{
+					"path": "member/setting",
+					"style": {
+						"navigationBarTitleText": "设置"
+					}
+				},
+				{
+					"path": "shop/search",
+					"style": {
+						"navigationBarTitleText": "搜索"
+					}
+				},
+				{
+					"path": "refund/list",
+					"style": {
+						"navigationBarTitleText": "退款/售后"
+					}
+				},
+				{
+					"path": "recharge/index",
+					"style": {
+						"navigationBarTitleText": "余额充值"
+					}
+				},
+				{
+					"path": "recharge/orders",
+					"style": {
+						"navigationBarTitleText": "充值记录"
+					}
+				},
+				{
+					"path": "shop/prolist",
+					"style": {
+						"navigationBarTitleText": "商品列表"
+					}
+				},
+				{
+					"path": "shop/fastbuy",
+					"style": {
+						"navigationBarTitleText": "快速购买"
+					}
+				},
+				{
+					"path": "shop/fastbuy2",
+					"style": {
+						"navigationBarTitleText": "快速购买2"
+					}
+				}
+			]
+		},
+		{
+			"root": "carhailing",
+			"pages": [
+				{
+					"path": "index/index",
+					"style": {
+						"navigationBarTitleText": "网约车租车"
+					}
+				},
+				{
+					"path": "car/detail",
+					"style": {
+						"navigationBarTitleText": "车辆详情"
+					}
+				},
+				{
+					"path": "car/book",
+					"style": {
+						"navigationBarTitleText": "用车下单"
+					}
+				},
+				{
+					"path": "order/list",
+					"style": {
+						"navigationBarTitleText": "用车订单"
+					}
+				},
+				{
+					"path": "order/detail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				}
+			]
+		},
+		{
+			"root": "hotel",
+			"pages": [
+				{
+					"path": "index/index",
+					"style": {
+						"navigationBarTitleText": "酒店预订"
+					}
+				},
+				{
+					"path": "hotel/detail",
+					"style": {
+						"navigationBarTitleText": "酒店详情"
+					}
+				},
+				{
+					"path": "hotel/book",
+					"style": {
+						"navigationBarTitleText": "预订下单"
+					}
+				},
+				{
+					"path": "order/list",
+					"style": {
+						"navigationBarTitleText": "酒店订单"
+					}
+				},
+				{
+					"path": "order/detail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				}
+			]
+		},
+		{
+			"root": "yuyue",
+			"pages": [
+				{
+					"path": "index/index",
+					"style": {
+						"navigationBarTitleText": "服务预约"
+					}
+				},
+				{
+					"path": "item/detail",
+					"style": {
+						"navigationBarTitleText": "项目详情"
+					}
+				},
+				{
+					"path": "item/book",
+					"style": {
+						"navigationBarTitleText": "预约下单"
+					}
+				},
+				{
+					"path": "order/list",
+					"style": {
+						"navigationBarTitleText": "预约订单"
+					}
+				},
+				{
+					"path": "order/detail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				},
+				{
+					"path": "yuyue/peolist2",
+					"style": {
+						"navigationBarTitleText": "师傅列表"
+					}
+				},
+				{
+					"path": "yuyue/apply",
+					"style": {
+						"navigationBarTitleText": "预约师傅申请"
+					}
+				},
+				{
+					"path": "yuyue/my",
+					"style": {
+						"navigationBarTitleText": "预约服务人员"
+					}
+				}
+			]
+		},
+		{
+			"root": "restaurant",
+			"pages": [
+				{
+					"path": "index/index",
+					"style": {
+						"navigationBarTitleText": "餐饮堂食"
+					}
+				},
+				{
+					"path": "order/buy",
+					"style": {
+						"navigationBarTitleText": "堂食下单"
+					}
+				},
+				{
+					"path": "order/list",
+					"style": {
+						"navigationBarTitleText": "堂食订单"
+					}
+				},
+				{
+					"path": "order/detail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				},
+				{
+					"path": "queue/index",
+					"style": {
+						"navigationBarTitleText": "排队叫号"
+					}
+				},
+				{
+					"path": "queue/record",
+					"style": {
+						"navigationBarTitleText": "取号记录"
+					}
+				},
+				{
+					"path": "booking/add",
+					"style": {
+						"navigationBarTitleText": "预定订座"
+					}
+				},
+				{
+					"path": "booking/tablelist",
+					"style": {
+						"navigationBarTitleText": "选择桌台"
+					}
+				},
+				{
+					"path": "booking/orderlist",
+					"style": {
+						"navigationBarTitleText": "预定订单"
+					}
+				},
+				{
+					"path": "booking/detail",
+					"style": {
+						"navigationBarTitleText": "预定详情"
+					}
+				},
+				{
+					"path": "deposit/add",
+					"style": {
+						"navigationBarTitleText": "物品寄存"
+					}
+				},
+				{
+					"path": "deposit/orderlog",
+					"style": {
+						"navigationBarTitleText": "寄存记录"
+					}
+				},
+				{
+					"path": "deposit/orderdetail",
+					"style": {
+						"navigationBarTitleText": "寄存详情"
+					}
+				}
+			]
+		},
+		{
+			"root": "activity",
+			"pages": [
+				{
+					"path": "yuebao/index",
+					"style": {
+						"navigationBarTitleText": "我的余额宝"
+					}
+				},
+				{
+					"path": "yuebao/log",
+					"style": {
+						"navigationBarTitleText": "提现记录"
+					}
+				},
+				{
+					"path": "commission/myteamline",
+					"style": {
+						"navigationBarTitleText": "我的上下级"
+					}
+				},
+				{
+					"path": "commission/mysameline",
+					"style": {
+						"navigationBarTitleText": "我的同级会员"
+					}
+				},
+				{
+					"path": "commission/myteam",
+					"style": {
+						"navigationBarTitleText": "我的团队"
+					}
+				},
+				{
+					"path": "commission/index",
+					"style": {
+						"navigationBarTitleText": "我的佣金"
+					}
+				},
+				{
+					"path": "commission/downorder",
+					"style": {
+						"navigationBarTitleText": "分销订单"
+					}
+				},
+				{
+					"path": "commission/commissionlog",
+					"style": {
+						"navigationBarTitleText": "佣金明细"
+					}
+				},
+				{
+					"path": "commission/poster",
+					"style": {
+						"navigationBarTitleText": "分享海报"
+					}
+				},
+				{
+					"path": "commission/fhlog",
+					"style": {
+						"navigationBarTitleText": "分红记录"
+					}
+				},
+				{
+					"path": "commission/commissionranking",
+					"style": {
+						"navigationBarTitleText": "佣金排行榜"
+					}
+				},
+				{
+					"path": "luntan/focuslog",
+					"style": {
+						"navigationBarTitleText": "论坛关注记录"
+					}
+				},
+				{
+					"path": "peisong/dating",
+					"style": {
+						"navigationBarTitleText": "配送员抢单大厅"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesH3",
+			"pages": [
+				{
+					"path": "tuangou/list",
+					"style": {
+						"navigationBarTitleText": "限时团购"
+					}
+				},
+				{
+					"path": "tuangou/detail",
+					"style": {
+						"navigationBarTitleText": "团购详情"
+					}
+				},
+				{
+					"path": "tuangou/buy",
+					"style": {
+						"navigationBarTitleText": "团购下单"
+					}
+				},
+				{
+					"path": "tuangou/orderlist",
+					"style": {
+						"navigationBarTitleText": "团购订单"
+					}
+				},
+				{
+					"path": "tuangou/orderdetail",
+					"style": {
+						"navigationBarTitleText": "订单详情"
+					}
+				},
+				{
+					"path": "tuangou/hexiao",
+					"style": {
+						"navigationBarTitleText": "核销码"
+					}
+				},
+				{
+					"path": "tuangou/refund",
+					"style": {
+						"navigationBarTitleText": "申请退款"
+					}
+				},
+				{
+					"path": "tuangou/comment",
+					"style": {
+						"navigationBarTitleText": "订单评价"
+					}
+				},
+				{
+					"path": "sign/index",
+					"style": {
+						"navigationBarTitleText": "每日签到"
+					}
+				},
+				{
+					"path": "choujiang/index",
+					"style": {
+						"navigationBarTitleText": "幸运抽奖"
+					}
+				},
+				{
+					"path": "choujiang/records",
+					"style": {
+						"navigationBarTitleText": "中奖记录"
+					}
+				},
+				{
+					"path": "kouling/index",
+					"style": {
+						"navigationBarTitleText": "口令游戏"
+					}
+				},
+				{
+					"path": "kouling/riddle",
+					"style": {
+						"navigationBarTitleText": "猜谜语"
+					}
+				},
+				{
+					"path": "hongbao/detail",
+					"style": {
+						"navigationBarTitleText": "领红包"
+					}
+				},
+				{
+					"path": "fifa/index",
+					"style": {
+						"navigationBarTitleText": "赛事竞猜"
+					}
+				},
+				{
+					"path": "fifa/detail",
+					"style": {
+						"navigationBarTitleText": "竞猜详情"
+					}
+				},
+				{
+					"path": "cuxiao/list",
+					"style": {
+						"navigationBarTitleText": "促销活动"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesC2",
+			"pages": [
+				{
+					"path": "article/list",
+					"style": {
+						"navigationBarTitleText": "文章资讯"
+					}
+				},
+				{
+					"path": "article/detail",
+					"style": {
+						"navigationBarTitleText": "文章详情"
+					}
+				},
+				{
+					"path": "luntan/index",
+					"style": {
+						"navigationBarTitleText": "社区论坛"
+					}
+				},
+				{
+					"path": "luntan/list",
+					"style": {
+						"navigationBarTitleText": "版块列表"
+					}
+				},
+				{
+					"path": "luntan/detail",
+					"style": {
+						"navigationBarTitleText": "帖子详情"
+					}
+				},
+				{
+					"path": "luntan/fatie",
+					"style": {
+						"navigationBarTitleText": "发布帖子"
+					}
+				},
+				{
+					"path": "luntan/myfatie",
+					"style": {
+						"navigationBarTitleText": "我的发帖"
+					}
+				},
+				{
+					"path": "shortvideo/index",
+					"style": {
+						"navigationBarTitleText": "短视频"
+					}
+				},
+				{
+					"path": "shortvideo/detail",
+					"style": {
+						"navigationBarTitleText": "视频播放"
+					}
+				},
+				{
+					"path": "shortvideo/upload",
+					"style": {
+						"navigationBarTitleText": "上传视频"
+					}
+				},
+				{
+					"path": "shortvideo/myupload",
+					"style": {
+						"navigationBarTitleText": "我的视频"
+					}
+				},
+				{
+					"path": "kecheng/list",
+					"style": {
+						"navigationBarTitleText": "课程中心"
+					}
+				},
+				{
+					"path": "kecheng/detail",
+					"style": {
+						"navigationBarTitleText": "课程详情"
+					}
+				},
+				{
+					"path": "kecheng/mldetail",
+					"style": {
+						"navigationBarTitleText": "章节学习"
+					}
+				},
+				{
+					"path": "kecheng/buy",
+					"style": {
+						"navigationBarTitleText": "课程购买"
+					}
+				},
+				{
+					"path": "kecheng/orderlist",
+					"style": {
+						"navigationBarTitleText": "课程订单"
+					}
+				},
+				{
+					"path": "kecheng/tiku",
+					"style": {
+						"navigationBarTitleText": "在线考试"
+					}
+				},
+				{
+					"path": "kecheng/complete",
+					"style": {
+						"navigationBarTitleText": "考试成绩"
+					}
+				},
+				{
+					"path": "kecheng/recordlog",
+					"style": {
+						"navigationBarTitleText": "学习记录"
+					}
+				},
+				{
+					"path": "kecheng/error",
+					"style": {
+						"navigationBarTitleText": "错题回顾"
+					}
+				},
+				{
+					"path": "kecheng/lecturer/list",
+					"style": {
+						"navigationBarTitleText": "讲师列表"
+					}
+				},
+				{
+					"path": "kecheng/lecturer/apply",
+					"style": {
+						"navigationBarTitleText": "讲师申请"
+					}
+				},
+				{
+					"path": "kecheng/lecturer/center",
+					"style": {
+						"navigationBarTitleText": "讲师中心"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesH1",
+			"pages": [
+				{
+					"path": "collage/list",
+					"style": {
+						"navigationBarTitleText": "拼团活动",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "collage/detail",
+					"style": {
+						"navigationBarTitleText": "拼团详情"
+					}
+				},
+				{
+					"path": "collage/team",
+					"style": {
+						"navigationBarTitleText": "团详情"
+					}
+				},
+				{
+					"path": "collage/buy",
+					"style": {
+						"navigationBarTitleText": "拼团下单"
+					}
+				},
+				{
+					"path": "collage/orderlist",
+					"style": {
+						"navigationBarTitleText": "我的拼团订单",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "luckycollage/list",
+					"style": {
+						"navigationBarTitleText": "幸运拼团",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "luckycollage/detail",
+					"style": {
+						"navigationBarTitleText": "幸运拼团详情"
+					}
+				},
+				{
+					"path": "luckycollage/team",
+					"style": {
+						"navigationBarTitleText": "幸运拼团·团详情"
+					}
+				},
+				{
+					"path": "luckycollage/buy",
+					"style": {
+						"navigationBarTitleText": "幸运拼团下单"
+					}
+				},
+				{
+					"path": "luckycollage/orderlist",
+					"style": {
+						"navigationBarTitleText": "我的幸运拼团订单",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "luckycollage/draw",
+					"style": {
+						"navigationBarTitleText": "开奖结果"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesH2",
+			"pages": [
+				{
+					"path": "kanjia/list",
+					"style": {
+						"navigationBarTitleText": "砍价专区",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "kanjia/detail",
+					"style": {
+						"navigationBarTitleText": "砍价详情"
+					}
+				},
+				{
+					"path": "kanjia/join",
+					"style": {
+						"navigationBarTitleText": "发起砍价"
+					}
+				},
+				{
+					"path": "kanjia/helplist",
+					"style": {
+						"navigationBarTitleText": "我的砍价",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "kanjia/buy",
+					"style": {
+						"navigationBarTitleText": "砍价下单"
+					}
+				},
+				{
+					"path": "kanjia/orderlist",
+					"style": {
+						"navigationBarTitleText": "砍价订单",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "seckill/list",
+					"style": {
+						"navigationBarTitleText": "限时秒杀",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "seckill/detail",
+					"style": {
+						"navigationBarTitleText": "秒杀详情"
+					}
+				},
+				{
+					"path": "seckill/buy",
+					"style": {
+						"navigationBarTitleText": "秒杀下单"
+					}
+				},
+				{
+					"path": "seckill/orderlist",
+					"style": {
+						"navigationBarTitleText": "秒杀订单",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "scoreshop/list",
+					"style": {
+						"navigationBarTitleText": "积分商城",
+						"enablePullDownRefresh": true
+					}
+				},
+				{
+					"path": "scoreshop/detail",
+					"style": {
+						"navigationBarTitleText": "兑换详情"
+					}
+				},
+				{
+					"path": "scoreshop/buy",
+					"style": {
+						"navigationBarTitleText": "积分兑换"
+					}
+				},
+				{
+					"path": "scoreshop/orderlist",
+					"style": {
+						"navigationBarTitleText": "兑换订单",
+						"enablePullDownRefresh": true
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesC",
+			"pages": [
+				{
+					"path": "productthali/index",
+					"style": {
+						"navigationBarTitleText": "商品套餐列表"
+					}
+				},
+				{
+					"path": "productthali/orderlist",
+					"style": {
+						"navigationBarTitleText": "我的套餐订单"
+					}
+				},
+				{
+					"path": "shop/brandlist",
+					"style": {
+						"navigationBarTitleText": "商品品牌"
+					}
+				},
+				{
+					"path": "my/productlvxinreplace",
+					"style": {
+						"navigationBarTitleText": "我的滤芯"
+					}
+				},
+				{
+					"path": "releasePoints/cashbacklog",
+					"style": {
+						"navigationBarTitleText": "倍增返现记录"
+					}
+				},
+				{
+					"path": "yingxiao/jipinOrder",
+					"style": {
+						"navigationBarTitleText": "即拼订单序号"
+					}
+				},
+				{
+					"path": "jipin/log",
+					"style": {
+						"navigationBarTitleText": "超级卖货"
+					}
+				},
+				{
+					"path": "cashback/adduprecord",
+					"style": {
+						"navigationBarTitleText": "叠加递减待返记录"
+					}
+				},
+				{
+					"path": "ad/contentPage",
+					"style": {
+						"navigationBarTitleText": "Adset广告单页"
+					}
+				},
+				{
+					"path": "luckyfree/index",
+					"style": {
+						"navigationBarTitleText": "幸运免单"
+					}
+				},
+				{
+					"path": "liandong/index",
+					"style": {
+						"navigationBarTitleText": "链动活动"
+					}
+				},
+				{
+					"path": "activeCoin/fugou",
+					"style": {
+						"navigationBarTitleText": "激活币自动复购"
+					}
+				},
+				{
+					"path": "networkhelp/index",
+					"style": {
+						"navigationBarTitleText": "积分互助活动"
+					}
+				},
+				{
+					"path": "releasePoints/details",
+					"style": {
+						"navigationBarTitleText": "返现释放明细"
+					}
+				},
+				{
+					"path": "mendian/memberlevelupfenhong",
+					"style": {
+						"navigationBarTitleText": "分红门店"
+					}
+				},
+				{
+					"path": "releasePoints/releasegreenscore",
+					"style": {
+						"navigationBarTitleText": "绿色积分释放记录"
+					}
+				},
+				{
+					"path": "bonuspoolgold/bonuspool",
+					"style": {
+						"navigationBarTitleText": "奖金池"
+					}
+				},
+				{
+					"path": "registervehicle/vehicleList",
+					"style": {
+						"navigationBarTitleText": "车辆管理"
+					}
+				},
+				{
+					"path": "registervehicle/systemMsg",
+					"style": {
+						"navigationBarTitleText": "站内信"
+					}
+				},
+				{
+					"path": "teamyeji/teamyejipv",
+					"style": {
+						"navigationBarTitleText": "社群服务业绩"
+					}
+				},
+				{
+					"path": "my/tagageapply",
+					"style": {
+						"navigationBarTitleText": "会员标签申请"
+					}
+				},
+				{
+					"path": "my/team",
+					"style": {
+						"navigationBarTitleText": "团队数据"
+					}
+				},
+				{
+					"path": "my/editParent",
+					"style": {
+						"navigationBarTitleText": "修改上级"
+					}
+				},
+				{
+					"path": "transferorderparent/tongji",
+					"style": {
+						"navigationBarTitleText": "分销数据统计"
+					}
+				},
+				{
+					"path": "my/liandong",
+					"style": {
+						"navigationBarTitleText": "链动数据"
+					}
+				},
+				{
+					"path": "maidan/pay",
+					"style": {
+						"navigationBarTitleText": "新买单收款"
+					}
+				},
+				{
+					"path": "maidan/maidanlog",
+					"style": {
+						"navigationBarTitleText": "新买单记录"
+					}
+				},
+				{
+					"path": "exchangecard/index",
+					"style": {
+						"navigationBarTitleText": "兑换卡兑换"
+					}
+				},
+				{
+					"path": "mingpian/list",
+					"style": {
+						"navigationBarTitleText": "名片列表"
+					}
+				},
+				{
+					"path": "mendian/hxqrcode",
+					"style": {
+						"navigationBarTitleText": "门店核销二维码"
+					}
+				},
+				{
+					"path": "invoicebaoxiao/index",
+					"style": {
+						"navigationBarTitleText": "发票报销"
+					}
+				},
+				{
+					"path": "invoicebaoxiao/recordlist",
+					"style": {
+						"navigationBarTitleText": "发票报销记录"
+					}
+				},
+				{
+					"path": "my/shopscorelog",
+					"style": {
+						"navigationBarTitleText": "我的产品积分"
+					}
+				},
+				{
+					"path": "my/upgradescorelog",
+					"style": {
+						"navigationBarTitleText": "我的升级积分"
+					}
+				},
+				{
+					"path": "my/forzengxcommissionlog",
+					"style": {
+						"navigationBarTitleText": "冻结佣金记录"
+					}
+				},
+				{
+					"path": "my/combinemoney",
+					"style": {
+						"navigationBarTitleText": "合成余额"
+					}
+				},
+				{
+					"path": "my/combinemoneylog",
+					"style": {
+						"navigationBarTitleText": "合成余额记录"
+					}
+				},
+				{
+					"path": "commission/commissionTransfer",
+					"style": {
+						"navigationBarTitleText": "佣金转赠"
+					}
+				},
+				{
+					"path": "formtan/index",
+					"style": {
+						"navigationBarTitleText": "碳表单"
+					}
+				},
+				{
+					"path": "subsidy/index",
+					"style": {
+						"navigationBarTitleText": "国补申请"
+					}
+				},
+				{
+					"path": "fundpool/index",
+					"style": {
+						"navigationBarTitleText": "基金池"
+					}
+				},
+				{
+					"path": "allinpay/yunstMemberCompany",
+					"style": {
+						"navigationBarTitleText": "通联企业会员"
+					}
+				},
+				{
+					"path": "planorder/index",
+					"style": {
+						"navigationBarTitleText": "排单开店"
+					}
+				},
+				{
+					"path": "planorder/shop",
+					"style": {
+						"navigationBarTitleText": "自己店铺"
+					}
+				},
+				{
+					"path": "my/jichamoneylog",
+					"style": {
+						"navigationBarTitleText": "级差奖励明细"
+					}
+				},
+				{
+					"path": "my/jichamoneywithdraw",
+					"style": {
+						"navigationBarTitleText": "级差奖励提现"
+					}
+				},
+				{
+					"path": "hanglvfeike/index",
+					"style": {
+						"navigationBarTitleText": "机票"
+					}
+				},
+				{
+					"path": "hanglvfeike/orderlist",
+					"style": {
+						"navigationBarTitleText": "机票列表"
+					}
+				},
+				{
+					"path": "hanglvfeike/user",
+					"style": {
+						"navigationBarTitleText": "机票用户"
+					}
+				},
+				{
+					"path": "businessExpert/apply",
+					"style": {
+						"navigationBarTitleText": "申请达人"
+					}
+				},
+				{
+					"path": "businessExpert/expertlist",
+					"style": {
+						"navigationBarTitleText": "达人记录列表"
+					}
+				},
+				{
+					"path": "water/card",
+					"style": {
+						"navigationBarTitleText": "水卡绑定"
+					}
+				},
+				{
+					"path": "zhiyoubao/index",
+					"style": {
+						"navigationBarTitleText": "票务演出列表"
+					}
+				},
+				{
+					"path": "zhiyoubao/orderlist",
+					"style": {
+						"navigationBarTitleText": "票务订单列表"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesD",
+			"pages": [
+				{
+					"path": "goldbeanshop/index",
+					"style": {
+						"navigationBarTitleText": "金豆兑换"
+					}
+				},
+				{
+					"path": "goldbeanshop/orderlist",
+					"style": {
+						"navigationBarTitleText": "金豆兑换订单"
+					}
+				},
+				{
+					"path": "networkhelp/indexNew",
+					"style": {
+						"navigationBarTitleText": "积分互助数据统计"
+					}
+				},
+				{
+					"path": "networkhelp/butiescorelog",
+					"style": {
+						"navigationBarTitleText": "补贴积分明细"
+					}
+				},
+				{
+					"path": "butieactivity/list",
+					"style": {
+						"navigationBarTitleText": "消费补贴列表"
+					}
+				},
+				{
+					"path": "butieactivity/index",
+					"style": {
+						"navigationBarTitleText": "消费补贴参与列表"
+					}
+				},
+				{
+					"path": "commissionlingqiantong/index",
+					"style": {
+						"navigationBarTitleText": "零钱通"
+					}
+				},
+				{
+					"path": "commissionlingqiantong/order",
+					"style": {
+						"navigationBarTitleText": "零钱通收益明细"
+					}
+				},
+				{
+					"path": "moneySendHongbao/sendhongbao",
+					"style": {
+						"navigationBarTitleText": "发红包"
+					}
+				},
+				{
+					"path": "moneySendHongbao/hongbaolog",
+					"style": {
+						"navigationBarTitleText": "发红包记录"
+					}
+				},
+				{
+					"path": "my/offlineSubsidies",
+					"style": {
+						"navigationBarTitleText": "爱心基金补助"
+					}
+				},
+				{
+					"path": "my/offlineSubsidiesOverview",
+					"style": {
+						"navigationBarTitleText": "我的线下补助总览"
+					}
+				},
+				{
+					"path": "digitalconsum/digitalscorelog",
+					"style": {
+						"navigationBarTitleText": "数字权益明细"
+					}
+				},
+				{
+					"path": "farm/landdetail",
+					"style": {
+						"navigationBarTitleText": "农场"
+					}
+				},
+				{
+					"path": "yxredpacket/redpacket",
+					"style": {
+						"navigationBarTitleText": "营销红包"
+					}
+				},
+				{
+					"path": "yxredpacket/redpacketlog",
+					"style": {
+						"navigationBarTitleText": "营销红包记录"
+					}
+				},
+				{
+					"path": "workpoints/log",
+					"style": {
+						"navigationBarTitleText": "工分记录"
+					}
+				},
+				{
+					"path": "xiaofeiCashback/adduprecord",
+					"style": {
+						"navigationBarTitleText": "消费返现明细"
+					}
+				},
+				{
+					"path": "commission/myPrizePoolLog",
+					"style": {
+						"navigationBarTitleText": "我的奖金池"
+					}
+				},
+				{
+					"path": "subsidy/ranking",
+					"style": {
+						"navigationBarTitleText": "消费排名"
+					}
+				},
+				{
+					"path": "subsidy/dayLog",
+					"style": {
+						"navigationBarTitleText": "返现积分日汇总"
+					}
+				},
+				{
+					"path": "newscore/ogLog",
+					"style": {
+						"navigationBarTitleText": "新积分记录"
+					}
+				},
+				{
+					"path": "hongbao/hongbaolog",
+					"style": {
+						"navigationBarTitleText": "红包明细"
+					}
+				},
+				{
+					"path": "tiedan/tiedanrecharge",
+					"style": {
+						"navigationBarTitleText": "充值贴单费"
+					}
+				},
+				{
+					"path": "teamyeji/activitylist",
+					"style": {
+						"navigationBarTitleText": "团队业绩奖活动列表"
+					}
+				},
+				{
+					"path": "teamyeji/myyeji",
+					"style": {
+						"navigationBarTitleText": "团队业绩"
+					}
+				},
+				{
+					"path": "commission/tjbusinessCount",
+					"style": {
+						"navigationBarTitleText": "推荐商家统计"
+					}
+				},
+				{
+					"path": "recommendbusiness/poster",
+					"style": {
+						"navigationBarTitleText": "推荐商家海报"
+					}
+				},
+				{
+					"path": "commission/tjbusiness",
+					"style": {
+						"navigationBarTitleText": "商家推广中心"
+					}
+				},
+				{
+					"path": "commission/areatjbusiness",
+					"style": {
+						"navigationBarTitleText": "区域商家中心"
+					}
+				},
+				{
+					"path": "commission/memberAreatjbusiness",
+					"style": {
+						"navigationBarTitleText": "会员区域商家中心"
+					}
+				},
+				{
+					"path": "commission/commissionWxfzRecord",
+					"style": {
+						"navigationBarTitleText": "佣金分账记录"
+					}
+				},
+				{
+					"path": "tjbusiness/tjbusinesslist",
+					"style": {
+						"navigationBarTitleText": "推荐商家"
+					}
+				},
+				{
+					"path": "deposit/index",
+					"style": {
+						"navigationBarTitleText": "押金列表"
+					}
+				},
+				{
+					"path": "deposit/couponlist",
+					"style": {
+						"navigationBarTitleText": "电子水票"
+					}
+				},
+				{
+					"path": "exchangecard/index",
+					"style": {
+						"navigationBarTitleText": "新兑换卡兑换"
+					}
+				},
+				{
+					"path": "mendian/apply",
+					"style": {
+						"navigationBarTitleText": "门店入驻"
+					}
+				},
+				{
+					"path": "material/index",
+					"style": {
+						"navigationBarTitleText": "素材库"
+					}
+				},
+				{
+					"path": "material/collect",
+					"style": {
+						"navigationBarTitleText": "收藏素材"
+					}
+				},
+				{
+					"path": "meituan/index",
+					"style": {
+						"navigationBarTitleText": "美团购票"
+					}
+				},
+				{
+					"path": "meituan/orderlist",
+					"style": {
+						"navigationBarTitleText": "美团订单"
+					}
+				},
+				{
+					"path": "my/xianjinlog",
+					"style": {
+						"navigationBarTitleText": "现金明细"
+					}
+				},
+				{
+					"path": "my/xianjinrecharge",
+					"style": {
+						"navigationBarTitleText": "现金充值"
+					}
+				},
+				{
+					"path": "my/xianjinwithdraw",
+					"style": {
+						"navigationBarTitleText": "现金提现"
+					}
+				},
+				{
+					"path": "water/orderList",
+					"style": {
+						"navigationBarTitleText": "我的打水订单"
+					}
+				},
+				{
+					"path": "businessShareholder/select",
+					"style": {
+						"navigationBarTitleText": "门店投资"
+					}
+				},
+				{
+					"path": "businessShareholder/applylog",
+					"style": {
+						"navigationBarTitleText": "投资记录"
+					}
+				},
+				{
+					"path": "tencent_qian/qianlog",
+					"style": {
+						"navigationBarTitleText": "腾讯电子签记录"
+					}
+				},
+				{
+					"path": "commission/teamManage",
+					"style": {
+						"navigationBarTitleText": "个人团队"
+					}
+				},
+				{
+					"path": "calendar/index",
+					"style": {
+						"navigationBarTitleText": "活动日历"
+					}
+				},
+				{
+					"path": "lotdevice/orderlist",
+					"style": {
+						"navigationBarTitleText": "物联网设备订单"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesA",
+			"pages": [
+				{
+					"path": "my/invitecashbacklog",
+					"style": {
+						"navigationBarTitleText": "邀请返现明细"
+					}
+				},
+				{
+					"path": "hongbaoEveryday/index",
+					"style": {
+						"navigationBarTitleText": "每日红包"
+					}
+				},
+				{
+					"path": "taocan/index",
+					"style": {
+						"navigationBarTitleText": "套餐产品"
+					}
+				},
+				{
+					"path": "taocan/orderlist",
+					"style": {
+						"navigationBarTitleText": "套餐订单"
+					}
+				},
+				{
+					"path": "my/tongzhengtransfer",
+					"style": {
+						"navigationBarTitleText": "通证转赠"
+					}
+				},
+				{
+					"path": "my/tongzhengorderlog",
+					"style": {
+						"navigationBarTitleText": "通证订单记录"
+					}
+				},
+				{
+					"path": "friend/index",
+					"style": {
+						"navigationBarTitleText": "我的好友"
+					}
+				},
+				{
+					"path": "cashier/orderlist",
+					"style": {
+						"navigationBarTitleText": "收银台订单"
+					}
+				},
+				{
+					"path": "cashback/index",
+					"style": {
+						"navigationBarTitleText": "返现参与列表"
+					}
+				},
+				{
+					"path": "queueFree/index",
+					"style": {
+						"navigationBarTitleText": "排队免单记录"
+					}
+				},
+				{
+					"path": "commission/fenhong_huiben",
+					"style": {
+						"navigationBarTitleText": "回本股东分红明细"
+					}
+				},
+				{
+					"path": "businessFenxiao/shuju",
+					"style": {
+						"navigationBarTitleText": "店铺分销"
+					}
+				},
+				{
+					"path": "taocan/fenhong",
+					"style": {
+						"navigationBarTitleText": "奖金池分红"
+					}
+				},
+				{
+					"path": "regionpartner/apply",
+					"style": {
+						"navigationBarTitleText": "申请合伙人"
+					}
+				},
+				{
+					"path": "regionpartner/partner",
+					"style": {
+						"navigationBarTitleText": "申请合伙人记录"
+					}
+				},
+				{
+					"path": "regionpartner/fhlog",
+					"style": {
+						"navigationBarTitleText": "合伙人分红记录"
+					}
+				},
+				{
+					"path": "commission/regionagent",
+					"style": {
+						"navigationBarTitleText": "区域代理排行榜"
+					}
+				},
+				{
+					"path": "commission/ranking",
+					"style": {
+						"navigationBarTitleText": "排行榜活动"
+					}
+				},
+				{
+					"path": "score/scoreranking",
+					"style": {
+						"navigationBarTitleText": "积分排行榜"
+					}
+				},
+				{
+					"path": "rechargeyj/index",
+					"style": {
+						"navigationBarTitleText": "充值业绩页面"
+					}
+				},
+				{
+					"path": "rechargeyj/log",
+					"style": {
+						"navigationBarTitleText": "充值业绩明细"
+					}
+				},
+				{
+					"path": "rechargeyj/withdraw",
+					"style": {
+						"navigationBarTitleText": "充值业绩提现"
+					}
+				},
+				{
+					"path": "form/formlog",
+					"style": {
+						"navigationBarTitleText": "表单提交记录"
+					}
+				},
+				{
+					"path": "workorder/category",
+					"style": {
+						"navigationBarTitleText": "工单类型"
+					}
+				},
+				{
+					"path": "tour/index",
+					"style": {
+						"navigationBarTitleText": "活动列表(旅游)"
+					}
+				},
+				{
+					"path": "tour/orderlist",
+					"style": {
+						"navigationBarTitleText": "活动订单列表"
+					}
+				},
+				{
+					"path": "tour/apply",
+					"style": {
+						"navigationBarTitleText": "申请导游"
+					}
+				},
+				{
+					"path": "giftbag/index",
+					"style": {
+						"navigationBarTitleText": "礼包列表"
+					}
+				},
+				{
+					"path": "giftbag/orderlist",
+					"style": {
+						"navigationBarTitleText": "礼包订单列表"
+					}
+				},
+				{
+					"path": "yuyuecar/car",
+					"style": {
+						"navigationBarTitleText": "车牌信息"
+					}
+				},
+				{
+					"path": "handwork/list",
+					"style": {
+						"navigationBarTitleText": "回寄总列表"
+					}
+				},
+				{
+					"path": "douyin_groupbuy/index",
+					"style": {
+						"navigationBarTitleText": "抖音团购核销"
+					}
+				},
+				{
+					"path": "health/index",
+					"style": {
+						"navigationBarTitleText": "量表列表"
+					}
+				},
+				{
+					"path": "health/record",
+					"style": {
+						"navigationBarTitleText": "量表记录"
+					}
+				},
+				{
+					"path": "sxpay/apply",
+					"style": {
+						"navigationBarTitleText": "随行付入驻"
+					}
+				},
+				{
+					"path": "sxpay/myapply",
+					"style": {
+						"navigationBarTitleText": "随行付入驻记录"
+					}
+				},
+				{
+					"path": "bonuspool/withdraw",
+					"style": {
+						"navigationBarTitleText": "贡献值提现"
+					}
+				},
+				{
+					"path": "bonuspool/commissionlog",
+					"style": {
+						"navigationBarTitleText": "贡献值提现记录"
+					}
+				},
+				{
+					"path": "xianxia/mycoupon",
+					"style": {
+						"navigationBarTitleText": "销售优惠券"
+					}
+				},
+				{
+					"path": "xianxia/commissionlog",
+					"style": {
+						"navigationBarTitleText": "线下优惠券打款记录"
+					}
+				},
+				{
+					"path": "xianxia/membercommissionlog",
+					"style": {
+						"navigationBarTitleText": "线下优惠券提现记录"
+					}
+				},
+				{
+					"path": "certificate/index",
+					"style": {
+						"navigationBarTitleText": "证书列表"
+					}
+				},
+				{
+					"path": "certificate/mylist",
+					"style": {
+						"navigationBarTitleText": "我的证书列表"
+					}
+				},
+				{
+					"path": "certificate/edit",
+					"style": {
+						"navigationBarTitleText": "证书编辑"
+					}
+				},
+				{
+					"path": "hikvision/hikvisionlist",
+					"style": {
+						"navigationBarTitleText": "海康监控"
+					}
+				},
+				{
+					"path": "mendian/list",
+					"style": {
+						"navigationBarTitleText": "门店列表"
+					}
+				},
+				{
+					"path": "levelupauth/salelist",
+					"style": {
+						"navigationBarTitleText": "售卖列表"
+					}
+				},
+				{
+					"path": "levelupauth/saleorderlist",
+					"style": {
+						"navigationBarTitleText": "售卖订单"
+					}
+				},
+				{
+					"path": "levelupauth/buyorderlist",
+					"style": {
+						"navigationBarTitleText": "购买订单"
+					}
+				},
+				{
+					"path": "giftpack/list",
+					"style": {
+						"navigationBarTitleText": "礼包列表(升级)"
+					}
+				},
+				{
+					"path": "banklist/bank",
+					"style": {
+						"navigationBarTitleText": "银行卡列表"
+					}
+				},
+				{
+					"path": "mendianup/apply",
+					"style": {
+						"navigationBarTitleText": "门店申请"
+					}
+				},
+				{
+					"path": "helpnew/lists",
+					"style": {
+						"navigationBarTitleText": "帮助中心"
+					}
+				},
+				{
+					"path": "livepay/mobile_recharge",
+					"style": {
+						"navigationBarTitleText": "话费充值"
+					}
+				},
+				{
+					"path": "livepay/ordinary_recharge",
+					"style": {
+						"navigationBarTitleText": "电费"
+					}
+				},
+				{
+					"path": "livepay/record_recharge",
+					"style": {
+						"navigationBarTitleText": "缴费订单记录"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesExt",
+			"pages": [
+				{
+					"path": "hbtk/orderlist",
+					"style": {
+						"navigationBarTitleText": "拓客活动记录"
+					}
+				},
+				{
+					"path": "invite_free/index",
+					"style": {
+						"navigationBarTitleText": "我的免单"
+					}
+				},
+				{
+					"path": "my/favorite",
+					"style": {
+						"navigationBarTitleText": "我的收藏"
+					}
+				},
+				{
+					"path": "my/history",
+					"style": {
+						"navigationBarTitleText": "我的足迹"
+					}
+				},
+				{
+					"path": "money/moneylog",
+					"style": {
+						"navigationBarTitleText": "余额明细"
+					}
+				},
+				{
+					"path": "money/withdraw",
+					"style": {
+						"navigationBarTitleText": "余额提现"
+					}
+				},
+				{
+					"path": "money/rechargeToMember",
+					"style": {
+						"navigationBarTitleText": "余额转账"
+					}
+				},
+				{
+					"path": "my/scoreTransfer",
+					"style": {
+						"navigationBarTitleText": "积分转赠"
+					}
+				},
+				{
+					"path": "my/paypwd",
+					"style": {
+						"navigationBarTitleText": "支付密码"
+					}
+				},
+				{
+					"path": "my/levelinfo",
+					"style": {
+						"navigationBarTitleText": "会员等级"
+					}
+				},
+				{
+					"path": "my/levelup",
+					"style": {
+						"navigationBarTitleText": "会员升级"
+					}
+				},
+				{
+					"path": "othermoney/moneylog",
+					"style": {
+						"navigationBarTitleText": "余额2明细"
+					}
+				},
+				{
+					"path": "othermoney/withdraw",
+					"style": {
+						"navigationBarTitleText": "余额2提现"
+					}
+				},
+				{
+					"path": "othermoney/frozen_moneylog",
+					"style": {
+						"navigationBarTitleText": "冻结金额明细"
+					}
+				},
+				{
+					"path": "archives/index",
+					"style": {
+						"navigationBarTitleText": "档案列表"
+					}
+				},
+				{
+					"path": "glass/index",
+					"style": {
+						"navigationBarTitleText": "验光档案"
+					}
+				},
+				{
+					"path": "business/blist",
+					"style": {
+						"navigationBarTitleText": "购买商户列表"
+					}
+				},
+				{
+					"path": "commission/fenhongranking",
+					"style": {
+						"navigationBarTitleText": "分红排行榜"
+					}
+				},
+				{
+					"path": "commission/tjbusinessList",
+					"style": {
+						"navigationBarTitleText": "推荐商家"
+					}
+				},
+				{
+					"path": "business/apply",
+					"style": {
+						"navigationBarTitleText": "商户入驻"
+					}
+				},
+				{
+					"path": "business/clist",
+					"style": {
+						"navigationBarTitleText": "分类商户"
+					}
+				},
+				{
+					"path": "business/index",
+					"style": {
+						"navigationBarTitleText": "首消店铺"
+					}
+				},
+				{
+					"path": "business/mendian",
+					"style": {
+						"navigationBarTitleText": "附近门店"
+					}
+				},
+				{
+					"path": "my/sethuifuinfo",
+					"style": {
+						"navigationBarTitleText": "汇付进件"
+					}
+				},
+				{
+					"path": "article/record",
+					"style": {
+						"navigationBarTitleText": "文章资源列表"
+					}
+				},
+				{
+					"path": "lipin/index",
+					"style": {
+						"navigationBarTitleText": "礼品卡兑换"
+					}
+				},
+				{
+					"path": "shop/imgsearch",
+					"style": {
+						"navigationBarTitleText": "图搜"
+					}
+				},
+				{
+					"path": "shop/diylight",
+					"style": {
+						"navigationBarTitleText": "配灯"
+					}
+				},
+				{
+					"path": "yuanbao/yuanbaolog",
+					"style": {
+						"navigationBarTitleText": "元宝"
+					}
+				},
+				{
+					"path": "renovation/form",
+					"style": {
+						"navigationBarTitleText": "装修计算器"
+					}
+				},
+				{
+					"path": "counsel/index",
+					"style": {
+						"navigationBarTitleText": "律师费计算器"
+					}
+				},
+				{
+					"path": "legal/index",
+					"style": {
+						"navigationBarTitleText": "诉讼费计算器"
+					}
+				},
+				{
+					"path": "yueke/prolist",
+					"style": {
+						"navigationBarTitleText": "约课列表"
+					}
+				},
+				{
+					"path": "yueke/orderlist",
+					"style": {
+						"navigationBarTitleText": "约课记录"
+					}
+				},
+				{
+					"path": "mingpian/index",
+					"style": {
+						"navigationBarTitleText": "名片详情"
+					}
+				},
+				{
+					"path": "mingpian/edit",
+					"style": {
+						"navigationBarTitleText": "创建名片"
+					}
+				},
+				{
+					"path": "mingpian/favorite",
+					"style": {
+						"navigationBarTitleText": "名片夹"
+					}
+				},
+				{
+					"path": "cycle/prolist",
+					"style": {
+						"navigationBarTitleText": "周期购商品"
+					}
+				},
+				{
+					"path": "cycle/orderList",
+					"style": {
+						"navigationBarTitleText": "周期购订单"
+					}
+				},
+				{
+					"path": "taskbanner/index",
+					"style": {
+						"navigationBarTitleText": "广告任务"
+					}
+				},
+				{
+					"path": "taskbanner/record",
+					"style": {
+						"navigationBarTitleText": "广告任务记录"
+					}
+				},
+				{
+					"path": "paotui/index",
+					"style": {
+						"navigationBarTitleText": "跑腿页面"
+					}
+				},
+				{
+					"path": "paotui/orderlist",
+					"style": {
+						"navigationBarTitleText": "跑腿订单列表"
+					}
+				},
+				{
+					"path": "imgai/create",
+					"style": {
+						"navigationBarTitleText": "百度AI绘画"
+					}
+				},
+				{
+					"path": "mapmark/edit",
+					"style": {
+						"navigationBarTitleText": "地图标注"
+					}
+				},
+				{
+					"path": "videospider/analysis",
+					"style": {
+						"navigationBarTitleText": "短视频去水印"
+					}
+				},
+				{
+					"path": "yueke/workerorderlist",
+					"style": {
+						"navigationBarTitleText": "教练登录"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesB",
+			"pages": [
+				{
+					"path": "my/mangfanlog",
+					"style": {
+						"navigationBarTitleText": "消费盲返明细"
+					}
+				},
+				{
+					"path": "service_fee/recharge",
+					"style": {
+						"navigationBarTitleText": "服务费充值"
+					}
+				},
+				{
+					"path": "my/commissionmaxtoscore",
+					"style": {
+						"navigationBarTitleText": "佣金上限转积分"
+					}
+				},
+				{
+					"path": "paimingfenhong/user",
+					"style": {
+						"navigationBarTitleText": "商城消费排名分红"
+					}
+				},
+				{
+					"path": "my/rewardToMember",
+					"style": {
+						"navigationBarTitleText": "商户打赏"
+					}
+				},
+				{
+					"path": "my/greenscorelog",
+					"style": {
+						"navigationBarTitleText": "绿色积分明细"
+					}
+				},
+				{
+					"path": "my/greenscoreWithdraw",
+					"style": {
+						"navigationBarTitleText": "绿色积分提现"
+					}
+				},
+				{
+					"path": "greenscore/commissiontogreenscore",
+					"style": {
+						"navigationBarTitleText": "佣金转绿色积分"
+					}
+				},
+				{
+					"path": "my/shopfavorite",
+					"style": {
+						"navigationBarTitleText": "我的商品收藏"
+					}
+				},
+				{
+					"path": "team/teamyjranking",
+					"style": {
+						"navigationBarTitleText": "团队业绩排行榜"
+					}
+				},
+				{
+					"path": "shoporderranking/index",
+					"style": {
+						"navigationBarTitleText": "消费排行榜"
+					}
+				},
+				{
+					"path": "shoporderranking/log",
+					"style": {
+						"navigationBarTitleText": "消费排行榜记录"
+					}
+				},
+				{
+					"path": "wxchannels/downorder",
+					"style": {
+						"navigationBarTitleText": "视频号小店分销订单"
+					}
+				},
+				{
+					"path": "teamyejitongji/myteam",
+					"style": {
+						"navigationBarTitleText": "团队业绩(统计)"
+					}
+				},
+				{
+					"path": "maidan/pay",
+					"style": {
+						"navigationBarTitleText": "买单收款"
+					}
+				},
+				{
+					"path": "maidan/maidanlog",
+					"style": {
+						"navigationBarTitleText": "买单记录"
+					}
+				},
+				{
+					"path": "express/index",
+					"style": {
+						"navigationBarTitleText": "查寄快递"
+					}
+				},
+				{
+					"path": "workorder/index",
+					"style": {
+						"navigationBarTitleText": "提交工单"
+					}
+				},
+				{
+					"path": "workorder/record",
+					"style": {
+						"navigationBarTitleText": "工单记录"
+					}
+				},
+				{
+					"path": "yueke/my",
+					"style": {
+						"navigationBarTitleText": "教练界面"
+					}
+				},
+				{
+					"path": "membercard/share",
+					"style": {
+						"navigationBarTitleText": "会员卡分享"
+					}
+				},
+				{
+					"path": "huodongbaoming/prolist",
+					"style": {
+						"navigationBarTitleText": "活动报名分类列表"
+					}
+				},
+				{
+					"path": "huodongbaoming/prolist2",
+					"style": {
+						"navigationBarTitleText": "活动列表(报名)"
+					}
+				},
+				{
+					"path": "huodongbaoming/orderlist",
+					"style": {
+						"navigationBarTitleText": "活动报名订单"
+					}
+				},
+				{
+					"path": "businessmiandan/orderlist",
+					"style": {
+						"navigationBarTitleText": "多商户免单订单"
+					}
+				},
+				{
+					"path": "daily/wqlist",
+					"style": {
+						"navigationBarTitleText": "每日金句"
+					}
+				},
+				{
+					"path": "ciruikang/stocklog",
+					"style": {
+						"navigationBarTitleText": "库存记录"
+					}
+				},
+				{
+					"path": "business/mybusiness",
+					"style": {
+						"navigationBarTitleText": "我的店铺"
+					}
+				},
+				{
+					"path": "posscore/detail",
+					"style": {
+						"navigationBarTitleText": "pos设备中心"
+					}
+				},
+				{
+					"path": "my/staffcommissionlog",
+					"style": {
+						"navigationBarTitleText": "员工提成记录"
+					}
+				},
+				{
+					"path": "fishpond/list",
+					"style": {
+						"navigationBarTitleText": "场地管理"
+					}
+				},
+				{
+					"path": "fishpond/orderlist",
+					"style": {
+						"navigationBarTitleText": "场地订单"
+					}
+				},
+				{
+					"path": "purchaseorder/index",
+					"style": {
+						"navigationBarTitleText": "采购单"
+					}
+				},
+				{
+					"path": "my/silvermoneylog",
+					"style": {
+						"navigationBarTitleText": "银币记录"
+					}
+				},
+				{
+					"path": "my/goldmoneylog",
+					"style": {
+						"navigationBarTitleText": "金币记录"
+					}
+				},
+				{
+					"path": "inviteredpacket/redpacketlist",
+					"style": {
+						"navigationBarTitleText": "邀请分红包列表"
+					}
+				},
+				{
+					"path": "yueke/apply",
+					"style": {
+						"navigationBarTitleText": "教练入驻"
+					}
+				},
+				{
+					"path": "certificatequery/index",
+					"style": {
+						"navigationBarTitleText": "证书查询"
+					}
+				},
+				{
+					"path": "material/index",
+					"style": {
+						"navigationBarTitleText": "素材库(B端)"
+					}
+				},
+				{
+					"path": "kefu/index",
+					"style": {
+						"navigationBarTitleText": "在线咨询"
+					}
+				},
+				{
+					"path": "admin/pickupdevice",
+					"style": {
+						"navigationBarTitleText": "商品柜设备"
+					}
+				}
+			]
+		},
+		{
+			"root": "adminExt",
+			"pages": [
+				{
+					"path": "digitalconsum/index",
+					"style": {
+						"navigationBarTitleText": "数字活动中心"
+					}
+				},
+				{
+					"path": "bonuspoolgold/bonuspool",
+					"style": {
+						"navigationBarTitleText": "奖金池中心"
+					}
+				},
+				{
+					"path": "storemoney/rechargestoremoney",
+					"style": {
+						"navigationBarTitleText": "充值仓储费"
+					}
+				},
+				{
+					"path": "lotdevice/bind",
+					"style": {
+						"navigationBarTitleText": "绑定物联网设备"
+					}
+				},
+				{
+					"path": "businessjinjian/index",
+					"style": {
+						"navigationBarTitleText": "商户进件"
+					}
+				}
+			]
+		},
+		{
+			"root": "pagesZ",
+			"pages": [
+				{
+					"path": "cerberuse/index",
+					"style": {
+						"navigationBarTitleText": "智能开门"
+					}
+				},
+				{
+					"path": "cerberuse/orderlist",
+					"style": {
+						"navigationBarTitleText": "智能开门订单列表"
+					}
+				}
+			]
+		},
+		{
+			"root": "h5zb",
+			"pages": [
+				{
+					"path": "client/zblist",
+					"style": {
+						"navigationBarTitleText": "直播列表"
+					}
+				}
+			]
+		},
+		{
+			"root": "admin",
+			"pages": [
+				{
+					"path": "index/index",
+					"style": {
+						"navigationBarTitleText": "手机端后台"
+					}
+				},
+				{
+					"path": "index/login",
+					"style": {
+						"navigationBarTitleText": "管理员登录"
+					}
+				},
+				{
+					"path": "index/setpwd",
+					"style": {
+						"navigationBarTitleText": "修改密码"
+					}
+				},
+				{
+					"path": "index/setnotice",
+					"style": {
+						"navigationBarTitleText": "消息通知"
+					}
+				},
+				{
+					"path": "order/list",
+					"style": {
+						"navigationBarTitleText": "商城订单"
+					}
+				},
+				{
+					"path": "product/index",
+					"style": {
+						"navigationBarTitleText": "商品管理"
+					}
+				},
+				{
+					"path": "member/index",
+					"style": {
+						"navigationBarTitleText": "会员"
+					}
+				},
+				{
+					"path": "finance/index",
+					"style": {
+						"navigationBarTitleText": "财务"
+					}
+				},
+				{
+					"path": "kefu/index",
+					"style": {
+						"navigationBarTitleText": "咨询"
+					}
+				},
+				{
+					"path": "my/index",
+					"style": {
+						"navigationBarTitleText": "我的"
+					}
+				},
+				{
+					"path": "hexiao/record",
+					"style": {
+						"navigationBarTitleText": "核销记录"
+					}
+				},
+				{
+					"path": "restaurant/product/edit",
+					"style": {
+						"navigationBarTitleText": "添加菜品"
+					}
+				},
+				{
+					"path": "restaurant/product/index",
+					"style": {
+						"navigationBarTitleText": "菜品列表"
+					}
+				},
+				{
+					"path": "restaurant/category/index",
+					"style": {
+						"navigationBarTitleText": "菜品分类"
+					}
+				},
+				{
+					"path": "restaurant/category/edit",
+					"style": {
+						"navigationBarTitleText": "添加分类"
+					}
+				},
+				{
+					"path": "restaurant/table/index",
+					"style": {
+						"navigationBarTitleText": "餐桌编辑"
+					}
+				},
+				{
+					"path": "restaurant/table/category",
+					"style": {
+						"navigationBarTitleText": "餐桌分类"
+					}
+				},
+				{
+					"path": "restaurant/table/waiter",
+					"style": {
+						"navigationBarTitleText": "点餐清台"
+					}
+				}
+			]
+		}
+	],
+	"globalStyle": {
+		"navigationBarTextStyle": "black",
+		"navigationBarTitleText": "鼎极多端",
+		"navigationBarBackgroundColor": "#FFFFFF",
+		"backgroundColor": "#F8F8F8"
+	}
+}

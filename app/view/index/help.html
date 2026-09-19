@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{if $article}{$article.name} - {/if}帮助中心 - {$cfg.system_name}</title>
+{if $cfg.ico != ''}<link rel="shortcut icon" href="{$cfg.ico}">{/if}
+{literal}
+<style>
+:root{
+  --paper:#f7f4ee; --ink:#1b2432; --ink2:#5c6675; --accent:#b5432c; --line:#e2dccc;
+  --serif:"Noto Serif SC","Songti SC","STSong","SimSun",serif;
+  --sans:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:var(--paper);color:var(--ink);font-family:var(--sans);font-size:16px;line-height:1.8}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:860px;margin:0 auto;padding:0 24px}
+.nav{background:rgba(247,244,238,.94);border-bottom:1px solid var(--line)}
+.nav .wrap{max-width:1180px;display:flex;align-items:center;height:64px;gap:32px}
+.brand{display:flex;align-items:center;gap:10px;font-family:var(--serif);font-size:20px;font-weight:700;letter-spacing:2px}
+.brand img{height:30px;width:30px;object-fit:contain}
+.brand .seal{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;background:var(--accent);color:#fff;font-size:15px;border-radius:6px;font-family:var(--serif)}
+.nav-links{display:flex;gap:26px;margin-left:auto;font-size:14px}
+.nav-links a{color:var(--ink2)}
+.nav-links a:hover{color:var(--accent)}
+.page{padding:56px 0 80px}
+.back{display:inline-block;font-size:14px;color:var(--ink2);margin-bottom:24px}
+.back:hover{color:var(--accent)}
+.article{background:#fff;border:1px solid var(--line);border-radius:10px;padding:48px 52px}
+.article h1{font-family:var(--serif);font-size:30px;line-height:1.4;margin-bottom:14px}
+.meta{font-size:13px;color:#9aa1ab;margin-bottom:28px;padding-bottom:20px;border-bottom:1px solid var(--line)}
+.meta span{margin-right:18px}
+.content{font-size:16px;line-height:1.9;word-break:break-word}
+.content img{max-width:100%;height:auto}
+.content p{margin-bottom:14px}
+.empty{text-align:center;padding:80px 0;color:var(--ink2)}
+.empty .t{font-size:20px;margin-bottom:10px;color:var(--ink)}
+.footer{border-top:1px solid var(--line);color:var(--ink2);padding:28px 0;font-size:13px;text-align:center}
+.footer .beian a{color:var(--ink2)}
+.footer .beian a:hover{color:var(--accent)}
+.footer .beian span{margin:0 10px}
+@media (max-width:700px){.article{padding:32px 22px}.nav-links{display:none}}
+</style>
+{/literal}
+</head>
+<body>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/">
+      {if $cfg.logo != ''}<img src="{$cfg.logo}" alt="logo">{else/}<span class="seal">鼎</span>{/if}
+      {$cfg.system_name}
+    </a>
+    <nav class="nav-links">
+      <a href="/">首页</a>
+      <a href="/#features">商城功能</a>
+      <a href="/#help">帮助中心</a>
+      <a href="/#contact">联系我们</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="wrap">
+    {if $article}
+    <a class="back" href="/#help">← 返回帮助中心</a>
+    <article class="article">
+      <h1>{$article.name}</h1>
+      <div class="meta">
+        <span>发布时间：{$article.createtime|date='Y-m-d H:i'}</span>
+        <span>阅读 {$article.readcount}</span>
+      </div>
+      <div class="content">{$article.content|raw}</div>
+    </article>
+    {else/}
+    <div class="empty">
+      <div class="t">文章不存在或已关闭</div>
+      <div>请返回帮助中心查看其他文章</div>
+      <p style="margin-top:24px"><a class="back" href="/#help">← 返回帮助中心</a></p>
+    </div>
+    {/if}
+  </div>
+</main>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="beian">
+      {if $cfg.copyright != ''}<span>{$cfg.copyright}</span>{/if}
+      {if $cfg.beian != ''}<span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{$cfg.beian}</a></span>{/if}
+      {if $cfg.gongan_text != ''}<span><a href="http://www.beian.gov.cn/portal/registerSystemInfo?gongan_code={$cfg.gongan_code}" target="_blank" rel="noopener">{$cfg.gongan_text}</a></span>{/if}
+    </div>
+  </div>
+</footer>
+</body>
+</html>

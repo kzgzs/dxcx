@@ -1,0 +1,1736 @@
+[
+ {
+  "name": "商城",
+  "key": "shop",
+  "child": [
+   {
+    "name": "商品管理",
+    "key": "shop-product-index"
+   },
+   {
+    "name": "商品卡密",
+    "key": "shop-code-index"
+   },
+   {
+    "name": "订单管理",
+    "key": "shop-order-index"
+   },
+   {
+    "name": "订单-详情",
+    "key": "shop-order-detail",
+    "hide": true
+   },
+   {
+    "name": "订单-送货单",
+    "key": "shop-order-shd",
+    "hide": true
+   },
+   {
+    "name": "订单-修改",
+    "key": "shop-order-edit",
+    "hide": true
+   },
+   {
+    "name": "订单-删除",
+    "key": "shop-order-del",
+    "hide": true
+   },
+   {
+    "name": "订单-发货",
+    "key": "shop-order-send",
+    "hide": true
+   },
+   {
+    "name": "订单-退款",
+    "key": "shop-order-refund",
+    "hide": true
+   },
+   {
+    "name": "订单-核销",
+    "key": "shop-order-hexiao",
+    "hide": true
+   },
+   {
+    "name": "订单-确认收货",
+    "key": "shop-order-confirm",
+    "hide": true
+   },
+   {
+    "name": "退款申请",
+    "key": "shop-refund-order-index"
+   },
+   {
+    "name": "评价管理",
+    "key": "shop-comment-index"
+   },
+   {
+    "name": "商品分类",
+    "key": "shop-category-index"
+   },
+   {
+    "name": "商品分组",
+    "key": "shop-group-index"
+   },
+   {
+    "name": "商品参数",
+    "key": "shop-param-index"
+   },
+   {
+    "name": "商品服务",
+    "key": "shop-fuwu-index"
+   },
+   {
+    "name": "商品海报",
+    "key": "shop-poster-index"
+   },
+   {
+    "name": "录入订单",
+    "key": "shop-orderlr-index"
+   },
+   {
+    "name": "商品采集",
+    "key": "shop-taobao-index"
+   },
+   {
+    "name": "销售统计",
+    "key": "shop-order-tongji"
+   },
+   {
+    "name": "系统设置",
+    "key": "shop-set-index"
+   },
+   {
+    "name": "下单签订合同",
+    "key": "shopbuy-sign",
+    "hide": true
+   },
+   {
+    "name": "订单删除",
+    "key": "order-del-auth",
+    "hide": true
+   }
+  ]
+ },
+ {
+  "name": "商户",
+  "key": "business",
+  "child": [
+   {
+    "name": "商户列表",
+    "key": "business-index"
+   },
+   {
+    "name": "城市商户",
+    "key": "business-businesscity"
+   },
+   {
+    "name": "商户分类",
+    "key": "business-category"
+   },
+   {
+    "name": "商户商品",
+    "key": "shop-product-index-showtype-2"
+   },
+   {
+    "name": "商户销量",
+    "key": "business-sales"
+   },
+   {
+    "name": "商户订单",
+    "key": "shop-order-index-showtype-2"
+   },
+   {
+    "name": "商户评价",
+    "key": "business-comment-index-showtype-2"
+   },
+   {
+    "name": "拼团商品",
+    "key": "collage-product-index-showtype-2"
+   },
+   {
+    "name": "砍价商品",
+    "key": "kanjia-product-index-showtype-2"
+   },
+   {
+    "name": "秒杀商品",
+    "key": "seckill-product-index-showtype-2"
+   },
+   {
+    "name": "团购商品",
+    "key": "tuangou-product-index-showtype-2"
+   },
+   {
+    "name": "服务商品",
+    "key": "yuyue-list-index-showtype-2"
+   },
+   {
+    "name": "周期购商品",
+    "key": "cycle-product-index-showtype-2"
+   },
+   {
+    "name": "幸运拼团商品",
+    "key": "lucky-collage-product-index-showtype-2"
+   },
+   {
+    "name": "文章列表",
+    "key": "article-index-showtype-2"
+   },
+   {
+    "name": "短视频列表",
+    "key": "shortvideo-index-showtype-2"
+   },
+   {
+    "name": "自定义表单",
+    "key": "form-index-showtype-2"
+   },
+   {
+    "name": "余额明细",
+    "key": "business-money-moneylog"
+   },
+   {
+    "name": "提现记录",
+    "key": "business-money-withdrawlog"
+   },
+   {
+    "name": "通知公告",
+    "key": "business-notice-index"
+   },
+   {
+    "name": "默认导航",
+    "key": "designer-menu-business"
+   },
+   {
+    "name": "系统设置",
+    "key": "business-sysset"
+   },
+   {
+    "name": "商户列表显示余额抵扣",
+    "key": "money-dec-business-show",
+    "hide": true
+   },
+   {
+    "name": "商户列表显示买单余额抵扣",
+    "key": "maidan-money-dec-business-show",
+    "hide": true
+   },
+   {
+    "name": "商户后台",
+    "key": "business-backend",
+    "hide": true,
+    "child": [
+     {
+      "name": "商品分类",
+      "key": "shop-category2-index",
+      "hide": true
+     },
+     {
+      "name": "余额提现",
+      "key": "business-money-withdraw",
+      "hide": true
+     },
+     {
+      "name": "买单扣费",
+      "key": "business-maidan-add",
+      "hide": true
+     },
+     {
+      "name": "买单记录",
+      "key": "business-maidan-index",
+      "hide": true
+     },
+     {
+      "name": "收款码",
+      "key": "business-maidan-set",
+      "hide": true
+     },
+     {
+      "name": "店铺评价",
+      "key": "business-comment-index",
+      "hide": true
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "会员",
+  "key": "member",
+  "child": [
+   {
+    "name": "会员列表",
+    "key": "member-index"
+   },
+   {
+    "name": "充值",
+    "key": "member-recharge",
+    "hide": true
+   },
+   {
+    "name": "加积分",
+    "key": "member-addscore",
+    "hide": true
+   },
+   {
+    "name": "编辑冻结积分",
+    "key": "member-addfreezescore",
+    "hide": true
+   },
+   {
+    "name": "加佣金",
+    "key": "member-addcommission",
+    "hide": true
+   },
+   {
+    "name": "等级及分销",
+    "key": "member-level-index"
+   },
+   {
+    "name": "升级申请记录",
+    "key": "member-level-applyorder"
+   },
+   {
+    "name": "会员关系图",
+    "key": "member-charts"
+   },
+   {
+    "name": "分享海报",
+    "key": "member-poster-index"
+   },
+   {
+    "name": "团队分红",
+    "key": "teamfenhong"
+   },
+   {
+    "name": "股东分红",
+    "key": "gdfenhong"
+   },
+   {
+    "name": "区域分红",
+    "key": "areafenhong"
+   },
+   {
+    "name": "会员等级背景设置",
+    "key": "member-level-bgset",
+    "hide": true
+   },
+   {
+    "name": "优惠券",
+    "key": "coupon-record",
+    "hide": true
+   },
+   {
+    "name": "会员画像",
+    "key": "team-member-huaxiang",
+    "hide": true
+   }
+  ]
+ },
+ {
+  "name": "财务",
+  "key": "finance",
+  "child": [
+   {
+    "name": "消费明细",
+    "key": "payorder-index"
+   },
+   {
+    "name": "余额明细",
+    "key": "money-moneylog"
+   },
+   {
+    "name": "充值记录",
+    "key": "money-rechargelog"
+   },
+   {
+    "name": "余额提现",
+    "key": "money-withdrawlog"
+   },
+   {
+    "name": "微信转账记录",
+    "key": "money-wx-transfer-log"
+   },
+   {
+    "name": "余额宝明细",
+    "key": "yuebao-moneylog"
+   },
+   {
+    "name": "余额宝提现",
+    "key": "yuebao-withdrawlog"
+   },
+   {
+    "name": "佣金记录",
+    "key": "commission-record"
+   },
+   {
+    "name": "佣金明细",
+    "key": "commission-commissionlog"
+   },
+   {
+    "name": "佣金提现",
+    "key": "commission-withdrawlog"
+   },
+   {
+    "name": "积分明细",
+    "key": "score-scorelog"
+   },
+   {
+    "name": "商户积分",
+    "key": "finance-business-score",
+    "hide": true,
+    "child": [
+     {
+      "name": "积分明细",
+      "key": "business-score-scorelog",
+      "hide": true
+     },
+     {
+      "name": "会员积分",
+      "key": "business-score-memberscore",
+      "hide": true
+     }
+    ]
+   },
+   {
+    "name": "买单收款",
+    "key": "maidan",
+    "child": [
+     {
+      "name": "买单扣费",
+      "key": "maidan-add"
+     },
+     {
+      "name": "买单记录",
+      "key": "maidan-index"
+     },
+     {
+      "name": "聚合收款码",
+      "key": "maidan-set"
+     }
+    ]
+   },
+   {
+    "name": "分红记录",
+    "key": "commission-fenhonglog"
+   },
+   {
+    "name": "核销记录",
+    "key": "hexiao-index"
+   },
+   {
+    "name": "计次核销记录",
+    "key": "hexiao-shopproduct"
+   },
+   {
+    "name": "发票管理",
+    "key": "invoice-index"
+   },
+   {
+    "name": "买单余额抵扣比例",
+    "key": "maidan-money-dec-dandu-bl",
+    "hide": true
+   },
+   {
+    "name": "买单虚拟销量",
+    "key": "maidan-sales-virtual-business",
+    "hide": true
+   }
+  ]
+ },
+ {
+  "name": "营销",
+  "key": "yingxiao",
+  "child": [
+   {
+    "name": "优惠券",
+    "key": "coupon",
+    "child": [
+     {
+      "name": "优惠券管理",
+      "key": "coupon-index"
+     },
+     {
+      "name": "领取记录",
+      "key": "coupon-record-list"
+     }
+    ]
+   },
+   {
+    "name": "注册赠送",
+    "key": "member-register-give"
+   },
+   {
+    "name": "充值赠送",
+    "key": "money-giveset"
+   },
+   {
+    "name": "购物满减",
+    "key": "manjian-set"
+   },
+   {
+    "name": "商品促销",
+    "key": "cuxiao-index"
+   },
+   {
+    "name": "购物返现",
+    "key": "cashback-index"
+   },
+   {
+    "name": "多人拼团",
+    "key": "collage",
+    "child": [
+     {
+      "name": "商品管理",
+      "key": "collage-product-index"
+     },
+     {
+      "name": "订单管理",
+      "key": "collage-order-index"
+     },
+     {
+      "name": "拼团管理",
+      "key": "collage-team-index"
+     },
+     {
+      "name": "评价管理",
+      "key": "collage-comment-index"
+     },
+     {
+      "name": "商品分类",
+      "key": "collage-category-index"
+     },
+     {
+      "name": "分享海报",
+      "key": "collage-poster-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "collage-set-index"
+     }
+    ]
+   },
+   {
+    "name": "幸运拼团",
+    "key": "lucky-collage",
+    "child": [
+     {
+      "name": "商品管理",
+      "key": "lucky-collage-product-index"
+     },
+     {
+      "name": "订单管理",
+      "key": "lucky-collage-order-index"
+     },
+     {
+      "name": "拼团管理",
+      "key": "lucky-collage-team-index"
+     },
+     {
+      "name": "评价管理",
+      "key": "lucky-collage-comment-index"
+     },
+     {
+      "name": "商品分类",
+      "key": "lucky-collage-category-index"
+     },
+     {
+      "name": "分享海报",
+      "key": "lucky-collage-poster-index"
+     },
+     {
+      "name": "机器人管理",
+      "key": "lucky-collage-jiqiren-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "lucky-collage-set-index"
+     }
+    ]
+   },
+   {
+    "name": "砍价活动",
+    "key": "kanjia",
+    "child": [
+     {
+      "name": "商品管理",
+      "key": "kanjia-product-index"
+     },
+     {
+      "name": "订单管理",
+      "key": "kanjia-order-index"
+     },
+     {
+      "name": "分享海报",
+      "key": "kanjia-poster-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "kanjia-set-index"
+     }
+    ]
+   },
+   {
+    "name": "整点秒杀",
+    "key": "seckill",
+    "child": [
+     {
+      "name": "商品列表",
+      "key": "seckill-product-index"
+     },
+     {
+      "name": "订单列表",
+      "key": "seckill-order-index"
+     },
+     {
+      "name": "用户评价",
+      "key": "seckill-comment-index"
+     },
+     {
+      "name": "秒杀设置",
+      "key": "seckill-set-index"
+     }
+    ]
+   },
+   {
+    "name": "团购活动",
+    "key": "tuangou",
+    "child": [
+     {
+      "name": "商品管理",
+      "key": "tuangou-product-index"
+     },
+     {
+      "name": "订单管理",
+      "key": "tuangou-order-index"
+     },
+     {
+      "name": "评价管理",
+      "key": "tuangou-comment-index"
+     },
+     {
+      "name": "商品分类",
+      "key": "tuangou-category-index"
+     },
+     {
+      "name": "商品卡密",
+      "key": "tuangou-code-index"
+     },
+     {
+      "name": "分享海报",
+      "key": "tuangou-poster-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "tuangou-set-index"
+     }
+    ]
+   },
+   {
+    "name": "积分兑换",
+    "key": "scoreshop",
+    "child": [
+     {
+      "name": "商品管理",
+      "key": "scoreshop-product-index"
+     },
+     {
+      "name": "订单管理",
+      "key": "scoreshop-order-index"
+     },
+     {
+      "name": "商品分类",
+      "key": "scoreshop-category-index"
+     },
+     {
+      "name": "分享海报",
+      "key": "scoreshop-poster-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "scoreshop-set-index"
+     }
+    ]
+   },
+   {
+    "name": "抽奖活动",
+    "key": "choujiang",
+    "child": [
+     {
+      "name": "活动列表",
+      "key": "choujiang-index"
+     },
+     {
+      "name": "抽奖记录",
+      "key": "choujiang-record"
+     }
+    ]
+   },
+   {
+    "name": "口令游戏",
+    "key": "kouling",
+    "child": [
+     {
+      "name": "口令/谜语管理",
+      "key": "kouling-index"
+     }
+    ]
+   },
+   {
+    "name": "微信红包",
+    "key": "hongbao",
+    "child": [
+     {
+      "name": "红包活动管理",
+      "key": "hongbao-index"
+     }
+    ]
+   },
+   {
+    "name": "世界杯竞猜",
+    "key": "fifa",
+    "child": [
+     {
+      "name": "赛事竞猜管理",
+      "key": "fifa-index"
+     }
+    ]
+   },
+   {
+    "name": "短视频",
+    "key": "shortvideo",
+    "child": [
+     {
+      "name": "分类列表",
+      "key": "shortvideo-category-index"
+     },
+     {
+      "name": "视频列表",
+      "key": "shortvideo-index"
+     },
+     {
+      "name": "评论列表",
+      "key": "shortvideo-comment-index"
+     },
+     {
+      "name": "回评列表",
+      "key": "shortvideo-comment-reply-index"
+     },
+     {
+      "name": "海报设置",
+      "key": "shortvideo-poster-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "shortvideo-sysset-index"
+     }
+    ]
+   },
+   {
+    "name": "线下补助",
+    "key": "offline-subsidies",
+    "child": [
+     {
+      "name": "数据统计",
+      "key": "offline-subsidies-log"
+     },
+     {
+      "name": "补助配置",
+      "key": "offline-subsidies-set"
+     }
+    ]
+   },
+   {
+    "name": "确认收货奖励",
+    "key": "order-collect-reward",
+    "child": [
+     {
+      "name": "奖励记录",
+      "key": "order-collect-reward-index"
+     },
+     {
+      "name": "奖励设置",
+      "key": "order-collect-reward-set"
+     }
+    ]
+   },
+   {
+    "name": "奖金池",
+    "key": "commission-prizepool",
+    "child": [
+     {
+      "name": "利润奖金池",
+      "key": "commission-prizepool-index"
+     },
+     {
+      "name": "区域奖金池",
+      "key": "commission-area-prizepool-index"
+     },
+     {
+      "name": "达标奖金池",
+      "key": "commission-reach-prizepool-index"
+     },
+     {
+      "name": "发放记录",
+      "key": "commission-prizepool-log"
+     }
+    ]
+   },
+   {
+    "name": "数据统计",
+    "key": "data-statistics-index"
+   }
+  ]
+ },
+ {
+  "name": "扩展",
+  "key": "component",
+  "child": [
+   {
+    "name": "文章管理",
+    "key": "article",
+    "child": [
+     {
+      "name": "文章列表",
+      "key": "article-index"
+     },
+     {
+      "name": "文章分类",
+      "key": "article-category-index"
+     },
+     {
+      "name": "评论列表",
+      "key": "article-pinglun-index"
+     },
+     {
+      "name": "回评列表",
+      "key": "article-plreply-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "article-set-set"
+     }
+    ]
+   },
+   {
+    "name": "用户论坛",
+    "key": "luntan",
+    "child": [
+     {
+      "name": "帖子列表",
+      "key": "luntan-index"
+     },
+     {
+      "name": "分类管理",
+      "key": "luntan-category-index"
+     },
+     {
+      "name": "评论列表",
+      "key": "luntan-pinglun-index"
+     },
+     {
+      "name": "回评列表",
+      "key": "luntan-plreply-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "luntan-sysset"
+     }
+    ]
+   },
+   {
+    "name": "积分签到",
+    "key": "sign",
+    "child": [
+     {
+      "name": "签到记录",
+      "key": "sign-record"
+     },
+     {
+      "name": "签到设置",
+      "key": "sign-set"
+     }
+    ]
+   },
+   {
+    "name": "预约服务",
+    "key": "yuyue",
+    "child": [
+     {
+      "name": "服务类目",
+      "key": "yuyue-index"
+     },
+     {
+      "name": "服务商品",
+      "key": "yuyue-list-index"
+     },
+     {
+      "name": "服务订单",
+      "key": "yuyue-order-index"
+     },
+     {
+      "name": "商品服务",
+      "key": "yuyue-fuwu-index"
+     },
+     {
+      "name": "商品评价",
+      "key": "yuyue-comment-index"
+     },
+     {
+      "name": "海报设置",
+      "key": "yuyue-poster-index"
+     },
+     {
+      "name": "人员类型",
+      "key": "yuyue-worker-category-index"
+     },
+     {
+      "name": "人员列表",
+      "key": "yuyue-worker-index"
+     },
+     {
+      "name": "人员审核",
+      "key": "yuyue-worker-check",
+      "hide": true
+     },
+     {
+      "name": "人员评价",
+      "key": "yuyue-worker-comment-index"
+     },
+     {
+      "name": "提成明细",
+      "key": "yuyue-money-moneylog"
+     },
+     {
+      "name": "提现记录",
+      "key": "yuyue-money-withdrawlog"
+     },
+     {
+      "name": "系统设置",
+      "key": "yuyue-set-set"
+     }
+    ]
+   },
+   {
+    "name": "知识付费",
+    "key": "kecheng",
+    "child": [
+     {
+      "name": "课程分类",
+      "key": "kecheng-category-index"
+     },
+     {
+      "name": "课程列表",
+      "key": "kecheng-list-index"
+     },
+     {
+      "name": "课程章节",
+      "key": "kecheng-chapter-index"
+     },
+     {
+      "name": "题库管理",
+      "key": "kecheng-tiku-index"
+     },
+     {
+      "name": "讲师审核",
+      "key": "kecheng-lecturer-index"
+     },
+     {
+      "name": "课程订单",
+      "key": "kecheng-order-index"
+     },
+     {
+      "name": "学习记录",
+      "key": "kecheng-studylog-index"
+     },
+     {
+      "name": "课程海报",
+      "key": "kecheng-poster-index"
+     },
+     {
+      "name": "课程设置",
+      "key": "kecheng-set-index"
+     }
+    ]
+   },
+   {
+    "name": "视频管理",
+    "key": "video-list-index"
+   },
+   {
+    "name": "同城配送",
+    "key": "peisong",
+    "child": [
+     {
+      "name": "配送员列表",
+      "key": "peisong-user-index"
+     },
+     {
+      "name": "配送单列表",
+      "key": "peisong-order-index"
+     },
+     {
+      "name": "评价列表",
+      "key": "peisong-comment-index"
+     },
+     {
+      "name": "提成明细",
+      "key": "peisong-money-moneylog"
+     },
+     {
+      "name": "提现记录",
+      "key": "peisong-money-withdrawlog"
+     },
+     {
+      "name": "系统设置",
+      "key": "peisong-set"
+     },
+     {
+      "name": "码科跑腿对接",
+      "key": "peisong-makeset"
+     }
+    ]
+   },
+   {
+    "name": "物流助手",
+    "key": "miandan-index"
+   },
+   {
+    "name": "电子面单",
+    "key": "ewaybill",
+    "child": [
+     {
+      "name": "面单记录",
+      "key": "ewaybill-index"
+     },
+     {
+      "name": "导出",
+      "key": "ewaybill-excel",
+      "hide": true
+     },
+     {
+      "name": "删除",
+      "key": "ewaybill-del",
+      "hide": true
+     },
+     {
+      "name": "面单设置",
+      "key": "ewaybill-set-index"
+     }
+    ]
+   },
+   {
+    "name": "投票活动",
+    "key": "toupiao",
+    "child": [
+     {
+      "name": "活动管理",
+      "key": "toupiao-index"
+     },
+     {
+      "name": "选手管理",
+      "key": "toupiao-joinlist"
+     }
+    ]
+   },
+   {
+    "name": "周期购",
+    "key": "cycle",
+    "child": [
+     {
+      "name": "商品管理",
+      "key": "cycle-product-index"
+     },
+     {
+      "name": "订单管理",
+      "key": "cycle-order-index"
+     },
+     {
+      "name": "配送管理",
+      "key": "cycle-order-cycle-list-status-1"
+     },
+     {
+      "name": "评价管理",
+      "key": "cycle-comment-index"
+     },
+     {
+      "name": "商品分类",
+      "key": "cycle-category-index"
+     },
+     {
+      "name": "分享海报",
+      "key": "cycle-poster-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "cycle-set-index"
+     }
+    ]
+   },
+   {
+    "name": "名片",
+    "key": "mingpian",
+    "child": [
+     {
+      "name": "名片列表",
+      "key": "mingpian-index"
+     },
+     {
+      "name": "系统设置",
+      "key": "mingpian-set"
+     }
+    ]
+   },
+   {
+    "name": "收银台",
+    "key": "cashier",
+    "child": [
+     {
+      "name": "收银设置",
+      "key": "cashier-set-index"
+     },
+     {
+      "name": "收银台操作",
+      "key": "cashier-index"
+     },
+     {
+      "name": "收银订单",
+      "key": "cashier-order-index"
+     },
+     {
+      "name": "订单统计",
+      "key": "cashier-order-tongji"
+     }
+    ]
+   },
+   {
+    "name": "自定义表单",
+    "key": "form-index"
+   },
+   {
+    "name": "礼品卡",
+    "key": "lipin",
+    "child": [
+     {
+      "name": "礼品卡",
+      "key": "lipin-index"
+     },
+     {
+      "name": "礼品卡兑换码",
+      "key": "lipin-codelist"
+     },
+     {
+      "name": "兑换码生成",
+      "key": "lipin-makecode",
+      "hide": true
+     },
+     {
+      "name": "兑换码导入",
+      "key": "lipin-importexcel",
+      "hide": true
+     },
+     {
+      "name": "兑换码导出",
+      "key": "lipin-codelistexcel",
+      "hide": true
+     },
+     {
+      "name": "兑换码修改状态",
+      "key": "lipin-setst",
+      "hide": true
+     },
+     {
+      "name": "兑换码删除",
+      "key": "lipin-codelistdel",
+      "hide": true
+     },
+     {
+      "name": "礼品卡分类",
+      "key": "lipin-category-index"
+     }
+    ]
+   },
+   {
+    "name": "小程序直播",
+    "key": "live-index"
+   },
+   {
+    "name": "微信代认证",
+    "key": "wx-proxyverify",
+    "child": [
+     {
+      "name": "小程序列表",
+      "key": "wx-proxyverify-index"
+     },
+     {
+      "name": "认证列表",
+      "key": "wx-proxyverify-order"
+     },
+     {
+      "name": "系统设置",
+      "key": "wx-proxyverify-set"
+     }
+    ]
+   },
+   {
+    "name": "活动日历",
+    "key": "huodong-calendar-sysset"
+   },
+   {
+    "name": "网约车",
+    "key": "carhailing",
+    "child": [
+     {
+      "name": "车辆分类",
+      "key": "carhailing-category"
+     },
+     {
+      "name": "车辆管理",
+      "key": "carhailing-product"
+     },
+     {
+      "name": "网约车订单",
+      "key": "carhailing-order"
+     }
+    ]
+   },
+   {
+    "name": "酒店",
+    "key": "hotel",
+    "child": [
+     {
+      "name": "酒店管理",
+      "key": "hotel-list"
+     },
+     {
+      "name": "房型管理",
+      "key": "hotel-room"
+     },
+     {
+      "name": "酒店订单",
+      "key": "hotel-order"
+     }
+    ]
+   }
+  ]
+ },
+ {
+  "name": "餐饮",
+  "key": "restaurant",
+  "child": [
+   {
+    "name": "首页",
+    "key": "restaurant-index"
+   },
+   {
+    "name": "菜品",
+    "key": "restaurant-product",
+    "child": [
+     {
+      "name": "菜品列表",
+      "key": "restaurant-product-index"
+     },
+     {
+      "name": "菜品分类",
+      "key": "restaurant-product-category-index"
+     },
+     {
+      "name": "菜品采集",
+      "key": "restaurant-taobao-index"
+     }
+    ]
+   },
+   {
+    "name": "外卖",
+    "key": "restaurant-takeaway",
+    "child": [
+     {
+      "name": "外卖订单",
+      "key": "restaurant-takeaway-order-index"
+     },
+     {
+      "name": "评价管理",
+      "key": "restaurant-takeaway-comment-index"
+     },
+     {
+      "name": "配送方式",
+      "key": "restaurant-takeaway-freight-index"
+     },
+     {
+      "name": "外卖设置",
+      "key": "restaurant-takeaway-set-index"
+     },
+     {
+      "name": "广告设置",
+      "key": "restaurant-takeaway-adv-index"
+     },
+     {
+      "name": "手机管理外卖退款",
+      "key": "restaurant-takeaway-admin-refund",
+      "hide": true
+     },
+     {
+      "name": "外卖页设计",
+      "key": "restaurant-takeaway-designer-page-index"
+     }
+    ]
+   },
+   {
+    "name": "点餐",
+    "key": "restaurant-shop",
+    "child": [
+     {
+      "name": "点餐订单",
+      "key": "restaurant-shop-order-index"
+     },
+     {
+      "name": "评价管理",
+      "key": "restaurant-shop-comment-index"
+     },
+     {
+      "name": "点餐设置",
+      "key": "restaurant-shop-set-index"
+     },
+     {
+      "name": "点餐页设计",
+      "key": "restaurant-shop-designer-page-index"
+     },
+     {
+      "name": "手机管理点餐退款",
+      "key": "restaurant-shop-admin-refund",
+      "hide": true
+     }
+    ]
+   },
+   {
+    "name": "预定",
+    "key": "restaurant-booking",
+    "child": [
+     {
+      "name": "预定订单",
+      "key": "restaurant-booking-order-index"
+     },
+     {
+      "name": "预定设置",
+      "key": "restaurant-booking-set-index"
+     }
+    ]
+   },
+   {
+    "name": "排队",
+    "key": "restaurant-queue",
+    "child": [
+     {
+      "name": "排队队列",
+      "key": "restaurant-queue-index"
+     },
+     {
+      "name": "队列设置",
+      "key": "restaurant-queue-category-index"
+     },
+     {
+      "name": "排队设置",
+      "key": "restaurant-queue-set-index"
+     }
+    ]
+   },
+   {
+    "name": "寄存",
+    "key": "restaurant-deposit",
+    "child": [
+     {
+      "name": "寄存管理",
+      "key": "restaurant-deposit-index"
+     },
+     {
+      "name": "添加寄存",
+      "key": "restaurant-deposit-edit"
+     },
+     {
+      "name": "寄存位置",
+      "key": "restaurant-deposit-position-index"
+     },
+     {
+      "name": "寄存设置",
+      "key": "restaurant-deposit-set-index"
+     }
+    ]
+   },
+   {
+    "name": "餐桌",
+    "key": "restaurant-table",
+    "child": [
+     {
+      "name": "餐桌列表",
+      "key": "restaurant-table-index"
+     },
+     {
+      "name": "餐桌分类",
+      "key": "restaurant-table-category-index"
+     }
+    ]
+   },
+   {
+    "name": "营销",
+    "key": "restaurant-yingxiao",
+    "child": [
+     {
+      "name": "优惠券",
+      "key": "restaurant-coupon-index"
+     },
+     {
+      "name": "促销",
+      "key": "restaurant-cuxiao-index"
+     }
+    ]
+   },
+   {
+    "name": "收银台",
+    "key": "restaurant-cashdesk",
+    "child": [
+     {
+      "name": "收银台登录",
+      "key": "restaurant-cashdesk-login",
+      "hide": true
+     },
+     {
+      "name": "收银设置",
+      "key": "restaurant-cashdesk-index"
+     },
+     {
+      "name": "收银订单",
+      "key": "restaurant-cashdesk-order-index"
+     },
+     {
+      "name": "订单统计",
+      "key": "restaurant-cashdesk-order-tongji"
+     },
+     {
+      "name": "自定义支付",
+      "key": "restaurant-cashdesk-custom-pay-index"
+     },
+     {
+      "name": "直接优惠",
+      "key": "restaurant-cashdesk-discount",
+      "hide": true
+     },
+     {
+      "name": "退款",
+      "key": "restaurant-cashdesk-refund",
+      "hide": true
+     },
+     {
+      "name": "出餐",
+      "key": "restaurant-cashdesk-outfood",
+      "hide": true
+     },
+     {
+      "name": "报表时间自定义",
+      "key": "restaurant-cashdesk-baobiao-custom-time",
+      "hide": true
+     },
+     {
+      "name": "临时菜",
+      "key": "restaurant-cashdesk-linshi-product",
+      "hide": true
+     },
+     {
+      "name": "并台结账",
+      "key": "restaurant-cashdesk-table-merge-pay",
+      "hide": true
+     },
+     {
+      "name": "菜品转台",
+      "key": "restaurant-cashdesk-ordergoods-change-table",
+      "hide": true
+     },
+     {
+      "name": "退菜和打印",
+      "key": "restaurant-cashdesk-refund-product-print",
+      "hide": true
+     },
+     {
+      "name": "反结账",
+      "key": "restaurant-cashdesk-reverse-pay",
+      "hide": true
+     },
+     {
+      "name": "组合支付",
+      "key": "restaurant-cashdesk-multi-pay",
+      "hide": true
+     }
+    ]
+   },
+   {
+    "name": "取餐",
+    "key": "restaurant-take-food",
+    "child": [
+     {
+      "name": "取餐列表",
+      "key": "restaurant-take-food-index"
+     },
+     {
+      "name": "取餐设置",
+      "key": "restaurant-take-food-sysset"
+     }
+    ]
+   },
+   {
+    "name": "餐厅区域打印",
+    "key": "restaurant-print-index"
+   },
+   {
+    "name": "备注预置",
+    "key": "restaurant-remark-index"
+   },
+   {
+    "name": "统计",
+    "key": "restaurant-tongji"
+   },
+   {
+    "name": "设置",
+    "key": "restaurant-sysset"
+   }
+  ]
+ },
+ {
+  "name": "设计",
+  "key": "jiemian",
+  "child": [
+   {
+    "name": "页面设计",
+    "key": "designer-page-index"
+   },
+   {
+    "name": "页面模板",
+    "key": "designer-template-index"
+   },
+   {
+    "name": "底部导航",
+    "key": "designer-menu-index"
+   },
+   {
+    "name": "内页导航",
+    "key": "designer-menu-menu2"
+   },
+   {
+    "name": "商品详情",
+    "key": "designer-menu-shopdetail-shopdetail"
+   },
+   {
+    "name": "登录页面",
+    "key": "designer-login-index"
+   },
+   {
+    "name": "移动端后台",
+    "key": "designer-mobile-index"
+   },
+   {
+    "name": "分享设置",
+    "key": "designer-share-index"
+   },
+   {
+    "name": "链接地址",
+    "key": "designer-page-chooseurl"
+   }
+  ]
+ },
+ {
+  "name": "平台",
+  "key": "pingtai",
+  "child": [
+   {
+    "name": "微信公众号",
+    "key": "mp",
+    "child": [
+     {
+      "name": "公众号绑定",
+      "key": "binding-index"
+     },
+     {
+      "name": "菜单设置",
+      "key": "mpmenu-index"
+     },
+     {
+      "name": "支付设置",
+      "key": "mppay-set"
+     },
+     {
+      "name": "随行付分账",
+      "key": "sxpay-fenzhang",
+      "hide": true
+     },
+     {
+      "name": "模板消息设置",
+      "key": "mptmpl-tmplset"
+     },
+     {
+      "name": "类目模板消息",
+      "key": "mptmpl-tmplset-new"
+     },
+     {
+      "name": "已添加的模板",
+      "key": "mptmpl-mytmpl"
+     },
+     {
+      "name": "被关注回复",
+      "key": "mpkeyword-subscribe"
+     },
+     {
+      "name": "关键字回复",
+      "key": "mpkeyword-index"
+     },
+     {
+      "name": "粉丝列表",
+      "key": "mpfans-fanslist"
+     },
+     {
+      "name": "模板消息群发",
+      "key": "mpfans-tmplsend"
+     }
+    ]
+   },
+   {
+    "name": "微信会员卡",
+    "key": "membercard",
+    "child": [
+     {
+      "name": "领取记录",
+      "key": "membercard-record"
+     },
+     {
+      "name": "会员卡/创建",
+      "key": "membercard-index"
+     }
+    ]
+   },
+   {
+    "name": "微信小程序",
+    "key": "wx",
+    "child": [
+     {
+      "name": "小程序绑定",
+      "key": "binding-index"
+     },
+     {
+      "name": "小程序发布",
+      "key": "wxfabu-index"
+     },
+     {
+      "name": "运营设置",
+      "key": "wxset-index"
+     },
+     {
+      "name": "支付设置",
+      "key": "wxpay-set"
+     },
+     {
+      "name": "订阅消息设置",
+      "key": "wxtmpl-tmplset"
+     },
+     {
+      "name": "服务类目",
+      "key": "wxleimu-index"
+     },
+     {
+      "name": "外部链接",
+      "key": "wxurl-index"
+     },
+     {
+      "name": "半屏小程序",
+      "key": "wxembedded-index"
+     },
+     {
+      "name": "关键字回复",
+      "key": "wxkeyword-index"
+     },
+     {
+      "name": "认证权限",
+      "key": "wx-proxyverify-order"
+     }
+    ]
+   },
+   {
+    "name": "支付宝小程序",
+    "key": "binding-alipay"
+   },
+   {
+    "name": "百度小程序",
+    "key": "binding-baidu"
+   },
+   {
+    "name": "抖音小程序",
+    "key": "binding-toutiao"
+   },
+   {
+    "name": "QQ小程序",
+    "key": "binding-qq"
+   },
+   {
+    "name": "手机H5",
+    "key": "binding-h5"
+   },
+   {
+    "name": "手机APP",
+    "key": "binding-app"
+   }
+  ]
+ },
+ {
+  "name": "系统",
+  "key": "system",
+  "child": [
+   {
+    "name": "系统设置",
+    "key": "backstage-sysset"
+   },
+   {
+    "name": "门店管理",
+    "key": "mendian-index"
+   },
+   {
+    "name": "管理员列表",
+    "key": "user-index"
+   },
+   {
+    "name": "配送方式",
+    "key": "freight-index"
+   },
+   {
+    "name": "快递设置",
+    "key": "express-data-index"
+   },
+   {
+    "name": "送货单设置",
+    "key": "shd-set-index"
+   },
+   {
+    "name": "小票打印机",
+    "key": "wifiprint-index"
+   },
+   {
+    "name": "短信设置",
+    "key": "sms-set"
+   },
+   {
+    "name": "店铺评价",
+    "key": "business-comment-index"
+   },
+   {
+    "name": "操作日志",
+    "key": "backstage-plog"
+   },
+   {
+    "name": "快捷菜单",
+    "key": "shortcut-menu-index"
+   },
+   {
+    "name": "定制短信通道",
+    "key": "sms-channel-index",
+    "hide": true
+   },
+   {
+    "name": "清理缓存",
+    "key": "system-clear-cache"
+   }
+  ]
+ }
+]

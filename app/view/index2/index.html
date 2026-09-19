@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{$cfg.system_name} - 一站式多端商城解决方案</title>
+<meta name="description" content="{$cfg.system_name}，支持公众号、小程序、H5 多端商城，订单管理、会员营销、客服系统一站式解决方案。">
+{if $cfg.ico != ''}<link rel="shortcut icon" href="{$cfg.ico}">{/if}
+{literal}
+<style>
+:root{
+  --bg:#070b14; --bg2:#0b1120; --card:rgba(255,255,255,.04); --card2:rgba(255,255,255,.07);
+  --bd:rgba(255,255,255,.09); --tx:#e8edf6; --tx2:#8b96ab;
+  --cy:#35e0d2; --bl:#4d8dff; --vio:#8a7bff;
+  --sans:"PingFang SC","Microsoft YaHei","Hiragino Sans GB",sans-serif;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--tx);font-family:var(--sans);font-size:16px;line-height:1.7;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+.wrap{max-width:1200px;margin:0 auto;padding:0 24px}
+/* 氛围背景 */
+.atmo{position:fixed;inset:0;z-index:-1;background:
+  radial-gradient(600px 400px at 85% -5%,rgba(77,141,255,.16),transparent 60%),
+  radial-gradient(700px 500px at -10% 30%,rgba(53,224,210,.10),transparent 60%),
+  radial-gradient(600px 500px at 70% 110%,rgba(138,123,255,.12),transparent 60%),
+  var(--bg)}
+.atmo::after{content:"";position:absolute;inset:0;background-image:linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.025) 1px,transparent 1px);background-size:56px 56px;mask-image:radial-gradient(ellipse at 50% 0%,#000 30%,transparent 75%)}
+/* 导航 */
+.nav{position:sticky;top:0;z-index:50;background:rgba(7,11,20,.75);backdrop-filter:blur(12px);border-bottom:1px solid var(--bd)}
+.nav .wrap{display:flex;align-items:center;height:70px;gap:36px}
+.brand{display:flex;align-items:center;gap:12px;font-size:20px;font-weight:800;letter-spacing:1px}
+.brand img{height:34px;width:34px;object-fit:contain}
+.brand .mark{width:34px;height:34px;border-radius:9px;background:linear-gradient(135deg,var(--cy),var(--bl));position:relative}
+.brand .mark::after{content:"";position:absolute;inset:9px;border-radius:4px;background:var(--bg)}
+.nav-links{display:flex;gap:30px;margin-left:auto;font-size:15px}
+.nav-links a{color:var(--tx2);padding:6px 0;position:relative;transition:color .2s}
+.nav-links a:hover,.nav-links a.on{color:var(--tx)}
+.nav-links a::before{content:"";position:absolute;left:-12px;top:50%;width:5px;height:5px;margin-top:-2px;border-radius:50%;background:var(--cy);opacity:0;transition:opacity .2s}
+.nav-links a:hover::before,.nav-links a.on::before{opacity:1}
+.nav-auth{display:flex;align-items:center;gap:14px;flex:none}
+.nav-auth .auth-login{font-size:15px;color:var(--tx2);padding:6px 2px;transition:color .2s}
+.nav-auth .auth-login:hover{color:var(--tx)}
+.nav-auth .auth-reg{display:inline-flex;align-items:center;height:36px;padding:0 22px;font-size:14px;font-weight:700;border-radius:8px;background:linear-gradient(135deg,var(--cy),var(--bl));color:#04121a;transition:all .22s}
+.nav-auth .auth-reg:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(53,224,210,.30)}
+/* hero */
+.hero{position:relative;padding:110px 0 90px}
+.hero .tag{display:inline-flex;align-items:center;gap:8px;font-size:13px;color:var(--cy);border:1px solid rgba(53,224,210,.35);background:rgba(53,224,210,.06);padding:7px 16px;border-radius:999px;letter-spacing:2px}
+.hero .tag::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--cy);box-shadow:0 0 10px var(--cy)}
+.hero h1{margin-top:26px;font-size:58px;font-weight:900;line-height:1.18;letter-spacing:1px}
+.hero h1 em{font-style:normal;background:linear-gradient(90deg,var(--cy),var(--bl) 60%,var(--vio));-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .slogan{margin-top:22px;max-width:600px;color:var(--tx2);font-size:18px}
+.hero .btns{margin-top:42px;display:flex;gap:16px}
+.btn{display:inline-flex;align-items:center;justify-content:center;height:52px;padding:0 34px;border-radius:10px;font-size:16px;border:1px solid transparent;cursor:pointer;transition:all .22s}
+.btn-main{background:linear-gradient(135deg,var(--cy),var(--bl));color:#04121a;font-weight:700}
+.btn-main:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(53,224,210,.30)}
+.btn-ghost{border-color:var(--bd);color:var(--tx);background:var(--card)}
+.btn-ghost:hover{background:var(--card2);transform:translateY(-3px)}
+.hero .mstats{display:flex;gap:60px;margin-top:70px;flex-wrap:wrap}
+.hero .mstats .num{font-size:40px;font-weight:900;background:linear-gradient(180deg,#fff,#9fb0cc);-webkit-background-clip:text;background-clip:text;color:transparent}
+.hero .mstats .num i{font-style:normal;font-size:20px;color:var(--cy);-webkit-text-fill-color:var(--cy)}
+.hero .mstats .lab{font-size:13px;color:var(--tx2);letter-spacing:2px;margin-top:4px}
+/* 节标题 */
+.sec{padding:92px 0}
+.sec-head{margin-bottom:50px;display:flex;align-items:flex-end;justify-content:space-between;gap:24px;flex-wrap:wrap}
+.sec-head .eyebrow{font-size:13px;letter-spacing:5px;color:var(--cy)}
+.sec-head h2{font-size:36px;font-weight:900;letter-spacing:1px;margin-top:10px}
+.sec-head p{color:var(--tx2);margin-top:8px}
+/* bento 功能卡 */
+.bento{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.cell{background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:32px 28px;position:relative;overflow:hidden;transition:all .25s}
+.cell::before{content:"";position:absolute;inset:0;background:radial-gradient(320px 180px at var(--mx,50%) var(--my,0%),rgba(53,224,210,.10),transparent 65%);opacity:0;transition:opacity .3s}
+.cell:hover{border-color:rgba(53,224,210,.35);transform:translateY(-5px)}
+.cell:hover::before{opacity:1}
+.cell .ico{font-size:30px;width:58px;height:58px;border-radius:14px;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,rgba(53,224,210,.16),rgba(77,141,255,.16));border:1px solid rgba(53,224,210,.22);margin-bottom:20px}
+.cell h3{font-size:19px;font-weight:800;margin-bottom:10px}
+.cell p{font-size:14px;color:var(--tx2);line-height:1.8}
+.cell.wide{grid-column:span 2;display:flex;gap:28px;align-items:center}
+.cell.wide .ico{margin-bottom:0;flex:none}
+.cell.wide .chip{display:inline-block;font-size:12px;color:var(--cy);border:1px solid rgba(53,224,210,.3);border-radius:999px;padding:3px 12px;margin:2px 6px 2px 0}
+/* 业务说明 */
+.flow{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.fstep{position:relative;background:var(--card);border:1px solid var(--bd);border-radius:16px;padding:34px 28px}
+.fstep .idx{font-size:15px;font-weight:800;color:#04121a;background:linear-gradient(135deg,var(--cy),var(--bl));width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center}
+.fstep h3{font-size:18px;margin:18px 0 8px}
+.fstep p{font-size:14px;color:var(--tx2)}
+.fstep:not(:last-child)::after{content:"→";position:absolute;right:-17px;top:50%;transform:translateY(-50%);color:var(--cy);font-size:18px;z-index:2}
+/* 帮助中心 */
+.help-list{display:grid;grid-template-columns:repeat(2,1fr);gap:14px}
+.help-item{display:flex;align-items:center;gap:14px;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:18px 22px;font-size:15px;transition:all .2s}
+.help-item:hover{border-color:rgba(53,224,210,.4);background:var(--card2);transform:translateX(5px)}
+.help-item .dot{width:8px;height:8px;border-radius:50%;background:var(--cy);box-shadow:0 0 8px var(--cy);flex:none}
+.help-item .t{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.help-item .d{font-size:12px;color:var(--tx2);flex:none}
+.help-item .arr{color:var(--cy);flex:none;opacity:0;transition:opacity .2s}
+.help-item:hover .arr{opacity:1}
+.help-empty{color:var(--tx2);font-size:14px;border:1px dashed var(--bd);border-radius:12px;padding:40px;text-align:center}
+/* 联系我们 */
+.contact-grid{display:grid;grid-template-columns:1.15fr .85fr;gap:24px;align-items:start}
+.form-card{background:var(--card);border:1px solid var(--bd);border-radius:18px;padding:40px}
+.form-row{margin-bottom:18px}
+.form-row label{display:block;font-size:14px;margin-bottom:8px;color:var(--tx)}
+.form-row label i{color:var(--cy);font-style:normal;margin-right:4px}
+.form-row input,.form-row textarea{width:100%;background:rgba(7,11,20,.6);border:1px solid var(--bd);border-radius:10px;padding:13px 15px;font-size:14px;color:var(--tx);font-family:var(--sans);outline:none;transition:border .2s}
+.form-row input:focus,.form-row textarea:focus{border-color:var(--cy)}
+.form-row input::placeholder,.form-row textarea::placeholder{color:#5a6478}
+.form-row textarea{height:120px;resize:vertical}
+.form-tip{font-size:13px;margin-top:12px;display:none}
+.form-tip.ok{display:block;color:var(--cy)}
+.form-tip.err{display:block;color:#ff8f6b}
+.info-card{background:linear-gradient(160deg,rgba(77,141,255,.14),rgba(138,123,255,.10));border:1px solid var(--bd);border-radius:18px;padding:40px}
+.info-card h3{font-size:22px;font-weight:800;margin-bottom:22px}
+.info-card .row{display:flex;gap:12px;font-size:14px;margin-bottom:16px;color:#c8d2e2;line-height:1.6}
+.info-card .row .k{color:var(--tx2);flex:none;width:64px}
+.info-card .note{margin-top:26px;padding-top:20px;border-top:1px solid var(--bd);font-size:13px;color:var(--tx2)}
+/* 底部 */
+.footer{border-top:1px solid var(--bd);background:rgba(7,11,20,.6);color:var(--tx2);padding:36px 0;font-size:13px;text-align:center}
+.footer .links{margin-bottom:12px}
+.footer .links a{margin:0 14px;color:#a7b2c6}
+.footer .links a:hover{color:#fff}
+.footer .beian a{color:var(--tx2)}
+.footer .beian a:hover{color:#fff}
+.footer .beian span{margin:0 10px}
+/* 动画 */
+@keyframes rise{from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none}}
+.hero .tag,.hero h1,.hero .slogan,.hero .btns,.hero .mstats{animation:rise .7s ease both}
+.hero h1{animation-delay:.1s}.hero .slogan{animation-delay:.2s}.hero .btns{animation-delay:.3s}.hero .mstats{animation-delay:.4s}
+@media (max-width:900px){
+  .hero h1{font-size:38px}
+  .bento,.flow,.contact-grid,.help-list{grid-template-columns:1fr}
+  .cell.wide{grid-column:span 1;flex-direction:column;align-items:flex-start}
+  .fstep:not(:last-child)::after{display:none}
+  .nav-links{gap:16px;font-size:14px}
+  .nav-auth{gap:10px}
+  .nav-auth .auth-reg{padding:0 14px}
+}
+</style>
+{/literal}
+</head>
+<body>
+<div class="atmo"></div>
+<header class="nav">
+  <div class="wrap">
+    <a class="brand" href="/">
+      {if $cfg.logo != ''}<img src="{$cfg.logo}" alt="logo">{else/}<span class="mark"></span>{/if}
+      {$cfg.system_name}
+    </a>
+    <nav class="nav-links">
+      <a href="/" class="on">首页</a>
+      <a href="#features">商城功能</a>
+      <a href="#help">帮助中心</a>
+      <a href="#contact">联系我们</a>
+    </nav>
+    <div class="nav-auth">
+      <a class="auth-login" href="{$frontend_url}/#/login">登录</a>
+      {if $reg_open == 1}<a class="auth-reg" href="{$frontend_url}/#/login?mode=reg">注册</a>{/if}
+    </div>
+  </div>
+</header>
+
+<section class="hero">
+  <div class="wrap">
+    <span class="tag">SAAS · 多端商城引擎</span>
+    <h1>{$cfg.system_name}<br>一套系统，<em>全端生意</em></h1>
+    <p class="slogan">公众号、小程序、H5、APP 数据互通，订单、会员、营销、客服全链路在线化，帮助商家以更低成本获得更高效率。</p>
+    <div class="btns">
+      <a class="btn btn-main" href="#contact">获取方案</a>
+      <a class="btn btn-ghost" href="#features">探索功能</a>
+    </div>
+    <div class="mstats">
+      <div><div class="num">6<i>+</i></div><div class="lab">核心功能模块</div></div>
+      <div><div class="num">3<i>端</i></div><div class="lab">多终端数据互通</div></div>
+      <div><div class="num">99.9<i>%</i></div><div class="lab">服务可用性目标</div></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="features">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">FEATURES</div>
+        <h2>商城核心功能</h2>
+        <p>覆盖经营全链路的能力组件，开箱即用</p>
+      </div>
+    </div>
+    <div class="bento">
+      <div class="cell wide">
+        <div class="ico">🛒</div>
+        <div>
+          <h3>多端商城</h3>
+          <p>一次搭建，多端覆盖，商品 / 订单 / 会员数据实时同步。</p>
+          <div style="margin-top:12px"><span class="chip">公众号</span><span class="chip">小程序</span><span class="chip">H5</span><span class="chip">APP</span></div>
+        </div>
+      </div>
+      <div class="cell"><div class="ico">📦</div><h3>订单管理</h3><p>发货、自提、退款、售后全流程在线化，支持批量操作与状态追踪。</p></div>
+      <div class="cell"><div class="ico">🎯</div><h3>会员营销</h3><p>会员等级、积分、优惠券、拼团秒杀，拉新转化复购一体化。</p></div>
+      <div class="cell"><div class="ico">💬</div><h3>客服系统</h3><p>在线咨询即时触达，消息通知不遗漏，服务响应更高效。</p></div>
+      <div class="cell wide">
+        <div class="ico">📊</div>
+        <div>
+          <h3>数据分析 + 开放平台</h3>
+          <p>交易、会员、营销多维报表辅助经营决策；开放平台能力支撑多商户授权托管与代开发发布。</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="business">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">BUSINESS</div>
+        <h2>业务说明</h2>
+        <p>三步开启您的多端商城之旅</p>
+      </div>
+    </div>
+    <div class="flow">
+      <div class="fstep"><div class="idx">1</div><h3>开通账号</h3><p>提交企业信息开通商户账号，专属控制台即刻可用，配置向导式完成。</p></div>
+      <div class="fstep"><div class="idx">2</div><h3>装修上架</h3><p>可视化装修店铺，批量导入商品，配置支付、配送与营销规则。</p></div>
+      <div class="fstep"><div class="idx">3</div><h3>开店经营</h3><p>多端同步开卖，经营数据实时回流，持续运营持续增长。</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="sec" id="help">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">HELP CENTER</div>
+        <h2>帮助中心</h2>
+        <p>常见问题与使用指南，点击查看文章详情</p>
+      </div>
+    </div>
+    {if count($helps) > 0}
+    <div class="help-list">
+      {volist name="helps" id="h"}
+      <a class="help-item" href="/index/help?id={$h.id}" target="_blank" rel="noopener">
+        <span class="dot"></span>
+        <span class="t">{$h.name}</span>
+        <span class="d">{$h.createtime|date='Y-m-d'}</span>
+        <span class="arr">→</span>
+      </a>
+      {/volist}
+    </div>
+    {else/}
+    <div class="help-empty">暂无帮助文章，敬请期待</div>
+    {/if}
+  </div>
+</section>
+
+<section class="sec" id="contact">
+  <div class="wrap">
+    <div class="sec-head">
+      <div>
+        <div class="eyebrow">CONTACT</div>
+        <h2>联系我们</h2>
+        <p>留下您的需求，我们将尽快与您取得联系</p>
+      </div>
+    </div>
+    <div class="contact-grid">
+      <div class="form-card">
+        <form id="msgForm" onsubmit="return submitMsg(event)">
+          <div class="form-row">
+            <label><i>*</i>姓名</label>
+            <input type="text" name="realname" maxlength="50" placeholder="请输入您的姓名" required>
+          </div>
+          <div class="form-row">
+            <label>联系方式（手机 / 微信）</label>
+            <input type="text" name="tel" maxlength="50" placeholder="方便我们与您联系">
+          </div>
+          <div class="form-row">
+            <label><i>*</i>留言内容</label>
+            <textarea name="content" maxlength="1000" placeholder="请简单描述您的需求，例如行业、期望功能等" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-main" id="msgBtn" style="border:none;width:100%">提交留言</button>
+          <div class="form-tip" id="msgTip"></div>
+        </form>
+      </div>
+      <div class="info-card">
+        <h3>开发者信息</h3>
+        {if isset($cfg.company) && $cfg.company != ''}<div class="row"><span class="k">开发者名</span><span>{$cfg.company}</span></div>{/if}
+        {if isset($cfg.address) && $cfg.address != ''}<div class="row"><span class="k">公司地址</span><span>{$cfg.address}</span></div>{/if}
+        {if isset($cfg.tel) && $cfg.tel != ''}<div class="row"><span class="k">联系电话</span><span>{$cfg.tel}</span></div>{/if}
+        {if isset($cfg.email) && $cfg.email != ''}<div class="row"><span class="k">联系邮箱</span><span>{$cfg.email}</span></div>{/if}
+        {if isset($cfg.weixin) && $cfg.weixin != ''}<div class="row"><span class="k">官方微信</span><span>{$cfg.weixin}</span></div>{/if}
+        <div class="note">工作时间：周一至周五 9:00 - 18:00<br>留言我们会在 1 个工作日内回复</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer class="footer">
+  <div class="wrap">
+    <div class="links">
+      <a href="/">首页</a><a href="#features">商城功能</a><a href="#help">帮助中心</a><a href="#contact">联系我们</a>
+    </div>
+    <div class="beian">
+      {if $cfg.copyright != ''}<span>{$cfg.copyright}</span>{/if}
+      {if $cfg.beian != ''}<span><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">{$cfg.beian}</a></span>{/if}
+      {if $cfg.gongan_text != ''}<span><a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode={$cfg.gongan_code}" target="_blank" rel="noopener">{$cfg.gongan_text}</a></span>{/if}
+    </div>
+  </div>
+</footer>
+
+{literal}
+<script>
+document.querySelectorAll('.cell').forEach(function(c){
+  c.addEventListener('mousemove',function(e){
+    var r=c.getBoundingClientRect();
+    c.style.setProperty('--mx',((e.clientX-r.left)/r.width*100)+'%');
+    c.style.setProperty('--my',((e.clientY-r.top)/r.height*100)+'%');
+  });
+});
+function submitMsg(ev){
+  ev.preventDefault();
+  var form=document.getElementById('msgForm');
+  var tip=document.getElementById('msgTip');
+  var btn=document.getElementById('msgBtn');
+  var body=new URLSearchParams(new FormData(form)).toString();
+  btn.disabled=true;btn.textContent='提交中…';
+  tip.className='form-tip';
+  fetch('/index/message',{method:'POST',headers:{'Content-Type':'application/x-www-form-urlencoded'},body:body})
+    .then(function(r){return r.json()})
+    .then(function(res){
+      if(res.code===0){
+        tip.className='form-tip ok';tip.textContent=res.msg||'留言提交成功，我们会尽快与您联系';form.reset();
+      }else{
+        tip.className='form-tip err';tip.textContent=res.msg||'提交失败，请稍后再试';
+      }
+    })
+    .catch(function(){tip.className='form-tip err';tip.textContent='网络异常，请稍后再试';})
+    .finally(function(){btn.disabled=false;btn.textContent='提交留言';});
+  return false;
+}
+</script>
+{/literal}
+</body>
+</html>

@@ -1,0 +1,41 @@
+# 运行时与环境
+*.log
+.env
+composer.phar
+composer.lock
+.DS_Store
+Thumbs.db
+/.idea
+/.vscode
+/vendor
+/.settings
+/.buildpath
+/.project
+
+# 运行时与数据
+/runtime/
+/dump.rdb
+/PID
+
+# 参考资料与截图（体积大，不入仓）
+/canzhao/
+/000截图/
+
+# 本地工具临时文件
+/tools/mysql/
+/tools/redis/
+/tools/php_redis_tmp/
+/tools/*.zip
+/tools/composer.phar
+/tools/PID
+
+# 用户上传文件（运行时产物）
+/public/upload/
+/public/uploads/
+
+# 前端依赖与构建产物
+frontend/*/node_modules/
+frontend/*/dist/
+frontend/*/.vscode/
+frontend/uniapp-client/.env
+frontend/uniapp-client/unpackage/
