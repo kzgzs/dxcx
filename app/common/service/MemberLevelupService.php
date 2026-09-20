@@ -45,6 +45,7 @@ class MemberLevelupService
         $orderId   = (int) ($filters['orderid'] ?? 0);
         $mid       = (int) ($filters['mid'] ?? 0);
         $nickname  = trim((string) ($filters['nickname'] ?? ''));
+        $realname  = trim((string) ($filters['realname'] ?? ''));
         $type      = (string) ($filters['type'] ?? 'all');
         $status    = (string) ($filters['status'] ?? 'all');
         $startTime = trim((string) ($filters['start_time'] ?? ''));
@@ -52,7 +53,8 @@ class MemberLevelupService
         $formx     = trim((string) ($filters['formx'] ?? ''));
 
         $query = ScopeService::queryAs('member_levelup_order', $aid, 'vo')
-            ->join('member m', 'vo.mid = m.id');
+            ->join('member m', 'vo.mid = m.id')
+            ->leftJoin('member p', 'p.id = m.pid');
 
         if ($orderId > 0) {
             $query->where('vo.id', $orderId);
@@ -62,6 +64,9 @@ class MemberLevelupService
         }
         if ('' !== $nickname) {
             $query->where('m.nickname', 'like', '%' . $nickname . '%');
+        }
+        if ('' !== $realname) {
+            $query->where('m.realname', 'like', '%' . $realname . '%');
         }
         if ('all' !== $type && '' !== $type) {
             $query->where('vo.type', (int) $type);
@@ -89,7 +94,7 @@ class MemberLevelupService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('vo.*, m.nickname, m.headimg')
+        $rows = $query->field('vo.*, m.nickname, m.headimg, m.realname, m.pid, m.levelid as member_levelid, p.nickname as pnickname, p.headimg as pheadimg')
             ->order('vo.createtime', 'desc')
             ->order('vo.id', 'desc')
             ->page($page, $pageSize)
@@ -97,15 +102,36 @@ class MemberLevelupService
             ->toArray();
 
         $levelMap = $this->levelMap($aid);
+        // 默认等级名（申请单未记录 beforelevelid 或会员当前为默认等级时兜底）
+        $defaultLevel = ScopeService::query('member_level', $aid)->where('isdefault', 1)->field('name')->find();
+        $defaultName  = (string) ($defaultLevel['name'] ?? '');
 
-        $list = array_map(function (array $row) use ($levelMap) {
+        $list = array_map(function (array $row) use ($levelMap, $defaultName) {
             $statusVal = (int) ($row['status'] ?? 0);
+
+            // 当前等级：申请单记录了 beforelevelid 用之，否则回退会员当前 levelid，再否则默认等级
+            $beforeId    = (int) ($row['beforelevelid'] ?? 0);
+            $memberLvId  = (int) ($row['member_levelid'] ?? 0);
+            $beforeLevel = $beforeId > 0
+                ? ($levelMap[$beforeId] ?? '')
+                : ($memberLvId > 0 ? ($levelMap[$memberLvId] ?? '') : '');
+            if ('' === $beforeLevel) {
+                $beforeLevel = $defaultName;
+            }
+            $applyLevel = $levelMap[(int) ($row['levelid'] ?? 0)] ?? '';
+            if ('' === $applyLevel) {
+                $applyLevel = $defaultName;
+            }
 
             return [
                 'id'              => (int) $row['id'],
                 'mid'             => (int) ($row['mid'] ?? 0),
                 'nickname'        => (string) ($row['nickname'] ?? ''),
                 'headimg'         => (string) ($row['headimg'] ?? ''),
+                'realname'        => (string) ($row['realname'] ?? ''),
+                'pid'             => (int) ($row['pid'] ?? 0),
+                'pnickname'       => (string) ($row['pnickname'] ?? ''),
+                'pheadimg'        => (string) ($row['pheadimg'] ?? ''),
                 'ordernum'        => (string) ($row['ordernum'] ?? ''),
                 'title'           => (string) ($row['title'] ?? ''),
                 'type'            => (int) ($row['type'] ?? 0),
@@ -115,10 +141,10 @@ class MemberLevelupService
                 'totalprice'      => (float) ($row['totalprice'] ?? 0),
                 'paytype'         => (string) ($row['paytype'] ?? ''),
                 'paytime'         => (int) ($row['paytime'] ?? 0),
-                'beforelevelid'   => (int) ($row['beforelevelid'] ?? 0),
-                'before_level'    => $levelMap[(int) ($row['beforelevelid'] ?? 0)] ?? '',
+                'beforelevelid'   => $beforeId,
+                'before_level'    => $beforeLevel,
                 'levelid'         => (int) ($row['levelid'] ?? 0),
-                'apply_level'     => $levelMap[(int) ($row['levelid'] ?? 0)] ?? '',
+                'apply_level'     => $applyLevel,
                 'createtime'      => (int) ($row['createtime'] ?? 0),
                 'levelup_time'    => (int) ($row['levelup_time'] ?? 0),
                 'platform'        => (string) ($row['platform'] ?? ''),
@@ -127,6 +153,21 @@ class MemberLevelupService
         }, $rows);
 
         return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 删除升级申请记录（物理删，对齐点大 applydel：按 aid + ids 限定）
+     *
+     * @param array<int, mixed> $ids
+     */
+    public function deleteLevels(int $aid, array $ids): int
+    {
+        $ids = array_values(array_filter(array_unique(array_map('intval', $ids)), static fn ($v) => $v > 0));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+
+        return (int) ScopeService::query('member_levelup_order', $aid)->whereIn('id', $ids)->delete();
     }
 
     /* ================= 审核（通过 / 驳回） ================= */

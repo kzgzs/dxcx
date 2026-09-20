@@ -669,7 +669,6 @@ class MemberAdminService
     public function levelList(int $aid): array
     {
         $rows = ScopeService::query('member_level', $aid)
-            ->field('id, name, icon, sort, discount, isdefault, up_ordermoney, up_rechargemoney, up_orderprice')
             ->order('sort', 'asc')
             ->order('id', 'asc')
             ->select()
@@ -686,20 +685,206 @@ class MemberAdminService
             $countMap[(int) $c['levelid']] = (int) $c['cnt'];
         }
 
-        $list = array_map(static fn (array $row) => [
-            'id'               => (int) $row['id'],
-            'name'             => (string) ($row['name'] ?? ''),
-            'icon'             => (string) ($row['icon'] ?? ''),
-            'sort'             => (int) ($row['sort'] ?? 1),
-            'discount'         => (float) ($row['discount'] ?? 10),
-            'isdefault'        => (int) ($row['isdefault'] ?? 0),
-            'up_ordermoney'    => (float) ($row['up_ordermoney'] ?? 0),
-            'up_rechargemoney' => (float) ($row['up_rechargemoney'] ?? 0),
-            'up_orderprice'    => (float) ($row['up_orderprice'] ?? 0),
-            'member_count'     => (int) ($countMap[(int) $row['id']] ?? 0),
-        ], $rows);
+        // 等级名 map（下级条件展示用）
+        $levelMap = [];
+        foreach ($rows as $r) {
+            $levelMap[(int) $r['id']] = (string) ($r['name'] ?? '');
+        }
+
+        // 商品名 map（购买商品升级条件用）
+        $proIds = [];
+        foreach ($rows as $r) {
+            foreach (explode(',', (string) ($r['up_proid'] ?? '')) as $pid) {
+                $pid = (int) trim($pid);
+                if ($pid > 0) {
+                    $proIds[$pid] = true;
+                }
+            }
+        }
+        $goodsMap = [];
+        if ($proIds) {
+            $goods = Db::name('shop_product')->where('aid', $aid)
+                ->whereIn('id', array_keys($proIds))->column('name', 'id');
+            foreach ($goods as $gid => $gname) {
+                $goodsMap[(int) $gid] = (string) $gname;
+            }
+        }
+
+        $list = array_map(function (array $row) use ($countMap, $levelMap, $goodsMap) {
+            $isDefault = (int) ($row['isdefault'] ?? 0) === 1;
+            $canApply  = (int) ($row['can_apply'] ?? 0) === 1;
+            $canUp     = (int) ($row['can_up'] ?? 0) === 1;
+
+            return [
+                'id'             => (int) $row['id'],
+                'name'           => (string) ($row['name'] ?? ''),
+                'icon'           => (string) ($row['icon'] ?? ''),
+                'sort'           => (int) ($row['sort'] ?? 1),
+                'discount'       => (float) ($row['discount'] ?? 10),
+                'isdefault'      => (int) ($row['isdefault'] ?? 0),
+                'can_apply'      => (int) ($row['can_apply'] ?? 0),
+                'can_up'         => (int) ($row['can_up'] ?? 0),
+                'can_agent'      => (int) ($row['can_agent'] ?? 0),
+                'applytj'        => $this->buildLevelApplyTj($row, $canApply),
+                'apply_paymoney' => (float) ($row['apply_paymoney'] ?? 0),
+                'uptj'           => $this->buildLevelUpTj($row, $isDefault, $canUp, $levelMap, $goodsMap),
+                'commission'     => $this->buildLevelCommission($row),
+                'member_count'   => (int) ($countMap[(int) $row['id']] ?? 0),
+            ];
+        }, $rows);
 
         return ['list' => $list];
+    }
+
+    /**
+     * 申请条件文案（对齐点大 MemberLevel::index）
+     * can_apply=0 不可申请；=1 时按订单金额/充值金额条件拼，无条件为“无”
+     */
+    private function buildLevelApplyTj(array $row, bool $canApply): string
+    {
+        if (!$canApply) {
+            return '不可申请';
+        }
+
+        $tj = [];
+        if ((float) ($row['apply_ordermoney'] ?? 0) > 0) {
+            $tj[] = '订单金额满' . number_format((float) $row['apply_ordermoney'], 2) . '元';
+        }
+        if ((float) ($row['apply_rechargemoney'] ?? 0) > 0) {
+            $tj[] = '充值金额满' . number_format((float) $row['apply_rechargemoney'], 2) . '元';
+        }
+
+        return $tj ? implode(' 或 ', $tj) : '无';
+    }
+
+    /**
+     * 升级条件文案（对齐点大 MemberLevel::index uptj 拼接，仅实现本项目表中存在的字段）
+     */
+    private function buildLevelUpTj(array $row, bool $isDefault, bool $canUp, array $levelMap, array $goodsMap): string
+    {
+        if ($isDefault) {
+            return '默认等级无需升级';
+        }
+        if (!$canUp) {
+            return '不自动升级';
+        }
+
+        $tj = [];
+        $money2 = static fn ($v): string => number_format((float) $v, 2);
+
+        if ((float) ($row['up_wxpaymoney'] ?? 0) > 0) {
+            $tj[] = '微信支付金额满' . $money2($row['up_wxpaymoney']) . '元';
+        }
+        if ((float) ($row['up_ordermoney'] ?? 0) > 0) {
+            $tj[] = '订单金额满' . $money2($row['up_ordermoney']) . '元';
+        }
+        if ((float) ($row['up_rechargemoney'] ?? 0) > 0) {
+            $tj[] = '充值金额满' . $money2($row['up_rechargemoney']) . '元';
+        }
+        if ((float) ($row['up_perpaymoney'] ?? 0) > 0) {
+            $tj[] = '单次消费满' . $money2($row['up_perpaymoney']) . '元';
+        }
+        if ((float) ($row['up_orderprice'] ?? 0) > 0) {
+            $tj[] = '单次订单满' . $money2($row['up_orderprice']) . '元';
+        }
+
+        // 下 N 级[等级]总订单金额满 X 元
+        if ((float) ($row['up_fxordermoney'] ?? 0) > 0) {
+            $n    = trim((string) ($row['up_fxorderlevelnum'] ?? ''));
+            $name = $this->levelNamesFromCsv((string) ($row['up_fxorderlevelid'] ?? ''), $levelMap);
+            $tj[] = '下' . $n . '级' . $name . '总订单金额满' . $money2($row['up_fxordermoney']) . '元';
+        }
+
+        // 下 N 级[等级]总人数满 X 个（三档）
+        foreach (['', '2', '3'] as $suffix) {
+            $cnt = (int) ($row['up_fxdowncount' . $suffix] ?? 0);
+            if ($cnt > 0) {
+                $n    = trim((string) ($row['up_fxdownlevelnum' . $suffix] ?? ''));
+                $name = $this->levelNamesFromCsv((string) ($row['up_fxdownlevelid' . $suffix] ?? ''), $levelMap);
+                $tj[] = '下' . $n . '级' . $name . '总人数满' . $cnt . '个';
+            }
+        }
+
+        if ((int) ($row['up_getmembercard'] ?? 0) === 1) {
+            $tj[] = '领取会员卡';
+        }
+
+        // 购买指定商品总数量到达 N 件
+        $proIdCsv = trim((string) ($row['up_proid'] ?? ''));
+        if ($proIdCsv !== '') {
+            $proIds  = array_values(array_filter(array_map('intval', explode(',', $proIdCsv)), static fn ($v) => $v > 0));
+            $proNums = array_values(array_filter(array_map('intval', explode(',', (string) ($row['up_pronum'] ?? '1'))), static fn ($v) => $v > 0));
+            $names   = [];
+            foreach ($proIds as $pid) {
+                if (isset($goodsMap[$pid])) {
+                    $names[] = $goodsMap[$pid];
+                }
+            }
+            if ($names) {
+                if (count($proNums) <= 1) {
+                    $num  = $proNums[0] ?? 1;
+                    $tj[] = '购买商品[' . implode('+', $names) . '] 总数量到达' . $num . '件';
+                } else {
+                    $line = '';
+                    foreach ($proIds as $i => $pid) {
+                        if (isset($goodsMap[$pid])) {
+                            $line .= '购买商品[' . $goodsMap[$pid] . ']*' . ($proNums[$i] ?? 1) . '；';
+                        }
+                    }
+                    if ('' !== $line) {
+                        $tj[] = rtrim($line, '；');
+                    }
+                }
+            }
+        }
+
+        // 指定分类订单金额满 X 元
+        if (trim((string) ($row['up_catid'] ?? '')) !== '' && (float) ($row['up_cat_ordermoney'] ?? 0) > 0) {
+            $tj[] = '分类订单金额满' . $money2($row['up_cat_ordermoney']) . '元';
+        }
+
+        return $tj ? implode(' 或 ', $tj) : '不自动升级';
+    }
+
+    /**
+     * 提成比例文案（对齐点大 MemberLevel::index commission 拼接）
+     */
+    private function buildLevelCommission(array $row): string
+    {
+        $canAgent = (int) ($row['can_agent'] ?? 0);
+        $unit     = (int) ($row['commissiontype'] ?? 0) === 1 ? '元' : '%';
+        $c        = static fn ($v): string => number_format((float) ($v ?? 0), 2);
+
+        if (1 === $canAgent) {
+            return $c($row['commission1'] ?? 0) . $unit;
+        }
+        if (2 === $canAgent) {
+            return $c($row['commission1'] ?? 0) . $unit . ' / ' . $c($row['commission2'] ?? 0) . $unit;
+        }
+        if (3 === $canAgent) {
+            return $c($row['commission1'] ?? 0) . $unit . ' / ' . $c($row['commission2'] ?? 0) . $unit . ' / ' . $c($row['commission3'] ?? 0) . $unit;
+        }
+        if (99 === $canAgent) {
+            return '递归分销';
+        }
+
+        return '无分销权限';
+    }
+
+    /**
+     * 等级 ID csv 转 [等级名1/等级名2]（点大下级条件展示）
+     */
+    private function levelNamesFromCsv(string $csv, array $levelMap): string
+    {
+        $names = [];
+        foreach (explode(',', $csv) as $v) {
+            $v = (int) trim($v);
+            if ($v > 0 && isset($levelMap[$v]) && '' !== $levelMap[$v]) {
+                $names[] = $levelMap[$v];
+            }
+        }
+
+        return $names ? '[' . implode('/', $names) . ']' : '';
     }
 
     /**
@@ -723,6 +908,7 @@ class MemberAdminService
         $floatFields = [
             'discount', 'up_ordermoney', 'up_rechargemoney', 'up_wxpaymoney', 'up_perpaymoney',
             'up_orderprice', 'up_fxordermoney', 'up_cat_ordermoney',
+            'apply_ordermoney', 'apply_rechargemoney', 'apply_paymoney',
             'commission1', 'commission2', 'commission3', 'commission4', 'commission5', 'commission6',
             'commission_parent', 'commission_parent_pj',
             'fenhong', 'fenhong_max_money', 'teamfenhongbl', 'teamfenhong_money', 'areafenhongbl',
@@ -732,6 +918,7 @@ class MemberAdminService
         $intFields = [
             'id', 'sort', 'isdefault', 'maxnum', 'up_getmembercard', 'can_agent', 'agent_rule',
             'commissionset', 'commissiontype', 'commission_max', 'fx_jinsuo',
+            'can_up', 'can_apply', 'apply_check', 'score1', 'score2', 'score3', 'scoremax',
             'up_fxdowncount', 'up_fxdowncount2', 'up_fxdowncount3',
             'fenhong_num', 'teamfenhonglv', 'areafenhong', 'areafenhongmaxnum', 'up_give_score',
         ];
@@ -741,10 +928,14 @@ class MemberAdminService
             'up_fxdownlevelnum', 'up_fxdownlevelid',
             'up_fxdownlevelnum2', 'up_fxdownlevelid2',
             'up_fxdownlevelnum3', 'up_fxdownlevelid3',
-            'up_proid', 'up_catid', 'gettj', 'commission_appointlevelid',
+            'up_proid', 'up_pronum', 'up_catid', 'gettj', 'commission_appointlevelid',
         ];
 
-        $detail = ['name' => (string) ($row['name'] ?? ''), 'icon' => (string) ($row['icon'] ?? '')];
+        $detail = [
+            'name'         => (string) ($row['name'] ?? ''),
+            'icon'         => (string) ($row['icon'] ?? ''),
+            'apply_paytxt' => (string) ($row['apply_paytxt'] ?? ''),
+        ];
         foreach ($floatFields as $f) {
             $detail[$f] = (float) ($row[$f] ?? 0);
         }
@@ -854,9 +1045,19 @@ class MemberAdminService
             'up_fxdownlevelnum3' => $csvOf($data['up_fxdownlevelnum3'] ?? '', '0'),
             'up_fxdownlevelid3'  => $csvOf($data['up_fxdownlevelid3'] ?? '', '0'),
             'up_proid'           => $csvOf($data['up_proid'] ?? '', ''),
+            'up_pronum'          => $csvOf($data['up_pronum'] ?? '', '1'),
             'up_catid'           => $csvOf($data['up_catid'] ?? '', ''),
             'up_cat_ordermoney'  => $floatOf($data['up_cat_ordermoney'] ?? 0),
             'gettj'              => $csvOf($data['gettj'] ?? '', '-1'),
+
+            // ---- 申请设置组（会员主动申请升级，对齐点大“升级设置”） ----
+            'can_up'             => $flagOf($data['can_up'] ?? 0),
+            'can_apply'          => $flagOf($data['can_apply'] ?? 0),
+            'apply_check'        => $flagOf($data['apply_check'] ?? 0),
+            'apply_ordermoney'   => $floatOf($data['apply_ordermoney'] ?? 0),
+            'apply_rechargemoney' => $floatOf($data['apply_rechargemoney'] ?? 0),
+            'apply_paymoney'     => $floatOf($data['apply_paymoney'] ?? 0),
+            'apply_paytxt'       => trim((string) ($data['apply_paytxt'] ?? '')) ?: '升级费用',
 
             // ---- 分销配置组 ----
             'can_agent'                 => $canAgent,
@@ -874,6 +1075,12 @@ class MemberAdminService
             'commission_appointlevelid' => $csvOf($data['commission_appointlevelid'] ?? '', ''),
             'commission_max'            => $intOf($data['commission_max'] ?? 0),
             'fx_jinsuo'                 => $flagOf($data['fx_jinsuo'] ?? 0),
+
+            // ---- 推荐积分（对齐点大“推荐积分”：一/二/三级 + 每人最高限制） ----
+            'score1'                    => $intOf($data['score1'] ?? 0),
+            'score2'                    => $intOf($data['score2'] ?? 0),
+            'score3'                    => $intOf($data['score3'] ?? 0),
+            'scoremax'                  => $intOf($data['scoremax'] ?? 0),
 
             // ---- 分红配置组 ----
             'fenhong'           => $floatOf($data['fenhong'] ?? 0),
@@ -929,6 +1136,10 @@ class MemberAdminService
         $exists = ScopeService::query('member_level', $aid)->where('id', $id)->find();
         if (empty($exists)) {
             throw new BusinessException('等级不存在', 404, 404);
+        }
+
+        if ((int) ($exists['isdefault'] ?? 0) === 1) {
+            throw new BusinessException('默认等级不能删除');
         }
 
         $used = ScopeService::query('member', $aid)->where('levelid', $id)->count();

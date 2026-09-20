@@ -15,6 +15,10 @@ export interface LevelupOrderItem {
   mid: number
   nickname: string
   headimg: string
+  realname: string
+  pid: number
+  pnickname: string
+  pheadimg: string
   ordernum: string
   title: string
   type: number // 0升级 1降级
@@ -40,6 +44,7 @@ export interface LevelupListQuery {
   orderid?: number | ''
   mid?: number | ''
   nickname?: string
+  realname?: string
   type?: string // all|0|1
   status?: string // all|0|1|2|3
   start_time?: string
@@ -127,6 +132,11 @@ export function auditLevelup(data: { id: number; st: number; remark?: string }) 
     '/admin/memberLevelup/audit',
     data,
   )
+}
+
+// 删除升级申请记录（单条/批量）
+export function deleteLevelup(ids: number[]) {
+  return request.post<unknown, { count: number }>('/admin/memberLevelup/delete', { ids })
 }
 
 /* ================= 会员关系图 ================= */

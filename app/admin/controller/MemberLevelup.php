@@ -39,6 +39,7 @@ class MemberLevelup extends BaseController
             'orderid'    => $this->request->get('orderid', 0),
             'mid'        => $this->request->get('mid', 0),
             'nickname'   => $this->request->get('nickname', ''),
+            'realname'   => $this->request->get('realname', ''),
             'type'       => (string) $this->request->get('type', 'all'),
             'status'     => (string) $this->request->get('status', 'all'),
             'start_time' => $this->request->get('start_time', ''),
@@ -64,5 +65,19 @@ class MemberLevelup extends BaseController
         $result = $this->levelupService->audit($aid, $id, $st, $remark);
 
         return $this->success($result, 2 === $st ? '已通过审核' : '已驳回申请');
+    }
+
+    /**
+     * 删除升级申请记录（单条/批量，对齐点大 applydel）
+     * POST /admin/memberLevelup/delete {ids: number[]}
+     */
+    public function delete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $ids = $this->request->post('ids/a', []);
+        $cnt = $this->levelupService->deleteLevels($aid, is_array($ids) ? $ids : []);
+
+        return $this->success(['count' => $cnt], '删除成功');
     }
 }

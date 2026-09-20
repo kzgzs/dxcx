@@ -2314,6 +2314,13 @@ export interface MemberLevelItem {
   sort: number
   discount: number
   isdefault: number
+  can_apply: number
+  can_up: number
+  can_agent: number
+  applytj: string
+  apply_paymoney: number
+  uptj: string
+  commission: string
   up_ordermoney: number
   up_rechargemoney: number
   up_orderprice: number
@@ -2332,6 +2339,14 @@ export interface MemberLevelSaveParams {
   up_rechargemoney: number
   up_orderprice: number
   maxnum?: number
+  // ---- 申请设置组（主动申请升级） ----
+  can_up?: number
+  can_apply?: number
+  apply_check?: number
+  apply_ordermoney?: number
+  apply_rechargemoney?: number
+  apply_paymoney?: number
+  apply_paytxt?: string
   // ---- 升级条件组（P19-2） ----
   up_wxpaymoney?: number
   up_perpaymoney?: number
@@ -2349,6 +2364,7 @@ export interface MemberLevelSaveParams {
   up_fxdownlevelnum3?: string
   up_fxdownlevelid3?: string
   up_proid?: string
+  up_pronum?: string
   up_catid?: string
   up_cat_ordermoney?: number
   gettj?: string
@@ -2368,6 +2384,11 @@ export interface MemberLevelSaveParams {
   commission_appointlevelid?: string
   commission_max?: number
   fx_jinsuo?: number
+  // ---- 推荐积分（一/二/三级 + 每人最高限制） ----
+  score1?: number
+  score2?: number
+  score3?: number
+  scoremax?: number
   // ---- 分红配置组 ----
   fenhong?: number
   fenhong_num?: number

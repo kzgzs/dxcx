@@ -639,6 +639,7 @@ Route::post('notice/read', 'Notice/read');
 // 会员组 - 升级申请审核（列表过滤/表单解析/通过发奖/驳回退款；任务176）
 Route::get('memberLevelup/list', 'MemberLevelup/list');
 Route::post('memberLevelup/audit', 'MemberLevelup/audit');
+Route::post('memberLevelup/delete', 'MemberLevelup/delete');
 
 // 会员组 - 会员关系图（ECharts tree 数据 + chartsMore 懒加载；任务176）
 Route::get('memberRelation/charts', 'MemberRelation/charts');
