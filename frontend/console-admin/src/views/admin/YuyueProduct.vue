@@ -452,7 +452,7 @@ onMounted(() => {
               <span v-else class="check-reject" :title="row.check_reason">已驳回</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right" align="center" header-align="center">
+          <el-table-column label="操作" width="90" align="center" header-align="center">
             <template #default="{ row }">
               <div class="row-ops">
                 <el-button link type="primary" @click="handleShowLink(row)">查看链接</el-button>

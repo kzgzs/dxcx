@@ -414,7 +414,7 @@ onMounted(() => {
       type="warning"
       :closable="false"
       title="请确保商家余额充足，否则会发放奖励失败"
-      style="margin-bottom: 12px"
+      style="margin-bottom: 3px"
     />
 
     <!-- 操作 + 搜索 同一行 -->
@@ -505,7 +505,7 @@ onMounted(() => {
             <span v-else class="check-wait">待审核</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" width="90" align="center" header-align="center">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -750,7 +750,7 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.toolbar { margin-bottom: 12px; }
+.toolbar { margin-bottom: 3px; }
 .toolbar :deep(.el-card__body) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .toolbar-left .el-button { margin: 0; }

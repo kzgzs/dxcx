@@ -236,11 +236,11 @@ onMounted(() => {
 
 <style scoped>
 .sales-page {
-  padding: 12px;
+  /* 主区域四边边距由 AdminLayout .admin-main 统一 3px，页面不再自带 padding */
 }
 
 .toolbar-card {
-  margin-bottom: 10px;
+  margin-bottom: 3px;
 }
 
 .toolbar-card :deep(.el-card__body) {

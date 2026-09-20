@@ -410,7 +410,7 @@ onMounted(() => {
               <el-tag v-else effect="dark" type="danger">已驳回</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90" fixed="right" align="center" header-align="center">
+          <el-table-column label="操作" width="90" align="center" header-align="center">
             <template #default="{ row }">
               <div class="row-ops">
                 <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
@@ -537,7 +537,7 @@ onMounted(() => {
 
 <style scoped>
 .article-page {
-  padding: 12px;
+  padding: 0;
 }
 /* 工具栏：左操作 / 右搜索，强制一行 */
 .toolbar {

@@ -166,8 +166,15 @@ export function getBusinessMoneyLogList(params: {
   remark?: string
   start?: string
   end?: string
+  field?: string
+  order?: string
 }) {
   return request.get<unknown, BusinessMoneyLogListResult>('/admin/businessMoneyLog/list', { params })
+}
+
+/** 导出余额明细 EXCEL（沿用当前筛选条件，返回二进制 Blob） */
+export function exportBusinessMoneyLog(params: Record<string, unknown>) {
+  return request.get<unknown, Blob>('/admin/businessMoneyLog/excel', { params, responseType: 'blob' })
 }
 
 export function deleteBusinessMoneyLog(ids: number[]) {
@@ -188,6 +195,8 @@ export interface BusinessWithdrawLogItem {
   reason: string
   createtime: number
   paytime: number
+  shop_weixin?: string
+  platform?: string
 }
 
 export interface BusinessWithdrawLogListResult {
@@ -204,8 +213,15 @@ export function getBusinessWithdrawLogList(params: {
   status?: number | ''
   start?: string
   end?: string
+  field?: string
+  order?: string
 }) {
   return request.get<unknown, BusinessWithdrawLogListResult>('/admin/businessWithdrawLog/list', { params })
+}
+
+/** 导出提现记录 EXCEL（沿用当前筛选条件，返回二进制 Blob） */
+export function exportBusinessWithdrawLog(params: Record<string, unknown>) {
+  return request.get<unknown, Blob>('/admin/businessWithdrawLog/excel', { params, responseType: 'blob' })
 }
 
 // st：1=审核通过 2=驳回（返还余额） 3=标记已打款

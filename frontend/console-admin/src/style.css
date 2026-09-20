@@ -16,3 +16,68 @@ body {
 * {
   box-sizing: border-box;
 }
+/* 数字输入框内容统一居左（含编辑页用户ID等） */
+.el-input-number input.el-input__inner {
+  text-align: left !important;
+}
+/* 全站表格表头统一底色（点大规范，旧页/新页一致） */
+.el-table {
+  --el-table-header-bg-color: #e6e6e6;
+}
+/* ===== 全站统一规范 ===== */
+/* 1) 表格一体：禁用 fixed 列浮层（固定列在主表中仍正常渲染，拖宽列不再遮盖内容） */
+.el-table__fixed,
+.el-table__fixed-right {
+  display: none !important;
+}
+/* EP2 新版固定列是 sticky 单元格：取消粘性与投影，整表一体横向滚动（特异性需高于 EP 自带 !important 规则） */
+.el-table .el-table__cell.el-table-fixed-column--left,
+.el-table .el-table__cell.el-table-fixed-column--right {
+  position: static !important;
+  box-shadow: none !important;
+}
+.el-table .el-table-fixed-column--left::before,
+.el-table .el-table-fixed-column--right::before {
+  display: none !important;
+}
+
+/* 2) 细滚动条（宽度为系统默认的约 1/4），菜单列与主区域一致 */
+*::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+*::-webkit-scrollbar:horizontal {
+  height: 5px;
+}
+*::-webkit-scrollbar-thumb {
+  background: #c4c8d0;
+  border-radius: 3px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #a8adb8;
+}
+*::-webkit-scrollbar-track,
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #c4c8d0 transparent;
+}
+
+/* 3) 主区域内卡片（工具栏/搜索栏/表格）项间距 = 主区域四边边距（3px） */
+.admin-main .el-card,
+.layout-main .el-card {
+  margin-bottom: 3px !important;
+}
+.admin-main .el-card:last-child,
+.layout-main .el-card:last-child {
+  margin-bottom: 0 !important;
+}
+/* 4) 操作列按钮排不下时换行显示，不被单元格裁切（全站统一） */
+.op-wrap,
+.op-col,
+.op-grid {
+  flex-wrap: wrap !important;
+  white-space: normal !important;
+}

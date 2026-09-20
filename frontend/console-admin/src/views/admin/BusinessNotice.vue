@@ -245,32 +245,31 @@ onMounted(fetchList)
           <el-button @click="handleSetst(0)">关闭</el-button>
         </div>
         <el-form inline class="bn-search" @submit.prevent>
-          <el-form-item label="账号">
-            <el-input v-model="query.un" placeholder="接收账号" clearable style="width: 130px" @keyup.enter="handleSearch" />
+          <el-form-item>
+            <el-input v-model="query.un" placeholder="账号" clearable style="width: 120px" @keyup.enter="handleSearch" />
           </el-form-item>
-          <el-form-item label="标题">
-            <el-input v-model="query.title" placeholder="标题" clearable style="width: 140px" @keyup.enter="handleSearch" />
+          <el-form-item>
+            <el-input v-model="query.title" placeholder="标题" clearable style="width: 130px" @keyup.enter="handleSearch" />
           </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="query.isread" placeholder="全部" style="width: 96px">
-              <el-option label="全部" :value="''" />
+          <el-form-item>
+            <el-select v-model="query.isread" placeholder="状态" clearable style="width: 92px">
               <el-option label="未读" :value="0" />
               <el-option label="已读" :value="1" />
             </el-select>
           </el-form-item>
-          <el-form-item label="发送时间">
+          <el-form-item>
             <el-date-picker
               v-model="query.timerange"
               type="daterange"
               range-separator="~"
-              start-placeholder="开始"
-              end-placeholder="结束"
+              start-placeholder="发送开始"
+              end-placeholder="发送结束"
               value-format="YYYY-MM-DD"
               style="width: 210px"
             />
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" @click="handleSearch">搜索</el-button>
+            <el-button type="success" @click="handleSearch">搜索</el-button>
           </el-form-item>
         </el-form>
       </div>
@@ -297,7 +296,7 @@ onMounted(fetchList)
             <span :class="row.isread === 1 ? 'bn-read' : 'bn-unread'">{{ row.isread === 1 ? '已读' : '未读' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="操作" width="150">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">查看</el-button>
             <el-button link type="danger" @click="handleDelete([row.id])">删除</el-button>
@@ -362,29 +361,47 @@ onMounted(fetchList)
 
 <style scoped>
 .bn-toolbar-card {
-  margin-bottom: 14px;
+  margin-bottom: 3px;
+}
+.bn-toolbar-card :deep(.el-card__body) {
+  padding: 10px 12px;
 }
 
 .bn-toolbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 8px;
+  flex-wrap: nowrap;
+  gap: 12px;
 }
 
 .bn-actions {
   display: flex;
   gap: 8px;
-  flex-shrink: 0;
+  flex: 0 0 auto;
+}
+
+.bn-actions .el-button {
+  margin: 0;
 }
 
 .bn-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  min-width: 0;
   margin: 0;
 }
 
 .bn-search :deep(.el-form-item) {
   margin-bottom: 0;
+  margin-right: 8px;
+}
+
+.bn-search :deep(.el-form-item:last-child) {
+  margin-right: 0;
 }
 
 .bn-pagination {

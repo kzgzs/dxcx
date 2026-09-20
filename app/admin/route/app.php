@@ -1264,9 +1264,11 @@ Route::get('businessSales/list', 'BusinessSales/list');
 Route::post('businessSales/delete', 'BusinessSales/delete');
 
 Route::get('businessMoneyLog/list', 'BusinessMoneyLog/list');
+Route::get('businessMoneyLog/excel', 'BusinessMoneyLog/excel');
 Route::post('businessMoneyLog/delete', 'BusinessMoneyLog/delete');
 
 Route::get('businessWithdrawLog/list', 'BusinessWithdrawLog/list');
+Route::get('businessWithdrawLog/excel', 'BusinessWithdrawLog/excel');
 Route::post('businessWithdrawLog/setst', 'BusinessWithdrawLog/setst');
 Route::post('businessWithdrawLog/delete', 'BusinessWithdrawLog/delete');
 

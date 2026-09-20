@@ -1030,7 +1030,7 @@ onMounted(() => {
 
 <style scoped>
 .orders-page {
-  padding: 12px;
+  /* 主区域四边边距由 AdminLayout .admin-main 统一 3px，页面不再自带 padding */
 }
 .status-tabs {
   display: flex;
@@ -1039,7 +1039,7 @@ onMounted(() => {
   padding: 0 16px;
   border-radius: 4px;
   border-bottom: 1px solid #ebeef5;
-  margin-bottom: 10px;
+  margin-bottom: 3px;
 }
 .status-tab {
   position: relative;
@@ -1067,7 +1067,7 @@ onMounted(() => {
   border-radius: 2px;
 }
 .filter-card {
-  margin-bottom: 10px;
+  margin-bottom: 3px;
 }
 .filter-card :deep(.el-card__body) {
   padding: 14px 14px 0;
@@ -1111,7 +1111,7 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 10px;
+  margin-bottom: 3px;
 }
 .toolbar-left {
   display: flex;

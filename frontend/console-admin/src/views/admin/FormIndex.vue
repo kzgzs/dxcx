@@ -21,6 +21,7 @@ import { getMemberList } from '../../api/member'
 import type { MemberItem } from '../../api/types'
 import { formatTime } from '../../utils/time'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import LinkAddressModal from '../../components/LinkAddressModal.vue'
 import { areaProvinces } from '../../utils/areaData'
 
 const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
@@ -207,15 +208,15 @@ async function handleDelete(rows: FormItem[]) {
   selected.value = []
   fetchList()
 }
-// 链接小弹窗
+// 链接小弹窗（复用全站链接地址弹窗：二维码/链接地址/页面路径）
 const linkVisible = ref(false)
-const linkUrl = ref('')
+const linkId = ref(0)
+const linkName = ref('')
+const linkPath = computed(() => `pagesD/form/detail?id=${linkId.value}`)
 function openLink(row: FormItem) {
-  linkUrl.value = `${window.location.origin}/#/pagesA/form/index?id=${row.id}`
+  linkId.value = row.id
+  linkName.value = row.name
   linkVisible.value = true
-}
-function copyLink() {
-  navigator.clipboard.writeText(linkUrl.value).then(() => ElMessage.success('链接已复制'))
 }
 
 // ============ 数据列表（平铺） ============
@@ -333,6 +334,12 @@ function openPics(row: FormOrderItem) {
   picList.value = pics.filter(Boolean)
   picVisible.value = true
 }
+/** 单图正方形弹窗（340），每多一张自适应加宽，上限 92vw */
+const picDialogWidth = computed(() => {
+  const n = Math.max(1, picList.value.length)
+  if (n === 1) return '340px'
+  return Math.min(240 * n + 60, Math.round(window.innerWidth * 0.92)) + 'px'
+})
 
 // ============ 数据编辑 / 新增（平铺） ============
 const recId = ref(0)
@@ -501,11 +508,11 @@ onMounted(fetchList)
               <span v-else class="st-end">已结束</span>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="180" fixed="right">
+          <el-table-column label="操作" width="180" class-name="form-ops-cell">
             <template #default="{ row }">
               <!-- 表单列表操作：数据/编辑/链接/删除 横排一行（对照点大）；数据带待处理数角标 -->
               <div class="ops-inline">
-                <el-badge v-if="row.st0count > 0" :value="row.st0count" :max="99" type="danger">
+                <el-badge v-if="row.st0count > 0" :value="row.st0count" :max="99" type="danger" class="data-badge">
                   <el-button link type="primary" @click="openRecord(row)">数据</el-button>
                 </el-badge>
                 <el-button v-else link type="primary" @click="openRecord(row)">数据</el-button>
@@ -688,29 +695,29 @@ onMounted(fetchList)
 
       <div class="rec-toolbar">
         <div class="rec-toolbar-left">
-          <el-button size="small" @click="batchSetst(1)">通过</el-button>
-          <el-button size="small" @click="batchSetst(2)">驳回</el-button>
-          <el-button size="small" @click="batchDel">删除</el-button>
-          <el-button size="small" @click="openRecordAdd">新增</el-button>
-          <el-button size="small" @click="handleExport">导出</el-button>
+          <el-button @click="batchSetst(1)">通过</el-button>
+          <el-button @click="batchSetst(2)">驳回</el-button>
+          <el-button @click="batchDel">删除</el-button>
+          <el-button @click="openRecordAdd">新增</el-button>
+          <el-button @click="handleExport">导出</el-button>
         </div>
         <div class="rec-toolbar-right">
-          <el-input v-model="recQuery.keyword" placeholder="内容" clearable size="small" style="width: 150px" @keyup.enter="handleRecSearch" />
-          <el-date-picker v-model="recQuery.start" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" size="small" style="width: 130px" />
-          <el-date-picker v-model="recQuery.end" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" size="small" style="width: 130px" />
-          <el-select v-model="recQuery.status" placeholder="状态" clearable size="small" style="width: 110px">
+          <el-input v-model="recQuery.keyword" placeholder="内容" clearable style="width: 160px" @keyup.enter="handleRecSearch" />
+          <el-date-picker v-model="recQuery.start" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" style="width: 140px" />
+          <el-date-picker v-model="recQuery.end" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" style="width: 140px" />
+          <el-select v-model="recQuery.status" placeholder="状态" clearable style="width: 110px">
             <el-option label="待处理" value="0" /><el-option label="已确认" value="1" /><el-option label="已驳回" value="2" />
           </el-select>
-          <el-button type="success" class="search-icon-btn" size="small" @click="handleRecSearch">
-            <svg viewBox="0 0 1024 1024" width="14" height="14" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
+          <el-button type="success" class="search-icon-btn" @click="handleRecSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
           </el-button>
         </div>
       </div>
 
       <el-table v-loading="recLoading" :data="recList" border class="rec-table" @selection-change="(rows: FormOrderItem[]) => (recSelected = rows)">
-        <el-table-column type="selection" width="42" fixed="left" />
-        <el-table-column prop="id" label="ID" width="64" fixed="left" />
-        <el-table-column label="头像/昵称" width="140" fixed="left">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="ID" width="64" />
+        <el-table-column label="头像/昵称" width="140">
           <template #default="{ row }">
             <div class="member-cell">
               <el-image v-if="row.headimg" :src="row.headimg" :preview-src-list="[row.headimg]" fit="cover" class="member-avatar" preview-teleported />
@@ -751,7 +758,7 @@ onMounted(fetchList)
             <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160" fixed="right">
+        <el-table-column label="操作" width="160">
           <template #default="{ row }">
             <!-- 数据操作：通过/驳回、查看图片/编辑/删除 横排自动换行（对照点大，非写死竖排） -->
             <div class="ops-wrap">
@@ -858,8 +865,8 @@ onMounted(fetchList)
       </div>
       <div class="rec-toolbar">
         <div class="rec-toolbar-right">
-          <el-input v-model="memberKeyword" placeholder="昵称/手机号" clearable size="small" style="width: 200px" @keyup.enter="(memberPage = 1, fetchMembers())" />
-          <el-button type="success" size="small" @click="(memberPage = 1, fetchMembers())">搜索</el-button>
+          <el-input v-model="memberKeyword" placeholder="昵称/手机号" clearable style="width: 220px" @keyup.enter="(memberPage = 1, fetchMembers())" />
+          <el-button type="success" @click="(memberPage = 1, fetchMembers())">搜索</el-button>
         </div>
       </div>
       <el-table v-loading="memberLoading" :data="memberList" border @row-click="pickMember" class="pick-table">
@@ -879,26 +886,22 @@ onMounted(fetchList)
       />
     </div>
 
-    <!-- 查看图片小弹窗 -->
-    <el-dialog v-model="picVisible" title="查看图片" width="640px" append-to-body>
-      <div class="pic-dialog-imgs">
-        <el-image v-for="(p, i) in picList" :key="i" :src="p" :preview-src-list="picList" fit="contain" class="pic-dialog-img" preview-teleported />
+    <!-- 查看图片小弹窗：单图正方形，多图自适应加宽 -->
+    <el-dialog v-model="picVisible" title="查看图片" :width="picDialogWidth" append-to-body class="pic-dialog">
+      <div class="pic-dialog-imgs" :class="{ 'pic-single': picList.length === 1 }">
+        <el-image v-for="(p, i) in picList" :key="i" :src="p" :preview-src-list="picList" fit="contain" :class="picList.length === 1 ? 'pic-single-img' : 'pic-multi-img'" preview-teleported />
       </div>
     </el-dialog>
 
-    <!-- 链接小弹窗 -->
-    <el-dialog v-model="linkVisible" title="表单链接" width="520px" append-to-body>
-      <el-input v-model="linkUrl" readonly>
-        <template #append><el-button @click="copyLink">复制</el-button></template>
-      </el-input>
-    </el-dialog>
+    <!-- 链接小弹窗（二维码 + 链接地址 + 页面路径，全站统一组件） -->
+    <LinkAddressModal v-model:visible="linkVisible" :name="linkName" :path="linkPath" />
 
     <ImgIconPicker v-model:visible="imgVisible" :multi="imgMulti" default-tab="library" @pick="onImgPick" />
   </div>
 </template>
 
 <style scoped>
-.form-page { padding: 12px; }
+.form-page { padding: 0; }
 .toolbar { margin-bottom: 12px; }
 .toolbar :deep(.el-card__body) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
@@ -919,12 +922,12 @@ onMounted(fetchList)
 .st-end { display: inline-block; padding: 1px 10px; background: #909399; color: #fff; border-radius: 3px; font-size: 12px; }
 
 /* 平铺编辑主区 */
-.ge-box { background: #fff; border-radius: 6px; padding: 16px 20px; }
-.ge-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.ge-head-title { font-size: 15px; font-weight: 600; color: #303133; }
-.ge-close { border: none; background: transparent; color: #909399; }
+.ge-box { background: #fff; border-radius: 6px; padding: 10px 12px; }
+.ge-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; min-height: 28px; }
+.ge-head-title { font-size: 14px; font-weight: 600; color: #303133; line-height: 28px; }
+.ge-close { border: none; background: transparent; color: #909399; width: 26px; height: 26px; min-height: 26px; }
 .ge-close:hover { color: #409eff; background: transparent; }
-.ge-form :deep(.el-form-item) { margin-bottom: 16px; }
+.ge-form :deep(.el-form-item) { margin-bottom: 12px; }
 .ge-hint { color: #909399; font-size: 12px; margin-left: 10px; }
 .comm-tip { color: #909399; font-size: 12px; line-height: 1.6; margin-left: 110px; }
 .tab-footer { display: flex; justify-content: center; gap: 14px; padding: 16px 0 8px; border-top: 1px solid #ebeef5; }
@@ -949,6 +952,27 @@ onMounted(fetchList)
 .rec-img { width: 80px; height: 80px; border-radius: 4px; margin-top: 6px; }
 .rec-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
 .pick-table { cursor: pointer; }
-.pic-dialog-imgs { display: flex; flex-wrap: wrap; gap: 10px; }
-.pic-dialog-img { width: 140px; height: 140px; border-radius: 4px; }
+/* 操作列单元格允许角标溢出显示（el-table .cell 默认 overflow:hidden 会裁掉角标） */
+:deep(.form-ops-cell .cell) {
+  overflow: visible;
+}
+/* 数据待处理角标：小红圆点压在「数据」按钮右上角内（对照点大） */
+.data-badge :deep(.el-badge__content) {
+  height: 14px;
+  line-height: 14px;
+  min-width: 14px;
+  padding: 0;
+  font-size: 10px;
+  font-weight: 700;
+  border: 1px solid #fff;
+  top: -4px;
+  right: -8px;
+  transform: none;
+}/* 查看图片弹窗：单图正方形，多图自适应 */
+.pic-dialog-imgs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
+.pic-dialog :deep(.el-dialog__body) { padding: 14px 20px 20px; }
+.pic-single { width: 300px; height: 300px; }
+.pic-single-img,
+.pic-single :deep(img) { width: 300px !important; height: 300px !important; border-radius: 4px; }
+.pic-multi-img { width: 220px; height: 220px; border-radius: 4px; }
 </style>

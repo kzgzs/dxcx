@@ -149,8 +149,8 @@ onMounted(loadData)
 
 <template>
   <div class="admin-dashboard">
-    <!-- 活动快捷入口 -->
-    <el-row :gutter="16" style="margin-bottom: 16px">
+    <!-- 活动快捷入口：主区域内块间距统一 3px（上下左右） -->
+    <el-row :gutter="3" style="margin-bottom: 3px">
       <el-col :xs="24">
         <el-card shadow="never" class="activity-card">
           <div class="card-title">营销活动</div>
@@ -170,7 +170,7 @@ onMounted(loadData)
     </el-row>
 
     <!-- 运营数据概览卡片（三卡横向） -->
-    <el-row :gutter="16" v-loading="loading">
+    <el-row :gutter="3" v-loading="loading">
       <!-- 卡 1：会员数概览 -->
       <el-col :xs="24" :sm="12" :md="8" :lg="8">
         <el-card shadow="never" class="stat-card">
@@ -242,7 +242,7 @@ onMounted(loadData)
     </el-row>
 
     <!-- 订单状态待办 + 金额概览 -->
-    <el-row :gutter="16" style="margin-top: 16px" v-loading="loading">
+    <el-row :gutter="3" style="margin-top: 3px" v-loading="loading">
       <!-- 订单状态五卡 -->
       <el-col :xs="24" :sm="24" :md="16" :lg="16">
         <el-card shadow="never" class="overview-card">
@@ -283,7 +283,7 @@ onMounted(loadData)
     </el-row>
 
     <!-- 近30天趋势图 -->
-    <el-row style="margin-top: 16px">
+    <el-row style="margin-top: 3px">
       <el-col :xs="24">
         <el-card shadow="never" class="overview-card" v-loading="trendLoading">
           <div class="card-title trend-title-row">

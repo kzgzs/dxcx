@@ -422,7 +422,7 @@ onMounted(() => { fetchSysset(); fetchList() })
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" fixed="right" align="center" header-align="center">
+        <el-table-column label="操作" width="80" align="center" header-align="center">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="handleCopy(row)">复制</el-button>

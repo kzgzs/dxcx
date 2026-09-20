@@ -401,11 +401,11 @@ onMounted(() => {
 
 <style scoped>
 .comment-page {
-  padding: 12px;
+  /* 主区域四边边距由 AdminLayout .admin-main 统一 3px，页面不再自带 padding */
 }
 
 .toolbar-card {
-  margin-bottom: 10px;
+  margin-bottom: 3px;
 }
 
 .toolbar-card :deep(.el-card__body) {
@@ -416,32 +416,39 @@ onMounted(() => {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 8px;
 }
 
 .toolbar-left {
   display: flex;
   gap: 8px;
+  flex: 0 0 auto;
 }
 
 .toolbar-right {
   display: flex;
   gap: 8px;
   align-items: center;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  min-width: 0;
 }
 
 .biz-select {
-  width: 150px;
+  width: 130px;
+  flex: none;
 }
 
 .content-input {
-  width: 170px;
+  width: 150px;
+  flex: none;
 }
 
 .date-range {
-  width: 230px;
+  width: 200px;
+  flex: none;
 }
 
 .commenter {

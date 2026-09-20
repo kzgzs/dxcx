@@ -531,7 +531,8 @@ async function fetchUnreadCount() {
     <!-- 第一列：主菜单（一行一项，可折叠为纯图标窄列） -->
     <aside class="menu-col menu-col--top" :class="{ 'is-narrow': collapsed }">
       <div class="admin-logo" title="回到首页" @click="goDashboard">
-        <span class="admin-logo-text" :class="{ 'is-hidden': collapsed }">鼎极多端</span>
+        <span v-if="collapsed" class="admin-logo-mark">鼎</span>
+        <span v-else class="admin-logo-text">鼎极多端</span>
       </div>
       <div class="top-list">
         <template v-for="item in topMenus" :key="item.key">
@@ -885,6 +886,19 @@ async function fetchUnreadCount() {
 
 .admin-logo-text.is-hidden {
   display: none;
+}
+
+.admin-logo-mark {
+  width: 34px;
+  height: 34px;
+  border-radius: 7px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(var(--primary-rgb));
+  color: #fff;
+  font-size: 18px;
+  font-weight: 700;
 }
 
 .top-list {

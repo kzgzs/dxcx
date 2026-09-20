@@ -673,11 +673,11 @@ onMounted(() => {
 
 <style scoped>
 .sv-page {
-  padding: 12px;
+  /* 主区域四边边距由 AdminLayout .admin-main 统一 3px，页面不再自带 padding */
 }
-/* 工具栏：左操作 / 右搜索，强制一行 */
+/* 工具栏：左操作 / 右搜索，强制一行；主区域块间距 3px */
 .toolbar {
-  margin-bottom: 12px;
+  margin-bottom: 3px;
 }
 .toolbar :deep(.el-card__body) {
   padding: 10px 14px;
