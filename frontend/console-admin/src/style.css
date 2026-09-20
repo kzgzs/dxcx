@@ -74,10 +74,50 @@ body {
 .layout-main .el-card:last-child {
   margin-bottom: 0 !important;
 }
-/* 4) 操作列按钮排不下时换行显示，不被单元格裁切（全站统一） */
-.op-wrap,
-.op-col,
-.op-grid {
+/* 4) 操作列文字按钮：默认横向一行排列，仅在列宽被拖窄到放不下时才整体换行（全站统一，禁止纵向堆叠） */
+.admin-main .el-table .op-wrap,
+.admin-main .el-table .op-col,
+.admin-main .el-table .op-grid,
+.admin-main .el-table .row-ops,
+.layout-main .el-table .op-wrap,
+.layout-main .el-table .op-col,
+.layout-main .el-table .op-grid,
+.layout-main .el-table .row-ops {
+  display: flex !important;
+  flex-direction: row !important;
   flex-wrap: wrap !important;
-  white-space: normal !important;
+  align-items: center !important;
+  justify-content: flex-start !important;
+  gap: 2px 6px !important;
+  white-space: nowrap !important;
+}
+/* 表格单元格内相邻按钮间距收紧，保证操作项一行能放下 */
+.admin-main .el-table .cell .el-button + .el-button,
+.layout-main .el-table .cell .el-button + .el-button {
+  margin-left: 4px !important;
+}
+
+/* 5) 表格与表格块（卡片）边距在默认基础上缩减 3/4，单元格内边距同步收紧 */
+.admin-main .el-card:has(.el-table) > .el-card__body,
+.layout-main .el-card:has(.el-table) > .el-card__body {
+  padding: 5px !important;
+}
+.admin-main .el-card:not(:has(.el-table)) > .el-card__body,
+.layout-main .el-card:not(:has(.el-table)) > .el-card__body {
+  padding: 6px 8px !important;
+}
+.admin-main .el-table .el-table__cell,
+.layout-main .el-table .el-table__cell {
+  padding: 3px 0 !important;
+}
+.admin-main .el-table .cell,
+.layout-main .el-table .cell {
+  padding-left: 6px !important;
+  padding-right: 6px !important;
+}
+
+/* 6) 表格内容（含表头）全部居左 */
+.admin-main .el-table .el-table__cell .cell,
+.layout-main .el-table .el-table__cell .cell {
+  text-align: left !important;
 }

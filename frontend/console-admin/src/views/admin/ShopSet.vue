@@ -276,7 +276,7 @@ onMounted(fetchConfig)
 
 <style scoped>
 .shop-set {
-  padding: 12px;
+  padding: 0;
 }
 
 .set-card {

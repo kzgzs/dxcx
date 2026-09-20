@@ -486,7 +486,7 @@ onMounted(() => {
               <el-tag v-else :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="104" fixed="right" align="center" header-align="center">
+          <el-table-column label="操作" width="320">
             <template #default="{ row }">
               <div class="row-ops">
                 <el-button link type="primary" @click="openEdit(row)">编辑</el-button>

@@ -2,48 +2,74 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { ArrowDown } from '@element-plus/icons-vue'
-import type { FormInstance, FormRules } from 'element-plus'
 import {
+  addMemberCommission,
   addMemberScore,
-  editMember,
+  deleteMembers,
+  exportMembers,
   freezeMember,
   getMemberLevelList,
   getMemberList,
   lockMember,
   rechargeMember,
+  type MemberRow,
 } from '../../api/member'
-import type { MemberItem, MemberLevelItem } from '../../api/types'
+import type { MemberLevelItem } from '../../api/types'
 import { formatTime } from '../../utils/time'
+import { assetUrl } from '../../api/upload'
 import MemberDetail from './MemberDetail.vue'
+import MemberEditPanel from './member/MemberEditPanel.vue'
+import MemberShopOrdersPanel from './member/MemberShopOrdersPanel.vue'
+import MemberCouponsPanel from './member/MemberCouponsPanel.vue'
+import MemberFenxiaoPanel from './member/MemberFenxiaoPanel.vue'
+
+type PanelKind = '' | 'edit' | 'orders' | 'coupons' | 'fenxiao'
 
 // ============ 列表 ============
 const loading = ref(false)
-const tableData = ref<MemberItem[]>([])
+const tableData = ref<MemberRow[]>([])
 const total = ref(0)
+const selectedRows = ref<MemberRow[]>([])
 
 const query = reactive({
   page: 1,
   pagesize: 10,
+  id: '' as number | '',
   keyword: '',
+  pid: '' as number | '',
   levelid: '' as number | '',
+  hascard: '' as '' | '1' | '2',
+  field: 'id',
+  order: 'desc' as 'asc' | 'desc',
   timeRange: null as [string, string] | null,
 })
+
+const levelOptions = ref<MemberLevelItem[]>([])
+
+function buildParams() {
+  return {
+    page: query.page,
+    pagesize: query.pagesize,
+    id: query.id === '' ? undefined : Number(query.id),
+    keyword: query.keyword || undefined,
+    pid: query.pid === '' ? undefined : Number(query.pid),
+    levelid: query.levelid === '' ? undefined : Number(query.levelid),
+    hascard: query.hascard || undefined,
+    field: query.field,
+    order: query.order,
+    start_time: query.timeRange?.[0] || undefined,
+    end_time: query.timeRange?.[1] || undefined,
+  }
+}
 
 async function fetchList() {
   loading.value = true
   try {
-    const data = await getMemberList({
-      page: query.page,
-      pagesize: query.pagesize,
-      keyword: query.keyword || undefined,
-      levelid: query.levelid === '' ? undefined : query.levelid,
-      start_time: query.timeRange?.[0] || undefined,
-      end_time: query.timeRange?.[1] || undefined,
-    })
+    const data = await getMemberList(buildParams())
     tableData.value = data.list || []
     total.value = data.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 错误由拦截器统一提示
   } finally {
     loading.value = false
   }
@@ -53,193 +79,211 @@ function handleSearch() {
   query.page = 1
   fetchList()
 }
-
 function handleReset() {
+  query.id = ''
   query.keyword = ''
+  query.pid = ''
   query.levelid = ''
+  query.hascard = ''
+  query.field = 'id'
+  query.order = 'desc'
   query.timeRange = null
   query.page = 1
   fetchList()
 }
-
-function handlePageChange(page: number) {
-  query.page = page
+function handlePageChange(p: number) {
+  query.page = p
   fetchList()
 }
-
-function handleSizeChange(size: number) {
-  query.pagesize = size
+function handleSizeChange(s: number) {
+  query.pagesize = s
   query.page = 1
   fetchList()
 }
-
-// ============ 等级下拉（筛选 + 编辑共用） ============
-const levelOptions = ref<MemberLevelItem[]>([])
+function onSortChange({ prop, order }: { prop: string; order: string | null }) {
+  if (!prop || !order) return
+  query.field = prop
+  query.order = order === 'ascending' ? 'asc' : 'desc'
+  fetchList()
+}
+function onSelectionChange(rows: MemberRow[]) {
+  selectedRows.value = rows
+}
 
 async function fetchLevels() {
   try {
     const data = await getMemberLevelList()
     levelOptions.value = data.list || []
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 忽略
   }
 }
 
-// ============ 详情抽屉 ============
-const detailRef = ref<InstanceType<typeof MemberDetail>>()
+// ============ 列设置 ============
+const colVisible = reactive({
+  parent: true,
+  info: true,
+  money: true,
+  score: true,
+  commission: true,
+  createtime: true,
+})
 
-function openDetail(row: MemberItem) {
+// ============ 平铺面板（编辑 / 商城订单 / 优惠券 / 分销订单） ============
+const activePanel = ref<PanelKind>('')
+const activeRow = ref<MemberRow | null>(null)
+
+function openPanel(kind: PanelKind, row: MemberRow) {
+  activeRow.value = row
+  activePanel.value = kind
+}
+function closePanel() {
+  activePanel.value = ''
+  activeRow.value = null
+  fetchList()
+}
+
+// ============ 详情抽屉 / 冻结 / 锁定 ============
+const detailRef = ref<InstanceType<typeof MemberDetail>>()
+function openDetail(row: MemberRow) {
   detailRef.value?.open(row.id)
 }
-
-// ============ 编辑弹窗 ============
-const editVisible = ref(false)
-const editSubmitting = ref(false)
-const editFormRef = ref<FormInstance>()
-
-const editForm = reactive({
-  id: 0,
-  nickname: '',
-  tel: '',
-  levelid: 0,
-  levelendtime: '',
-  remark: '',
-})
-
-const editRules: FormRules = {
-  nickname: [{ required: true, message: '请输入昵称', trigger: 'blur' }],
-  tel: [
-    {
-      validator: (_rule, value, callback) => {
-        if (value && !/^1\d{10}$/.test(value)) {
-          callback(new Error('手机号格式不正确'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur',
-    },
-  ],
+async function handleFreeze(row: MemberRow) {
+  const next = row.isfreeze === 1 ? '解冻' : '冻结'
+  try {
+    await ElMessageBox.confirm(`确定要${next}会员「${row.nickname || row.id}」吗？`, `${next}确认`, { type: 'warning' })
+  } catch {
+    return
+  }
+  const data = await freezeMember(row.id)
+  row.isfreeze = data.isfreeze
+  ElMessage.success(`已${next}`)
+}
+async function handleLock(row: MemberRow) {
+  const next = row.islock === 1 ? '解锁' : '锁定'
+  try {
+    await ElMessageBox.confirm(`确定要${next}会员「${row.nickname || row.id}」吗？`, `${next}确认`, { type: 'warning' })
+  } catch {
+    return
+  }
+  const data = await lockMember(row.id)
+  row.islock = data.islock
+  ElMessage.success(`已${next}`)
 }
 
-function openEdit(row: MemberItem) {
-  Object.assign(editForm, {
-    id: row.id,
-    nickname: row.nickname,
-    tel: row.tel,
-    levelid: row.levelid,
-    levelendtime: '',
-    remark: row.remark,
-  })
-  editVisible.value = true
+// ============ 删除（单个 / 批量） ============
+async function handleDelete(row: MemberRow) {
+  try {
+    await ElMessageBox.confirm(`确认删除会员「${row.nickname || row.id}」？删除后会员资料将不可恢复（订单与资金流水保留）。`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      confirmButtonClass: 'el-button--danger',
+    })
+  } catch {
+    return
+  }
+  const res = await deleteMembers([row.id])
+  ElMessage.success(`已删除 ${res.count} 个会员`)
+  fetchList()
+}
+async function handleBatchDelete() {
+  const ids = selectedRows.value.map((r) => r.id)
+  if (!ids.length) {
+    ElMessage.warning('请先勾选会员')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 个会员？删除后会员资料将不可恢复（订单与资金流水保留）。`, '批量删除', {
+      type: 'warning',
+      confirmButtonText: '删除',
+      confirmButtonClass: 'el-button--danger',
+    })
+  } catch {
+    return
+  }
+  const res = await deleteMembers(ids)
+  ElMessage.success(`已删除 ${res.count} 个会员`)
+  fetchList()
 }
 
-async function handleEditSubmit() {
-  if (!editFormRef.value) return
-  await editFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    editSubmitting.value = true
-    try {
-      await editMember({
-        id: editForm.id,
-        nickname: editForm.nickname,
-        tel: editForm.tel,
-        levelid: editForm.levelid,
-        levelendtime: editForm.levelendtime || undefined,
-        remark: editForm.remark,
-      })
-      ElMessage.success('保存成功')
-      editVisible.value = false
-      fetchList()
-    } catch {
-      // 错误提示已由 axios 拦截器统一弹出
-    } finally {
-      editSubmitting.value = false
-    }
-  })
+// ============ 导出 ============
+const exporting = ref(false)
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+async function handleExport() {
+  if (exporting.value) return
+  exporting.value = true
+  try {
+    const blob = await exportMembers(buildParams() as Record<string, unknown>)
+    downloadBlob(blob, `会员列表_${Date.now()}.xlsx`)
+  } finally {
+    exporting.value = false
+  }
 }
 
-// ============ 充值弹窗（金额可负 + 二次确认） ============
+// ============ 充值小弹窗 ============
 const rechargeVisible = ref(false)
 const rechargeSubmitting = ref(false)
-const rechargeTarget = ref<MemberItem | null>(null)
-
-const rechargeForm = reactive({
-  money: undefined as number | undefined,
-  remark: '',
-})
-
-function openRecharge(row: MemberItem) {
+const rechargeTarget = ref<MemberRow | null>(null)
+const rechargeForm = reactive({ money: undefined as number | undefined, paytype: 'wxpay', remark: '' })
+const paytypeOptions = [
+  { value: 'wxpay', label: '微信支付' },
+  { value: 'cash', label: '现金支付' },
+  { value: 'alipay', label: '支付宝支付' },
+]
+function openRecharge(row: MemberRow) {
   rechargeTarget.value = row
   rechargeForm.money = undefined
+  rechargeForm.paytype = 'wxpay'
   rechargeForm.remark = ''
   rechargeVisible.value = true
 }
-
 async function handleRechargeSubmit() {
   const target = rechargeTarget.value
   const money = Number(rechargeForm.money)
   if (!target) return
   if (!Number.isFinite(money) || money === 0) {
-    ElMessage.warning('请输入不为 0 的金额（正数充值，负数扣费）')
-    return
-  }
-  const action = money > 0 ? '充值' : '扣费'
-  try {
-    await ElMessageBox.confirm(
-      `确定要给会员「${target.nickname || target.id}」${action} ¥${Math.abs(money).toFixed(2)} 吗？当前余额 ¥${target.money.toFixed(2)}。`,
-      `${action}确认`,
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
+    ElMessage.warning('请输入不为 0 的金额')
     return
   }
   rechargeSubmitting.value = true
   try {
-    await rechargeMember({ id: target.id, money, remark: rechargeForm.remark || undefined })
-    ElMessage.success(`${action}成功`)
+    await rechargeMember({ id: target.id, money, paytype: rechargeForm.paytype, remark: rechargeForm.remark || undefined })
+    ElMessage.success(money > 0 ? '充值成功' : '扣费成功')
     rechargeVisible.value = false
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器提示
   } finally {
     rechargeSubmitting.value = false
   }
 }
 
-// ============ 积分调整弹窗（可负 + 二次确认） ============
+// ============ 加积分小弹窗 ============
 const scoreVisible = ref(false)
 const scoreSubmitting = ref(false)
-const scoreTarget = ref<MemberItem | null>(null)
-
-const scoreForm = reactive({
-  score: undefined as number | undefined,
-  remark: '',
-})
-
-function openScore(row: MemberItem) {
+const scoreTarget = ref<MemberRow | null>(null)
+const scoreForm = reactive({ score: undefined as number | undefined, remark: '' })
+function openScore(row: MemberRow) {
   scoreTarget.value = row
   scoreForm.score = undefined
   scoreForm.remark = ''
   scoreVisible.value = true
 }
-
 async function handleScoreSubmit() {
   const target = scoreTarget.value
   const score = Number(scoreForm.score)
   if (!target) return
   if (!Number.isInteger(score) || score === 0) {
-    ElMessage.warning('请输入不为 0 的整数积分（正数增加，负数扣减）')
-    return
-  }
-  const action = score > 0 ? '增加' : '扣减'
-  try {
-    await ElMessageBox.confirm(
-      `确定要给会员「${target.nickname || target.id}」${action} ${Math.abs(score)} 积分吗？当前积分 ${target.score}。`,
-      '积分调整确认',
-      { confirmButtonText: '确定', cancelButtonText: '取消', type: 'warning' },
-    )
-  } catch {
+    ElMessage.warning('请输入不为 0 的整数积分')
     return
   }
   scoreSubmitting.value = true
@@ -249,63 +293,52 @@ async function handleScoreSubmit() {
     scoreVisible.value = false
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器提示
   } finally {
     scoreSubmitting.value = false
   }
 }
 
-// ============ 冻结 / 锁定（更多下拉） ============
-async function handleFreeze(row: MemberItem) {
-  const next = row.isfreeze === 1 ? '解冻' : '冻结'
-  try {
-    await ElMessageBox.confirm(`确定要${next}会员「${row.nickname || row.id}」吗？`, `${next}确认`, {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
+// ============ 加佣金小弹窗 ============
+const commissionVisible = ref(false)
+const commissionSubmitting = ref(false)
+const commissionTarget = ref<MemberRow | null>(null)
+const commissionForm = reactive({ commission: undefined as number | undefined, remark: '' })
+function openCommission(row: MemberRow) {
+  commissionTarget.value = row
+  commissionForm.commission = undefined
+  commissionForm.remark = ''
+  commissionVisible.value = true
+}
+async function handleCommissionSubmit() {
+  const target = commissionTarget.value
+  const commission = Number(commissionForm.commission)
+  if (!target) return
+  if (!Number.isFinite(commission) || commission === 0) {
+    ElMessage.warning('请输入不为 0 的金额')
     return
   }
+  commissionSubmitting.value = true
   try {
-    const data = await freezeMember(row.id)
-    row.isfreeze = data.isfreeze
-    ElMessage.success(`已${next}`)
+    await addMemberCommission({ id: target.id, commission, remark: commissionForm.remark || undefined })
+    ElMessage.success(commission > 0 ? '加佣金成功' : '扣佣金成功')
+    commissionVisible.value = false
+    fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器提示
+  } finally {
+    commissionSubmitting.value = false
   }
 }
 
-async function handleLock(row: MemberItem) {
-  const next = row.islock === 1 ? '解锁' : '锁定'
-  try {
-    await ElMessageBox.confirm(`确定要${next}会员「${row.nickname || row.id}」吗？`, `${next}确认`, {
-      confirmButtonText: '确定',
-      cancelButtonText: '取消',
-      type: 'warning',
-    })
-  } catch {
-    return
+// ============ 展示辅助 ============
+function platformText(p?: string): string {
+  if (!p) return '--'
+  const m: Record<string, string> = {
+    wx: '微信小程序', wechat: '微信小程序', h5: 'H5', wap: 'H5', api: 'H5',
+    app: 'APP', admin: '后台下单', backend: '后台下单',
   }
-  try {
-    const data = await lockMember(row.id)
-    row.islock = data.islock
-    ElMessage.success(`已${next}`)
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  }
-}
-
-function handleMoreCommand(cmd: string, row: MemberItem) {
-  if (cmd === 'freeze') handleFreeze(row)
-  if (cmd === 'lock') handleLock(row)
-}
-
-// 时间列短格式（悬浮 tooltip 显示完整时间）
-function shortDate(ts: number): string {
-  if (!ts) return '-'
-  const full = formatTime(ts)
-  return full.length >= 10 ? full.slice(2, 10) : full
+  return m[p] || p
 }
 
 onMounted(() => {
@@ -315,243 +348,231 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
-    <!-- 搜索工具栏 -->
-    <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="query.keyword"
-            placeholder="ID / 昵称 / 手机号 / 姓名"
-            clearable
-            style="width: 190px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="等级">
-          <el-select v-model="query.levelid" placeholder="全部" clearable style="width: 130px">
+  <div class="member-page">
+    <!-- ============ 列表视图 ============ -->
+    <template v-if="!activePanel">
+      <!-- 搜索行 -->
+      <el-card shadow="never" class="toolbar-card">
+        <div class="search-line">
+          <el-input v-model.number="query.id" placeholder="ID" clearable class="w80" @keyup.enter="handleSearch" />
+          <el-input v-model="query.keyword" placeholder="昵称/姓名/手机号" clearable class="w170" @keyup.enter="handleSearch" />
+          <el-input v-model.number="query.pid" placeholder="推荐人ID" clearable class="w100" @keyup.enter="handleSearch" />
+          <el-select v-model="query.levelid" placeholder="等级" clearable class="w120">
             <el-option v-for="lv in levelOptions" :key="lv.id" :label="lv.name" :value="lv.id" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="注册时间">
+          <el-select v-model="query.hascard" placeholder="是否领卡" clearable class="w110">
+            <el-option label="已领卡" value="1" />
+            <el-option label="未领卡" value="2" />
+          </el-select>
           <el-date-picker
             v-model="query.timeRange"
             type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
             value-format="YYYY-MM-DD"
-            style="width: 240px"
+            range-separator="-"
+            start-placeholder="加入开始"
+            end-placeholder="加入结束"
+            class="date-range"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
+          <el-button type="success" @click="handleSearch">搜索</el-button>
           <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+        </div>
+      </el-card>
 
-    <!-- 会员列表（border 竖线 + 紧凑列宽，1366 无横向滚动） -->
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe border size="small">
-        <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-        <el-table-column label="会员" min-width="130" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div class="member-cell">
-              <el-avatar :size="26" :src="row.headimg || undefined">
-                {{ (row.nickname || '会').slice(0, 1) }}
-              </el-avatar>
-              <span class="member-name">{{ row.nickname || `会员${row.id}` }}</span>
+      <!-- 工具栏行 -->
+      <el-card shadow="never" class="toolbar-card">
+        <div class="tools-line">
+          <div class="tools-left">
+            <el-button type="danger" @click="handleBatchDelete">删除</el-button>
+            <el-button :loading="exporting" @click="handleExport">导出</el-button>
+          </div>
+          <el-popover placement="bottom-end" :width="150" trigger="click">
+            <template #reference>
+              <el-button circle class="col-set-btn" title="列设置">
+                <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M930.133333 490.666667h-72.533333a42.666667 42.666667 0 0 1 0-85.333334h72.533333a42.666667 42.666667 0 0 1 0 85.333334zM810.666667 768a42.666667 42.666667 0 0 0-85.333334 0v42.666667a42.666667 42.666667 0 0 0 85.333334 0v-42.666667z m0-554.666667a42.666667 42.666667 0 0 0-85.333334 0v192a42.666667 42.666667 0 0 0 85.333334 0V213.333333zM490.666667 857.6a42.666667 42.666667 0 0 0-85.333334 0v42.666667a42.666667 42.666667 0 0 0 85.333334 0v-42.666667z m0-234.666667a42.666667 42.666667 0 0 0-85.333334 0v277.333334a42.666667 42.666667 0 0 0 85.333334 0V622.933333z m0-320a42.666667 42.666667 0 0 0-85.333334 0v362.666667a42.666667 42.666667 0 0 0 85.333334 0V302.933333z m0-234.666666a42.666667 42.666667 0 0 0-85.333334 0v277.333333a42.666667 42.666667 0 0 0 85.333334 0V68.266667zM213.333333 490.666667a42.666667 42.666667 0 0 0 0-85.333334H93.866667a42.666667 42.666667 0 0 0 0 85.333334h119.466666z m85.333334 277.333333a42.666667 42.666667 0 0 0-85.333334 0v42.666667a42.666667 42.666667 0 0 0 85.333334 0v-42.666667z m0-554.666667a42.666667 42.666667 0 0 0-85.333334 0v192a42.666667 42.666667 0 0 0 85.333334 0V213.333333z" /></svg>
+              </el-button>
+            </template>
+            <div class="col-set-pop">
+              <el-checkbox v-model="colVisible.parent">推荐人</el-checkbox>
+              <el-checkbox v-model="colVisible.info">其他信息</el-checkbox>
+              <el-checkbox v-model="colVisible.money">余额</el-checkbox>
+              <el-checkbox v-model="colVisible.score">积分</el-checkbox>
+              <el-checkbox v-model="colVisible.commission">佣金</el-checkbox>
+              <el-checkbox v-model="colVisible.createtime">加入时间</el-checkbox>
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="tel" label="手机号" width="108" class-name="compact-col">
-          <template #default="{ row }">{{ row.tel || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="level_name" label="等级" width="76" class-name="compact-col" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.level_name || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="余额" width="82" class-name="compact-col">
-          <template #default="{ row }">{{ Number(row.money).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="score" label="积分" width="66" class-name="compact-col" />
-        <el-table-column prop="buynum" label="消费次数" width="76" class-name="compact-col" />
-        <el-table-column label="消费金额" width="86" class-name="compact-col">
-          <template #default="{ row }">{{ Number(row.buymoney).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="注册时间" width="88" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ shortDate(row.createtime) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="最后访问" width="88" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.last_visittime" :content="formatTime(row.last_visittime)" placement="top">
-              <span>{{ shortDate(row.last_visittime) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="72" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tag v-if="row.isfreeze === 1" type="danger" size="small">冻结</el-tag>
-            <el-tag v-else-if="row.islock === 1" type="info" size="small">锁定</el-tag>
-            <span v-else class="status-on">正常</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="196" fixed="right" class-name="compact-col">
-          <template #default="{ row }">
-            <div class="op-wrap">
-              <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-              <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button link type="primary" @click="openRecharge(row)">充值</el-button>
-              <el-button link type="primary" @click="openScore(row)">积分</el-button>
-              <el-dropdown trigger="click" @command="(cmd: string) => handleMoreCommand(cmd, row)">
-                <el-button link type="primary">
-                  更多<el-icon class="more-arrow"><ArrowDown /></el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="freeze">
-                      {{ row.isfreeze === 1 ? '解冻' : '冻结' }}
-                    </el-dropdown-item>
-                    <el-dropdown-item command="lock">
-                      {{ row.islock === 1 ? '解锁' : '锁定' }}
-                    </el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
+          </el-popover>
+        </div>
+      </el-card>
 
-      <el-pagination
-        class="pagination"
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :current-page="query.page"
-        :page-size="query.pagesize"
-        :page-sizes="[10, 20, 50, 100]"
-        @current-change="handlePageChange"
-        @size-change="handleSizeChange"
-      />
-    </el-card>
+      <!-- 表格 -->
+      <el-card shadow="never" class="table-card">
+        <el-table
+          v-loading="loading"
+          :data="tableData"
+          border
+          size="small"
+          row-key="id"
+          @selection-change="onSelectionChange"
+          @sort-change="onSortChange"
+        >
+          <el-table-column type="selection" width="40" align="center" />
+          <el-table-column prop="id" label="ID" width="70" sortable="custom" align="center" />
+          <el-table-column v-if="colVisible.parent" label="推荐人" width="100" align="center">
+            <template #default="{ row }">
+              <span v-if="row.pid">{{ row.parent_nickname || row.pid }}</span>
+              <span v-else class="muted">无</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="头像/昵称" min-width="150">
+            <template #default="{ row }">
+              <div class="member-cell">
+                <el-avatar :size="34" :src="row.headimg ? assetUrl(row.headimg) : undefined">{{ (row.nickname || '会').slice(0, 1) }}</el-avatar>
+                <div class="member-meta">
+                  <el-button link type="primary" class="name-link" @click="openDetail(row)">
+                    {{ row.nickname || `会员${row.id}` }}
+                  </el-button>
+                  <div class="state-tags">
+                    <el-tag v-if="row.isfreeze === 1" type="danger" size="small" disable-transitions>冻结</el-tag>
+                    <el-tag v-if="row.islock === 1" type="info" size="small" disable-transitions>锁定</el-tag>
+                  </div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="colVisible.info" label="其他信息" min-width="220">
+            <template #default="{ row }">
+              <div class="info-lines">
+                <div><span class="il-label">等级：</span>{{ row.level_name || '-' }}</div>
+                <div><span class="il-label">来源：</span>{{ platformText(row.platform) }}</div>
+                <div>
+                  <span class="il-label">优惠券：</span>
+                  <el-button link type="primary" class="il-link" @click="openPanel('coupons', row)">{{ row.coupon_count }}</el-button>
+                </div>
+                <div>
+                  <span class="il-label">会员卡：</span>
+                  <span :class="row.has_card ? 'text-success' : 'muted'">{{ row.has_card ? '已领取' : '未领取' }}</span>
+                </div>
+                <div><span class="il-label">姓名：</span>{{ row.realname || '-' }}</div>
+                <div><span class="il-label">电话：</span>{{ row.tel || '-' }}</div>
+                <div>
+                  <span class="il-label">公众号：</span>
+                  <span :class="row.subscribe === 1 ? 'text-success' : 'muted'">{{ row.subscribe === 1 ? '已关注' : '未关注' }}</span>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column v-if="colVisible.money" prop="money" label="余额" width="90" sortable="custom" align="right">
+            <template #default="{ row }">{{ Number(row.money).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column v-if="colVisible.score" prop="score" label="积分" width="80" sortable="custom" align="right" />
+          <el-table-column v-if="colVisible.commission" prop="commission" label="佣金" width="90" sortable="custom" align="right">
+            <template #default="{ row }">{{ Number(row.commission).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column v-if="colVisible.createtime" prop="createtime" label="加入时间" width="155" sortable="custom">
+            <template #default="{ row }">{{ row.createtime ? formatTime(row.createtime) : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="282">
+            <template #default="{ row }">
+              <div class="op-rows">
+                <div class="op-row">
+                  <el-button link type="primary" size="small" @click="openRecharge(row)">充值</el-button>
+                  <el-button link type="primary" size="small" @click="openScore(row)">加积分</el-button>
+                  <el-button link type="primary" size="small" @click="openCommission(row)">加佣金</el-button>
+                  <el-button link type="primary" size="small" @click="openPanel('orders', row)">商城订单</el-button>
+                  <el-button link type="primary" size="small" @click="openPanel('edit', row)">编辑</el-button>
+                  <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+                </div>
+                <div class="op-row">
+                  <el-button link type="primary" size="small" @click="openPanel('coupons', row)">优惠券</el-button>
+                  <el-button link type="primary" size="small" @click="openPanel('fenxiao', row)">分销订单</el-button>
+                  <el-dropdown trigger="click" placement="bottom-start" @command="(cmd: string) => cmd === 'freeze' ? handleFreeze(row) : cmd === 'lock' ? handleLock(row) : openDetail(row)">
+                    <el-button link type="primary" size="small">更多<el-icon class="more-arrow"><ArrowDown /></el-icon></el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="detail">详情</el-dropdown-item>
+                        <el-dropdown-item command="freeze">{{ row.isfreeze === 1 ? '解冻' : '冻结' }}</el-dropdown-item>
+                        <el-dropdown-item command="lock">{{ row.islock === 1 ? '解锁' : '锁定' }}</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
 
-    <!-- 编辑弹窗 -->
-    <el-dialog v-model="editVisible" title="编辑会员" width="460px">
-      <el-form
-        ref="editFormRef"
-        :model="editForm"
-        :rules="editRules"
-        label-width="90px"
-        label-position="left"
-      >
-        <el-form-item label="昵称" prop="nickname">
-          <el-input v-model="editForm.nickname" placeholder="请输入昵称" />
-        </el-form-item>
-        <el-form-item label="手机号" prop="tel">
-          <el-input v-model="editForm.tel" placeholder="请输入手机号" />
-        </el-form-item>
-        <el-form-item label="会员等级">
-          <el-select v-model="editForm.levelid" style="width: 100%">
-            <el-option label="普通会员（无等级）" :value="0" />
-            <el-option v-for="lv in levelOptions" :key="lv.id" :label="lv.name" :value="lv.id" />
+        <el-pagination
+          class="pagination"
+          background
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          :current-page="query.page"
+          :page-size="query.pagesize"
+          :page-sizes="[10, 20, 50]"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </el-card>
+    </template>
+
+    <!-- ============ 平铺面板 ============ -->
+    <MemberEditPanel v-else-if="activePanel === 'edit' && activeRow" :key="'edit-' + activeRow.id" :id="activeRow.id" @close="closePanel" @saved="closePanel" />
+    <MemberShopOrdersPanel v-else-if="activePanel === 'orders' && activeRow" :key="'orders-' + activeRow.id" :mid="activeRow.id" @close="closePanel" />
+    <MemberCouponsPanel v-else-if="activePanel === 'coupons' && activeRow" :key="'coupons-' + activeRow.id" :mid="activeRow.id" :member="{ headimg: activeRow.headimg, nickname: activeRow.nickname }" @close="closePanel" />
+    <MemberFenxiaoPanel v-else-if="activePanel === 'fenxiao' && activeRow" :key="'fenxiao-' + activeRow.id" :mid="activeRow.id" @close="closePanel" />
+
+    <!-- ============ 充值小弹窗 ============ -->
+    <el-dialog v-model="rechargeVisible" title="余额充值" width="460px">
+      <el-form label-width="80px" label-position="right">
+        <el-form-item label="充值方式">
+          <el-select v-model="rechargeForm.paytype" style="width: 220px">
+            <el-option v-for="p in paytypeOptions" :key="p.value" :label="p.label" :value="p.value" />
           </el-select>
         </el-form-item>
-        <el-form-item label="等级到期">
-          <el-date-picker
-            v-model="editForm.levelendtime"
-            type="date"
-            value-format="YYYY-MM-DD"
-            placeholder="留空为永久"
-            style="width: 100%"
-          />
+        <el-form-item label="充值金额" required>
+          <el-input-number v-model="rechargeForm.money" :precision="2" :step="10" controls-position="right" style="width: 220px" />
+          <span class="field-hint">输入负值表示扣除金额</span>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input
-            v-model="editForm.remark"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入备注"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" :loading="editSubmitting" @click="handleEditSubmit">
-          保存
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 充值 / 扣费弹窗 -->
-    <el-dialog v-model="rechargeVisible" title="余额充值 / 扣费" width="420px">
-      <div v-if="rechargeTarget" class="adjust-tip">
-        会员：{{ rechargeTarget.nickname || `会员${rechargeTarget.id}` }}
-        ｜ 当前余额：¥ {{ rechargeTarget.money.toFixed(2) }}
-      </div>
-      <el-form label-width="70px" label-position="left">
-        <el-form-item label="金额" required>
-          <el-input-number
-            v-model="rechargeForm.money"
-            :precision="2"
-            :step="10"
-            placeholder="正数充值，负数扣费"
-            style="width: 100%"
-          />
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input
-            v-model="rechargeForm.remark"
-            type="textarea"
-            :rows="2"
-            placeholder="留空默认：后台充值 / 后台扣费"
-          />
+          <el-input v-model="rechargeForm.remark" type="textarea" :rows="2" maxlength="255" placeholder="选填" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="rechargeVisible = false">取消</el-button>
-        <el-button type="primary" :loading="rechargeSubmitting" @click="handleRechargeSubmit">
-          确定
-        </el-button>
+        <el-button type="primary" :loading="rechargeSubmitting" @click="handleRechargeSubmit">确定充值</el-button>
       </template>
     </el-dialog>
 
-    <!-- 积分调整弹窗 -->
-    <el-dialog v-model="scoreVisible" title="积分调整" width="420px">
-      <div v-if="scoreTarget" class="adjust-tip">
-        会员：{{ scoreTarget.nickname || `会员${scoreTarget.id}` }}
-        ｜ 当前积分：{{ scoreTarget.score }}
-      </div>
-      <el-form label-width="70px" label-position="left">
-        <el-form-item label="积分" required>
-          <el-input-number
-            v-model="scoreForm.score"
-            :precision="0"
-            :step="10"
-            placeholder="正数增加，负数扣减"
-            style="width: 100%"
-          />
+    <!-- ============ 加积分小弹窗（无标题，右上 X） ============ -->
+    <el-dialog v-model="scoreVisible" width="420px">
+      <el-form label-width="80px" label-position="right">
+        <el-form-item label="增加数量" required>
+          <el-input-number v-model="scoreForm.score" :precision="0" :step="10" controls-position="right" style="width: 220px" />
+          <span class="field-hint">输入负值表示扣除积分</span>
         </el-form-item>
-        <el-form-item label="备注">
-          <el-input
-            v-model="scoreForm.remark"
-            type="textarea"
-            :rows="2"
-            placeholder="留空默认：后台加积分 / 后台扣积分"
-          />
+        <el-form-item label="备注信息">
+          <el-input v-model="scoreForm.remark" type="textarea" :rows="2" maxlength="255" placeholder="选填" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="scoreVisible = false">取消</el-button>
-        <el-button type="primary" :loading="scoreSubmitting" @click="handleScoreSubmit">
-          确定
-        </el-button>
+        <el-button type="primary" :loading="scoreSubmitting" @click="handleScoreSubmit">确定</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- ============ 加佣金小弹窗（无标题，右上 X） ============ -->
+    <el-dialog v-model="commissionVisible" width="420px">
+      <el-form label-width="80px" label-position="right">
+        <el-form-item label="增加金额" required>
+          <el-input-number v-model="commissionForm.commission" :precision="2" :step="10" controls-position="right" style="width: 220px" />
+          <span class="field-hint">输入负值表示扣除佣金</span>
+        </el-form-item>
+        <el-form-item label="备注信息">
+          <el-input v-model="commissionForm.remark" type="textarea" :rows="2" maxlength="255" placeholder="选填" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="commissionVisible = false">取消</el-button>
+        <el-button type="primary" :loading="commissionSubmitting" @click="handleCommissionSubmit">确定</el-button>
       </template>
     </el-dialog>
 
@@ -561,62 +582,114 @@ onMounted(() => {
 </template>
 
 <style scoped>
+.member-page {
+  padding: 0;
+}
 .toolbar-card {
-  margin-bottom: 16px;
+  margin-bottom: 6px;
 }
-
 .toolbar-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+  padding: 8px 10px;
 }
-
-.member-cell {
+.search-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+}
+.tools-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.tools-left {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
-.member-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.w80 { width: 80px; }
+.w100 { width: 100px; }
+.w110 { width: 110px; }
+.w120 { width: 120px; }
+.w170 { width: 170px; }
+.date-range { width: 230px; }
+.col-set-btn { padding: 6px; }
+.col-set-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-
-/* 操作列：link 文字按钮单行排布（紧凑间距） */
-.op-wrap {
+.table-card :deep(.el-card__body) {
+  padding: 8px;
+}
+.member-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.member-meta {
+  line-height: 1.4;
+}
+.name-link {
+  padding: 0;
+  height: auto;
+  font-size: 13px;
+}
+.state-tags {
+  display: flex;
+  gap: 4px;
+  margin-top: 2px;
+}
+.info-lines {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.65;
+  font-size: 12px;
+}
+.il-label {
+  color: #909399;
+}
+.il-link {
+  padding: 0;
+  height: auto;
+  min-height: 0;
+  font-size: 12px;
+}
+.text-success {
+  color: #19be6b;
+}
+.muted {
+  color: #c0c4cc;
+}
+.op-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.op-row {
   display: flex;
   align-items: center;
   flex-wrap: nowrap;
   gap: 2px;
   white-space: nowrap;
 }
-
-/* 紧凑列：收紧单元格左右内边距 */
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
+.op-row :deep(.el-button) {
+  margin: 0;
+  padding: 0 2px;
+  height: auto;
+  font-size: 12px;
 }
-
 .more-arrow {
   margin-left: 2px;
   font-size: 12px;
 }
-
-.status-on {
-  color: #67c23a;
+.field-hint {
+  margin-left: 10px;
+  color: #909399;
+  font-size: 12px;
 }
-
-.adjust-tip {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  background-color: #fafafa;
-  font-size: 13px;
-  color: #606266;
-}
-
 .pagination {
-  margin-top: 16px;
+  margin-top: 8px;
   justify-content: flex-end;
 }
 </style>

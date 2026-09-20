@@ -163,7 +163,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="108" fixed="right">
+      <el-table-column label="操作" width="170" fixed="right">
         <template #default="{ row }">
           <div class="op-col">
             <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
@@ -579,7 +579,7 @@ onMounted(() => {
 
 <style scoped>
 .refunds-page {
-  padding: 12px;
+  padding: 0;
 }
 .status-tabs {
   display: flex;
@@ -588,7 +588,7 @@ onMounted(() => {
   padding: 0 16px;
   border-radius: 4px;
   border-bottom: 1px solid #ebeef5;
-  margin-bottom: 10px;
+  margin-bottom: 3px;
 }
 .status-tab {
   position: relative;
@@ -624,28 +624,36 @@ onMounted(() => {
   margin-bottom: 10px;
 }
 .filter-card :deep(.el-card__body) {
-  padding: 14px 14px 0;
+  padding: 8px 10px;
+}
+.filter-card :deep(.el-form) {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  overflow-x: auto;
 }
 .filter-card :deep(.el-form-item) {
-  margin-bottom: 14px;
-  margin-right: 12px;
+  margin-bottom: 0;
+  margin-right: 8px;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 .f-input {
-  width: 168px;
+  width: 140px;
 }
 .f-input-sm {
-  width: 130px;
+  width: 116px;
 }
 .f-status {
-  width: 110px;
+  width: 92px;
 }
 .f-label {
   font-size: 13px;
   color: #606266;
   margin-right: 6px;
 }
-.date-range {
-  width: 240px;
+.filter-card :deep(.el-date-editor.date-range) {
+  width: 200px !important;
 }
 .refund-table {
   width: 100%;

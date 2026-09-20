@@ -365,7 +365,7 @@ onMounted(() => {
 .sales-stat {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 0;
 }
 
 .head-bar {

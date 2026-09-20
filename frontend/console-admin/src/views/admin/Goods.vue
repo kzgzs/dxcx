@@ -1069,7 +1069,7 @@ onMounted(() => {
           <el-table-column label="参与活动" width="85">
             <template><span class="activity-empty">-</span></template>
           </el-table-column>
-          <el-table-column label="操作" width="110">
+          <el-table-column label="操作" width="290">
             <template #default="{ row }">
               <div class="row-ops">
                 <el-button link type="primary" @click="handleShowLink(row)">查看链接</el-button>

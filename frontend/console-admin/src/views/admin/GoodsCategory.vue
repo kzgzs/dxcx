@@ -371,7 +371,7 @@ onMounted(fetchList)
 
 <style scoped>
 .goods-category {
-  padding: 12px;
+  padding: 0;
 }
 
 .toolbar-card {

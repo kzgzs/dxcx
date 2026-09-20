@@ -410,7 +410,7 @@ onMounted(() => {
               <el-tag v-else effect="dark" type="danger">已驳回</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="90" align="center" header-align="center">
+          <el-table-column label="操作" width="140">
             <template #default="{ row }">
               <div class="row-ops">
                 <el-button link type="primary" @click="handleCopy(row)">复制</el-button>

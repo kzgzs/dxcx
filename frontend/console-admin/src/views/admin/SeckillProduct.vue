@@ -422,7 +422,7 @@ onMounted(() => { fetchSysset(); fetchList() })
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="80" align="center" header-align="center">
+        <el-table-column label="操作" width="260">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
@@ -566,9 +566,9 @@ onMounted(() => { fetchSysset(); fetchList() })
       <el-table-column label="市场价" width="100">
         <template #default="{ row }">￥{{ Number(row.market_price || row.price).toFixed(2) }}</template>
       </el-table-column>
-      <el-table-column label="操作" width="90">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="pickGoods(row)">选择</el-button>
+      <el-table-column label="操作" width="90" align="center">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="pickGoods(row)">选择</el-button>
         </template>
       </el-table-column>
     </el-table>

@@ -1,53 +1,52 @@
 <template>
   <div class="card-code-page">
-    <!-- 筛选栏 -->
-    <el-card shadow="never" class="filter-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="商品">
-          <el-select
-            v-model="query.proid"
-            placeholder="全部商品"
-            clearable
-            filterable
-            style="width: 220px"
-            @change="reload"
-          >
-            <el-option v-for="g in goodsOptions" :key="g.id" :label="g.name" :value="g.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="卡密">
-          <el-input v-model="query.content" placeholder="卡密内容" clearable style="width: 160px" @keyup.enter="reload" />
-        </el-form-item>
-        <el-form-item label="订单号">
-          <el-input v-model="query.ordernum" placeholder="订单号" clearable style="width: 160px" @keyup.enter="reload" />
-        </el-form-item>
-        <el-form-item label="昵称">
-          <el-input v-model="query.nickname" placeholder="购买会员昵称" clearable style="width: 150px" @keyup.enter="reload" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" style="width: 110px" @change="reload">
-            <el-option label="全部" value="" />
-            <el-option label="未售出" :value="0" />
-            <el-option label="已售出" :value="1" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="reload">查询</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+    <el-card shadow="never" class="list-card">
+      <!-- 操作+搜索同一行：左侧操作按钮，右侧筛选与搜索 -->
+      <div class="cc-bar">
+        <div class="cc-actions">
+          <el-button type="primary" @click="openMake">生成卡密</el-button>
+          <el-button @click="openImport">导入卡密</el-button>
+          <el-button @click="doExport">导出卡密</el-button>
+          <el-button type="danger" plain :disabled="selected.length === 0" @click="doDelete">
+            批量删除{{ selected.length > 0 ? `(${selected.length})` : '' }}
+          </el-button>
+        </div>
+        <el-form inline class="cc-search" @submit.prevent>
+          <el-form-item>
+            <el-select
+              v-model="query.proid"
+              placeholder="商品"
+              clearable
+              filterable
+              style="width: 180px"
+              @change="reload"
+            >
+              <el-option v-for="g in goodsOptions" :key="g.id" :label="g.name" :value="g.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="query.content" placeholder="卡密内容" clearable style="width: 130px" @keyup.enter="reload" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="query.ordernum" placeholder="订单号" clearable style="width: 130px" @keyup.enter="reload" />
+          </el-form-item>
+          <el-form-item>
+            <el-input v-model="query.nickname" placeholder="昵称" clearable style="width: 120px" @keyup.enter="reload" />
+          </el-form-item>
+          <el-form-item>
+            <el-select v-model="query.status" placeholder="状态" style="width: 90px" @change="reload">
+              <el-option label="全部" value="" />
+              <el-option label="未售出" :value="0" />
+              <el-option label="已售出" :value="1" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="success" :icon="Search" @click="reload" />
+          </el-form-item>
+        </el-form>
+      </div>
 
-    <!-- 操作栏 -->
-    <div class="toolbar">
-      <el-button type="primary" @click="openMake">生成卡密</el-button>
-      <el-button @click="openImport">导入卡密</el-button>
-      <el-button @click="doExport">导出卡密</el-button>
-      <el-button type="danger" plain :disabled="selected.length === 0" @click="doDelete">
-        批量删除{{ selected.length > 0 ? `(${selected.length})` : '' }}
-      </el-button>
-    </div>
-
-    <!-- 列表 -->
+      <!-- 列表 -->
     <el-table
       v-loading="loading"
       :data="rows"
@@ -72,9 +71,9 @@
       </el-table-column>
       <el-table-column label="购买时间" prop="buy_time" width="160" />
       <el-table-column label="创建时间" prop="create_time" width="160" />
-      <el-table-column label="操作" width="80" fixed="right" align="center">
+      <el-table-column label="操作" width="90" align="center">
         <template #default="{ row }">
-          <el-button v-if="row.status === 0" type="danger" link size="small" @click="doDelete([row])">删除</el-button>
+          <el-button v-if="row.status === 0" type="danger" link @click="doDelete([row])">删除</el-button>
           <span v-else class="text-muted">—</span>
         </template>
       </el-table-column>
@@ -92,6 +91,7 @@
         @size-change="reload"
       />
     </div>
+    </el-card>
 
     <!-- 生成卡密对话框 -->
     <el-dialog v-model="makeVisible" title="生成卡密" width="460px" destroy-on-close>
@@ -159,7 +159,7 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { UploadFile } from 'element-plus'
-import { UploadFilled } from '@element-plus/icons-vue'
+import { UploadFilled, Search } from '@element-plus/icons-vue'
 import { getGoodsList } from '../../api/goods'
 import { deleteCode, exportCode, getCodeList, importCode, makeCode } from '../../api/shopCode'
 import type { CodeItem, GoodsItem } from '../../api/types'
@@ -312,21 +312,44 @@ onMounted(() => {
 
 <style scoped>
 .card-code-page {
-  padding: 12px;
+  padding: 0;
 }
-.filter-card {
+.list-card :deep(.el-card__body) {
+  padding: 10px 12px 12px;
+}
+/* 操作与搜索同一行：左操作、右搜索，排不下时横向滚动而不是换行 */
+.cc-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 12px;
   margin-bottom: 10px;
 }
-.filter-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+.cc-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
-.toolbar {
-  margin-bottom: 10px;
+.cc-search {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+}
+.cc-search :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
 .pager {
   display: flex;
   justify-content: flex-end;
-  margin-top: 12px;
+  margin-top: 10px;
 }
 .text-muted {
   color: #c0c4cc;

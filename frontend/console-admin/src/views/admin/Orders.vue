@@ -13,131 +13,144 @@
       </div>
     </div>
 
-    <!-- 复合筛选区 -->
-    <el-card shadow="never" class="filter-card">
-      <el-form inline :class="{ 'merchant-filter': isMerchantView }" @submit.prevent>
-        <el-form-item v-if="isMerchantView">
-          <el-select
-            :model-value="query.bid === 'gt0' ? '' : Number(query.bid)"
-            placeholder="请选择商户"
-            clearable
-            filterable
-            class="biz-select"
-            @change="onBusinessChange"
-          >
-            <el-option v-for="b in businessOptions" :key="b.id" :label="b.name" :value="b.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-input
-            v-model="query.keyword"
-            :placeholder="kwPlaceholder"
-            clearable
-            class="kw-input"
-            @keyup.enter="handleSearch"
-          >
-            <template #prepend>
-              <el-select v-model="query.keyword_type" class="kw-type">
-                <el-option v-for="o in keywordTypes" :key="o.v" :label="o.l" :value="o.v" />
-              </el-select>
-            </template>
-          </el-input>
-        </el-form-item>
-        <el-form-item>
-          <el-select v-model="query.time_type" class="time-type">
-            <el-option v-for="o in timeTypes" :key="o.v" :label="o.l" :value="o.v" />
-          </el-select>
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="-"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            class="date-range"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-select v-model="query.freight_id" placeholder="配送方式" clearable class="w120">
-            <el-option v-for="f in freightOptions" :key="f.id" :label="f.name" :value="f.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-select v-model="query.status" placeholder="状态" clearable class="w100" @change="onStatusSelect">
-            <el-option v-for="o in statusOptions" :key="String(o.v)" :label="o.l" :value="o.v" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <span class="amount-label">订单金额</span>
-          <el-input v-model="query.price_min" placeholder="¥" class="amount-input" />
-          <span class="amount-sep">-</span>
-          <el-input v-model="query.price_max" placeholder="¥" class="amount-input" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="success" @click="handleSearch">搜索</el-button>
-          <el-button @click="resetFilter">重置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 操作按钮行 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <el-button @click="handleExport">导出</el-button>
-        <el-dropdown @command="onBatchCommand">
-          <el-button type="primary" plain>
-            批量发货
-            <svg viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor" style="margin-left:4px">
-              <path d="M512 704L256 384h512z" />
-            </svg>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="excel">Excel批量发货</el-dropdown-item>
-              <el-dropdown-item command="same">同一快递发多单</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-dropdown @command="onShdCommand">
-          <el-button>
-            打印送货单
-            <svg viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor" style="margin-left:4px">
-              <path d="M512 704L256 384h512z" />
-            </svg>
-          </el-button>
-          <template #dropdown>
-            <el-dropdown-menu>
-              <el-dropdown-item command="print">打印选中订单送货单</el-dropdown-item>
-              <el-dropdown-item command="setting">送货单设置</el-dropdown-item>
-            </el-dropdown-menu>
-          </template>
-        </el-dropdown>
-        <el-button type="danger" plain :disabled="!selected.length" @click="handleBatchDelete">
-          批量删除
-        </el-button>
-      </div>
-      <div class="toolbar-right">
-        <el-popover placement="bottom-end" :width="168" trigger="click">
-          <template #reference>
-            <el-button class="col-set-btn" title="列设置">
-              <svg viewBox="0 0 1024 1024" width="15" height="15" fill="currentColor">
-                <path d="M384 128h256v128H384zM384 448h256v128H384zM384 768h256v128H384z" />
-                <path
-                  d="M128 128h128v128H128zM128 448h128v128H128zM128 768h128v128H128zM768 128h128v128H768zM768 448h128v128H768zM768 768h128v128H768z"
-                />
+    <!-- 操作 + 筛选同一行（对齐点大：左批量操作，右筛选搜索，金额等低频条件收进“更多筛选”） -->
+    <el-card shadow="never" class="ops-card">
+      <div class="orders-bar">
+        <div class="bar-actions">
+          <el-button @click="handleExport">导出</el-button>
+          <el-dropdown @command="onBatchCommand">
+            <el-button type="primary" plain>
+              批量发货
+              <svg viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor" style="margin-left:4px">
+                <path d="M512 704L256 384h512z" />
               </svg>
             </el-button>
-          </template>
-          <div class="col-set">
-            <el-checkbox v-for="c in colToggles" :key="c.k" v-model="colVisible[c.k]">
-              {{ c.l }}
-            </el-checkbox>
-          </div>
-        </el-popover>
-      </div>
-    </div>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="excel">Excel批量发货</el-dropdown-item>
+                <el-dropdown-item command="same">同一快递发多单</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-dropdown @command="onShdCommand">
+            <el-button>
+              打印送货单
+              <svg viewBox="0 0 1024 1024" width="10" height="10" fill="currentColor" style="margin-left:4px">
+                <path d="M512 704L256 384h512z" />
+              </svg>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item command="print">打印选中订单送货单</el-dropdown-item>
+                <el-dropdown-item command="setting">送货单设置</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+          <el-button type="danger" plain :disabled="!selected.length" @click="handleBatchDelete">
+            批量删除
+          </el-button>
+        </div>
 
-    <!-- 订单表格（11 列，对齐参考系统） -->
+        <el-form inline class="bar-search" @submit.prevent>
+          <el-form-item v-if="isMerchantView">
+            <el-select
+              :model-value="query.bid === 'gt0' ? '' : Number(query.bid)"
+              placeholder="请选择商户"
+              clearable
+              filterable
+              class="biz-select"
+              @change="onBusinessChange"
+            >
+              <el-option v-for="b in businessOptions" :key="b.id" :label="b.name" :value="b.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-input
+              v-model="query.keyword"
+              :placeholder="kwPlaceholder"
+              clearable
+              class="kw-input"
+              @keyup.enter="handleSearch"
+            >
+              <template #prepend>
+                <el-select v-model="query.keyword_type" class="kw-type">
+                  <el-option v-for="o in keywordTypes" :key="o.v" :label="o.l" :value="o.v" />
+                </el-select>
+              </template>
+            </el-input>
+          </el-form-item>
+          <el-form-item>
+            <el-select v-model="query.time_type" class="time-type">
+              <el-option v-for="o in timeTypes" :key="o.v" :label="o.l" :value="o.v" />
+            </el-select>
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="-"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              class="date-range"
+            />
+          </el-form-item>
+          <el-form-item>
+            <el-select v-model="query.freight_id" placeholder="配送方式" clearable class="w120">
+              <el-option v-for="f in freightOptions" :key="f.id" :label="f.name" :value="f.id" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-select v-model="query.status" placeholder="状态" clearable class="w100" @change="onStatusSelect">
+              <el-option v-for="o in statusOptions" :key="String(o.v)" :label="o.l" :value="o.v" />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-popover placement="bottom-end" :width="280" trigger="click">
+              <template #reference>
+                <el-button class="more-filter-btn">更多筛选</el-button>
+              </template>
+              <div class="more-filter">
+                <div class="mf-row">
+                  <span class="mf-label">订单金额</span>
+                  <el-input v-model="query.price_min" placeholder="¥" class="amount-input" />
+                  <span class="amount-sep">-</span>
+                  <el-input v-model="query.price_max" placeholder="¥" class="amount-input" />
+                </div>
+                <div class="mf-actions">
+                  <el-button size="small" @click="resetFilter">重置</el-button>
+                  <el-button size="small" type="success" @click="handleSearch">搜索</el-button>
+                </div>
+              </div>
+            </el-popover>
+          </el-form-item>
+          <el-form-item>
+            <button type="button" class="search-icon-btn" title="搜索" @click="handleSearch">
+              <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor">
+                <path d="M468.571429 841.142857a372.571429 372.571429 0 1 1 0-745.142857 372.571429 372.571429 0 0 1 0 745.142857z m0-73.142857a299.428571 299.428571 0 1 0 0-598.857143 299.428571 299.428571 0 0 0 0 598.857143z" />
+                <path d="M728.5 690.6l150.3 150.2-51.7 51.7-150.2-150.3z" />
+              </svg>
+            </button>
+          </el-form-item>
+          <el-form-item class="col-set-item">
+            <el-popover placement="bottom-end" :width="168" trigger="click">
+              <template #reference>
+                <el-button class="col-set-btn" title="列设置">
+                  <svg viewBox="0 0 1024 1024" width="15" height="15" fill="currentColor">
+                    <path d="M384 128h256v128H384zM384 448h256v128H384zM384 768h256v128H384z" />
+                    <path d="M128 128h128v128H128zM128 448h128v128H128zM128 768h128v128H128zM768 128h128v128H768zM768 448h128v128H768zM768 768h128v128H768z" />
+                  </svg>
+                </el-button>
+              </template>
+              <div class="col-set">
+                <el-checkbox v-for="c in colToggles" :key="c.k" v-model="colVisible[c.k]">
+                  {{ c.l }}
+                </el-checkbox>
+              </div>
+            </el-popover>
+          </el-form-item>
+        </el-form>
+      </div>
+
+      <!-- 订单表格（11 列，对齐参考系统） -->
     <el-table
       v-loading="loading"
       :data="list"
@@ -254,7 +267,7 @@
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="128" fixed="right">
+      <el-table-column label="操作" width="180" fixed="right">
         <template #default="{ row }">
           <div class="op-grid">
             <el-button link type="primary" size="small" @click="openDetail(row)">详情</el-button>
@@ -307,6 +320,7 @@
         @size-change="onSizeChange"
       />
     </div>
+    </el-card>
 
     <!-- 隐藏的 Excel 选择器 -->
     <input ref="fileInput" type="file" accept=".xlsx,.xls,.csv" hidden @change="onExcelFile" />
@@ -1066,65 +1080,124 @@ onMounted(() => {
   background: #409eff;
   border-radius: 2px;
 }
-.filter-card {
+.ops-card {
   margin-bottom: 3px;
 }
-.filter-card :deep(.el-card__body) {
-  padding: 14px 14px 0;
+.ops-card :deep(.el-card__body) {
+  padding: 8px 10px;
 }
-.filter-card :deep(.el-form-item) {
-  margin-bottom: 14px;
-  margin-right: 12px;
+.orders-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
+  overflow-x: auto;
 }
-.kw-input {
-  width: 300px;
+.bar-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
-.kw-type {
-  width: 104px;
+.bar-actions :deep(.el-button + .el-button) {
+  margin-left: 0;
 }
-.time-type {
-  width: 108px;
-  margin-right: 8px;
+.bar-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  overflow: visible;
 }
-.date-range {
-  width: 250px;
+.bar-search :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 3px;
+  flex: 0 0 auto;
+  min-width: max-content;
 }
-.w120 {
-  width: 120px;
+.bar-search :deep(.el-form-item:last-child) {
+  margin-right: 0;
 }
-.w100 {
-  width: 100px;
+.search-icon-btn {
+  width: 32px;
+  height: 32px;
+  border: 1px solid #009a61;
+  border-radius: 4px;
+  background: #009a61;
+  color: #fff;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
 }
-.amount-label {
+.search-icon-btn:hover {
+  background: #008554;
+  border-color: #008554;
+}
+.more-filter {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.mf-row {
+  display: flex;
+  align-items: center;
+}
+.mf-label {
   font-size: 13px;
   color: #606266;
-  margin-right: 6px;
+  margin-right: 8px;
+  white-space: nowrap;
 }
-.amount-input {
-  width: 90px;
-}
-.amount-sep {
-  margin: 0 6px;
-  color: #909399;
-}
-.toolbar {
+.mf-actions {
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 3px;
-}
-.toolbar-left {
-  display: flex;
+  justify-content: flex-end;
   gap: 8px;
-  align-items: center;
-}
-.col-set-btn {
-  padding: 8px 10px;
 }
 .col-set {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.col-set-btn {
+  padding: 8px 10px;
+}
+.more-filter-btn {
+  padding: 8px 10px;
+}
+.biz-select {
+  width: 130px;
+}
+.kw-input {
+  width: 194px;
+}
+.kw-type {
+  width: 92px;
+}
+.time-type {
+  width: 104px;
+  margin-right: 6px;
+}
+.date-range {
+  width: 152px;
+}
+.w120 {
+  width: 110px;
+}
+.w100 {
+  width: 76px;
+}
+.amount-input {
+  width: 80px;
+}
+.bar-search :deep(.el-date-editor.date-range) {
+  width: 152px !important;
+}
+.bar-search :deep(.el-range-editor .el-range-input) {
+  width: 60px;
 }
 .order-table {
   width: 100%;
@@ -1403,7 +1476,7 @@ onMounted(() => {
   width: 104px;
 }
 .merchant-filter .w100 {
-  width: 88px;
+  width: 76px;
 }
 .merchant-filter .amount-input {
   width: 62px;

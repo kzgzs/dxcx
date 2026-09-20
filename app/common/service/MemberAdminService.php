@@ -25,41 +25,71 @@ class MemberAdminService
     /* ================= 会员列表 / 详情 ================= */
 
     /**
-     * 会员列表
-     * 筛选：keyword（id|nickname|tel|realname like）、levelid、注册时间范围
-     * 默认 id desc
+     * 会员列表（对齐点大会员列表）
+     * 筛选：id 精确、keyword（id|nickname|tel|realname like）、pid 推荐人ID、levelid、是否领卡、注册时间范围
+     * 排序白名单：id / money / score / commission / createtime
      *
+     * @param array<string, mixed> $f
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function list(int $aid, string $keyword, int $levelId, string $startTime, string $endTime, int $page, int $pageSize): array
+    public function list(int $aid, array $f): array
     {
-        $query = ScopeService::query('member', $aid);
+        $keyword   = trim((string) ($f['keyword'] ?? ''));
+        $levelId   = (int) ($f['levelid'] ?? 0);
+        $startTime = trim((string) ($f['start_time'] ?? ''));
+        $endTime   = trim((string) ($f['end_time'] ?? ''));
+        $searchId  = (int) ($f['id'] ?? 0);
+        $pid       = (int) ($f['pid'] ?? 0);
+        $hasCard   = trim((string) ($f['hascard'] ?? ''));
+        $page      = max(1, (int) ($f['page'] ?? 1));
+        $pageSize  = (int) ($f['pagesize'] ?? 10);
+        $pageSize  = $pageSize > 0 ? min($pageSize, 100) : 10;
 
+        $sortMap = ['id' => 'id', 'money' => 'money', 'score' => 'score', 'commission' => 'commission', 'createtime' => 'createtime'];
+        $sortCol = $sortMap[trim((string) ($f['field'] ?? 'id'))] ?? 'id';
+        $sortDir = strtolower(trim((string) ($f['order'] ?? 'desc'))) === 'asc' ? 'asc' : 'desc';
+
+        $query = ScopeService::queryAs('member', $aid, 'm')->leftJoin('member p', 'p.id = m.pid');
+
+        if ($searchId > 0) {
+            $query->where('m.id', $searchId);
+        }
         if ('' !== $keyword) {
             $like = '%' . $keyword . '%';
             $query->where(function ($q) use ($like, $keyword) {
-                $q->whereOr('nickname', 'like', $like)
-                    ->whereOr('tel', 'like', $like)
-                    ->whereOr('realname', 'like', $like);
+                $q->whereOr('m.nickname', 'like', $like)
+                    ->whereOr('m.tel', 'like', $like)
+                    ->whereOr('m.realname', 'like', $like);
                 if (ctype_digit($keyword)) {
-                    $q->whereOr('id', (int) $keyword);
+                    $q->whereOr('m.id', (int) $keyword);
                 }
             });
         }
-
         if ($levelId > 0) {
-            $query->where('levelid', $levelId);
+            $query->where('m.levelid', $levelId);
+        }
+        if ($pid > 0) {
+            $query->where('m.pid', $pid);
+        }
+        if ('1' === $hasCard) {
+            $query->where(function ($q) {
+                $q->whereOr('m.card_id', '<>', '')->whereOr('m.card_code', '<>', '');
+            });
+        } elseif ('2' === $hasCard) {
+            $query->where('m.card_id', '')->where('m.card_code', '');
         }
 
         $range = $this->timeRange($startTime, $endTime);
         if (null !== $range) {
-            $query->whereBetween('createtime', $range);
+            $query->whereBetween('m.createtime', $range);
         }
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('id, headimg, nickname, realname, tel, levelid, money, score, buynum, buymoney, createtime, last_visittime, isfreeze, islock, remark')
-            ->order('id', 'desc')
+        $rows = $query
+            ->field("m.*, p.nickname as parent_nickname,
+                (SELECT COUNT(*) FROM coupon_record cr WHERE cr.mid = m.id AND cr.aid = {$aid}) as coupon_count")
+            ->order('m.' . $sortCol, $sortDir)
             ->page($page, $pageSize)
             ->select()
             ->toArray();
@@ -67,23 +97,32 @@ class MemberAdminService
         $levelMap = $this->levelNameMap($aid);
 
         $list = array_map(static function (array $row) use ($levelMap) {
+            $hasCard = ('' !== (string) ($row['card_id'] ?? '') || '' !== (string) ($row['card_code'] ?? '')) ? 1 : 0;
             return [
-                'id'             => (int) $row['id'],
-                'headimg'        => (string) ($row['headimg'] ?? ''),
-                'nickname'       => (string) ($row['nickname'] ?? ''),
-                'realname'       => (string) ($row['realname'] ?? ''),
-                'tel'            => (string) ($row['tel'] ?? ''),
-                'levelid'        => (int) ($row['levelid'] ?? 0),
-                'level_name'     => (string) ($levelMap[(int) ($row['levelid'] ?? 0)] ?? ''),
-                'money'          => (float) ($row['money'] ?? 0),
-                'score'          => (int) ($row['score'] ?? 0),
-                'buynum'         => (int) ($row['buynum'] ?? 0),
-                'buymoney'       => (float) ($row['buymoney'] ?? 0),
-                'createtime'     => (int) ($row['createtime'] ?? 0),
-                'last_visittime' => (int) ($row['last_visittime'] ?? 0),
-                'isfreeze'       => (int) ($row['isfreeze'] ?? 0),
-                'islock'         => (int) ($row['islock'] ?? 0),
-                'remark'         => (string) ($row['remark'] ?? ''),
+                'id'              => (int) $row['id'],
+                'headimg'         => (string) ($row['headimg'] ?? ''),
+                'nickname'        => (string) ($row['nickname'] ?? ''),
+                'realname'        => (string) ($row['realname'] ?? ''),
+                'sex'             => (string) ($row['sex'] ?? ''),
+                'tel'             => (string) ($row['tel'] ?? ''),
+                'pid'             => (int) ($row['pid'] ?? 0),
+                'parent_nickname' => (string) ($row['parent_nickname'] ?? ''),
+                'levelid'         => (int) ($row['levelid'] ?? 0),
+                'level_name'      => (string) ($levelMap[(int) ($row['levelid'] ?? 0)] ?? ''),
+                'money'           => (float) ($row['money'] ?? 0),
+                'score'           => (int) ($row['score'] ?? 0),
+                'commission'      => (float) ($row['commission'] ?? 0),
+                'platform'        => (string) ($row['platform'] ?? ''),
+                'subscribe'       => (int) ($row['subscribe'] ?? 0),
+                'has_card'        => $hasCard,
+                'coupon_count'    => (int) ($row['coupon_count'] ?? 0),
+                'buynum'          => (int) ($row['buynum'] ?? 0),
+                'buymoney'        => (float) ($row['buymoney'] ?? 0),
+                'createtime'      => (int) ($row['createtime'] ?? 0),
+                'last_visittime'  => (int) ($row['last_visittime'] ?? 0),
+                'isfreeze'        => (int) ($row['isfreeze'] ?? 0),
+                'islock'          => (int) ($row['islock'] ?? 0),
+                'remark'          => (string) ($row['remark'] ?? ''),
             ];
         }, $rows);
 
@@ -118,12 +157,20 @@ class MemberAdminService
             'nickname'       => (string) ($member['nickname'] ?? ''),
             'realname'       => (string) ($member['realname'] ?? ''),
             'tel'            => (string) ($member['tel'] ?? ''),
+            'usercard'       => (string) ($member['usercard'] ?? ''),
             'sex'            => (string) ($member['sex'] ?? ''),
+            'birthday'       => (string) ($member['birthday'] ?? ''),
+            'pid'            => (int) ($member['pid'] ?? 0),
+            'mpopenid'       => (string) ($member['mpopenid'] ?? ''),
             'levelid'        => (int) ($member['levelid'] ?? 0),
             'level_name'     => (string) ($levelMap[(int) ($member['levelid'] ?? 0)] ?? ''),
             'levelendtime'   => (int) ($member['levelendtime'] ?? 0),
             'money'          => (float) ($member['money'] ?? 0),
             'score'          => (int) ($member['score'] ?? 0),
+            'commission'     => (float) ($member['commission'] ?? 0),
+            'subscribe'      => (int) ($member['subscribe'] ?? 0),
+            'has_card'       => ('' !== (string) ($member['card_id'] ?? '') || '' !== (string) ($member['card_code'] ?? '')) ? 1 : 0,
+            'has_paypwd'     => '' !== (string) ($member['paypwd'] ?? '') ? 1 : 0,
             'buynum'         => (int) ($member['buynum'] ?? 0),
             'buymoney'       => (float) ($member['buymoney'] ?? 0),
             'createtime'     => (int) ($member['createtime'] ?? 0),
@@ -142,10 +189,11 @@ class MemberAdminService
     /* ================= 编辑 / 状态 ================= */
 
     /**
-     * 编辑会员（昵称/手机/等级/等级到期/备注）
+     * 编辑会员（对齐点大会员编辑）
+     * 基本信息：头像/昵称/姓名/手机号/身份证/性别/生日/等级/推荐人ID/支付密码清除/备注
      * 等级变更同事务写 member_levelup_order 变动记录
      *
-     * @param array<string, mixed> $data nickname / tel / levelid / levelendtime(YYYY-MM-DD 或空) / remark
+     * @param array<string, mixed> $data
      */
     public function edit(int $aid, int $mid, array $data): void
     {
@@ -158,6 +206,13 @@ class MemberAdminService
         $levelId  = (int) ($data['levelid'] ?? -1);
         $remark   = trim((string) ($data['remark'] ?? ''));
         $endStr   = trim((string) ($data['levelendtime'] ?? ''));
+        $headimg  = trim((string) ($data['headimg'] ?? ''));
+        $realname = trim((string) ($data['realname'] ?? ''));
+        $usercard = trim((string) ($data['usercard'] ?? ''));
+        $sex      = trim((string) ($data['sex'] ?? ''));
+        $birthday = trim((string) ($data['birthday'] ?? ''));
+        $pid      = (int) ($data['pid'] ?? -1);
+        $clearPwd = (int) ($data['clear_paypwd'] ?? 0) === 1;
 
         if ('' === $nickname) {
             throw new BusinessException('昵称不能为空');
@@ -165,14 +220,58 @@ class MemberAdminService
         if ('' !== $tel && 1 !== preg_match('/^1\d{10}$/', $tel)) {
             throw new BusinessException('手机号格式不正确');
         }
+        if ('' !== $sex && !in_array($sex, ['男', '女', '未知'], true)) {
+            $sex = '';
+        }
+        if ('' !== $birthday && !preg_match('/^\d{4}-\d{2}-\d{2}$/', $birthday)) {
+            throw new BusinessException('生日格式不正确（YYYY-MM-DD）');
+        }
+        if ('' !== $usercard && !preg_match('/(^\d{15}$)|(^\d{17}([0-9Xx])$)/', $usercard)) {
+            throw new BusinessException('身份证号格式不正确');
+        }
 
         $member = $this->findMember($aid, $mid);
 
         $update = [
             'nickname' => $nickname,
+            'headimg'  => $headimg,
+            'realname' => $realname,
+            'usercard' => $usercard,
+            'sex'      => $sex,
+            'birthday' => $birthday,
             'tel'      => $tel,
             'remark'   => $remark,
         ];
+
+        // 推荐人：0=无；不能是自己，不能形成推荐环（新推荐人不能是本人下级）
+        if ($pid >= 0 && $pid !== (int) ($member['pid'] ?? 0)) {
+            if ($pid === $mid) {
+                throw new BusinessException('推荐人不能是会员本人');
+            }
+            if ($pid > 0) {
+                $parent = ScopeService::query('member', $aid)->where('id', $pid)->find();
+                if (empty($parent)) {
+                    throw new BusinessException('推荐人不存在');
+                }
+                $cursor = $pid;
+                $guard  = 0;
+                while ($cursor > 0 && $guard < 30) {
+                    if ($cursor === $mid) {
+                        throw new BusinessException('不能将会员的下级设为其推荐人（会形成循环）');
+                    }
+                    $row    = ScopeService::query('member', $aid)->where('id', $cursor)->field('pid')->find();
+                    $cursor = (int) ($row['pid'] ?? 0);
+                    $guard++;
+                }
+            }
+            $update['pid'] = $pid;
+        }
+
+        // 清除支付密码
+        if ($clearPwd) {
+            $update['paypwd']      = '';
+            $update['paypwd_rand'] = '';
+        }
 
         $levelChanged = $levelId >= 0 && $levelId !== (int) ($member['levelid'] ?? 0);
         $endTime      = (int) ($member['levelendtime'] ?? 0);
@@ -190,7 +289,7 @@ class MemberAdminService
                 if (false === $ts) {
                     throw new BusinessException('等级到期时间格式不正确');
                 }
-                $endTime              = $ts + 86399;
+                $endTime                = $ts + 86399;
                 $update['levelendtime'] = $endTime;
             } elseif ($levelChanged) {
                 $endTime                = 0;
@@ -260,7 +359,7 @@ class MemberAdminService
      *
      * @return array{money: float} 变动后余额
      */
-    public function recharge(int $aid, int $mid, float $money, string $remark, int $uid): array
+    public function recharge(int $aid, int $mid, float $money, string $remark, int $uid, string $paytype = 'admin'): array
     {
         if ($mid <= 0) {
             throw new BusinessException('缺少会员ID');
@@ -269,12 +368,16 @@ class MemberAdminService
             throw new BusinessException('变动金额不能为0');
         }
 
+        // 充值方式白名单（对齐点大：微信/现金/支付宝；后台调整记 admin）
+        $paytypeMap = ['wxpay' => '微信支付', 'cash' => '现金支付', 'alipay' => '支付宝支付', 'admin' => '后台调整'];
+        $paytype    = $paytypeMap[$paytype] ?? '后台调整';
+
         $money  = round($money, 2);
         $remark = '' !== trim($remark) ? trim($remark) : ($money > 0 ? '后台充值' : '后台扣费');
 
         $after = 0.0;
 
-        Db::transaction(function () use ($aid, $mid, $money, $remark, $uid, &$after) {
+        Db::transaction(function () use ($aid, $mid, $money, $remark, $uid, $paytype, &$after) {
             $member = Db::name('member')
                 ->where('id', $mid)
                 ->where('aid', $aid)
@@ -300,7 +403,7 @@ class MemberAdminService
                 'after'      => $after,
                 'createtime' => time(),
                 'remark'     => $remark,
-                'paytype'    => 'admin',
+                'paytype'    => $paytype,
                 'uid'        => $uid,
             ]);
         });
@@ -364,6 +467,67 @@ class MemberAdminService
         });
 
         return ['score' => $after];
+    }
+
+    /* ================= 佣金变动 ================= */
+
+    /**
+     * 后台加/扣佣金（commission 正=增加 负=扣除），对齐点大 addcommission
+     * 事务内行锁校验扣减后佣金不为负；member.commission / totalcommission 与 member_commissionlog 同事务落库
+     *
+     * @return array{commission: float} 变动后佣金
+     */
+    public function addCommission(int $aid, int $mid, float $commission, string $remark, int $uid): array
+    {
+        if ($mid <= 0) {
+            throw new BusinessException('缺少会员ID');
+        }
+        if (0.0 === round($commission, 2)) {
+            throw new BusinessException('佣金金额不能为0');
+        }
+
+        $commission = round($commission, 2);
+        $remark     = '' !== trim($remark) ? trim($remark) : ($commission > 0 ? '后台加佣金' : '后台扣佣金');
+
+        $after = 0.0;
+
+        Db::transaction(function () use ($aid, $mid, $commission, $remark, $uid, &$after) {
+            $member = Db::name('member')
+                ->where('id', $mid)
+                ->where('aid', $aid)
+                ->lock(true)
+                ->find();
+
+            if (empty($member)) {
+                throw new BusinessException('会员不存在', 404, 404);
+            }
+
+            $after = round((float) ($member['commission'] ?? 0) + $commission, 2);
+            if ($after < 0) {
+                throw new BusinessException('佣金不足，扣减后佣金不能为负');
+            }
+
+            $memberUpdate = ['commission' => $after];
+            if ($commission > 0) {
+                $memberUpdate['totalcommission'] = round((float) ($member['totalcommission'] ?? 0) + $commission, 2);
+            }
+            Db::name('member')->where('id', $mid)->where('aid', $aid)->update($memberUpdate);
+
+            Db::name('member_commissionlog')->insert([
+                'aid'        => $aid,
+                'mid'        => $mid,
+                'frommid'    => 0,
+                'commission' => $commission,
+                'after'      => $after,
+                'createtime' => time(),
+                'remark'     => $remark,
+                'fhtype'     => 'admin',
+                'uid'        => $uid,
+                'fhid'       => 0,
+            ]);
+        });
+
+        return ['commission' => $after];
     }
 
     /* ================= 明细列表 ================= */
@@ -859,6 +1023,397 @@ class MemberAdminService
             'areafenhong_city'     => trim((string) ($data['areafenhong_city'] ?? '')),
             'areafenhong_area'     => trim((string) ($data['areafenhong_area'] ?? '')),
         ]);
+    }
+
+    /* ================= 会员维度：删除 / 导出 / 商城订单 / 优惠券 / 分销订单 ================= */
+
+    /**
+     * 批量删除会员（物理删除会员主记录；订单、资金流水等业务凭证保留）
+     *
+     * @param array<int, mixed> $ids
+     * @return int 删除条数
+     */
+    public function deleteMembers(int $aid, array $ids): int
+    {
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $ids = array_filter($ids, static fn ($v) => $v > 0);
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的会员');
+        }
+
+        $count = ScopeService::query('member', $aid)->whereIn('id', $ids)->delete();
+
+        return (int) $count;
+    }
+
+    /**
+     * 会员列表导出（筛选口径同 list）
+     *
+     * @param array<string, mixed> $f
+     * @return array{0: array<int, string>, 1: array<int, array<int, mixed>>}
+     */
+    public function memberExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->list($aid, $f);
+
+        $titles = ['ID', '昵称', '姓名', '手机号', '推荐人ID', '等级', '余额', '积分', '佣金', '优惠券数', '注册时间', '备注'];
+        $rows   = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [
+                $v['id'],
+                $v['nickname'],
+                $v['realname'],
+                $v['tel'],
+                $v['pid'],
+                $v['level_name'],
+                $v['money'],
+                $v['score'],
+                $v['commission'],
+                $v['coupon_count'],
+                $v['createtime'] ? date('Y-m-d H:i:s', $v['createtime']) : '',
+                $v['remark'],
+            ];
+        }
+
+        return [$titles, $rows];
+    }
+
+    /**
+     * 会员的商城订单（shop_order by mid，对齐点大会员-商城订单）
+     * 筛选：status 状态tab、ordernum 单号、freight_type 配送方式、createtime 范围、totalprice 区间
+     *
+     * @param array<string, mixed> $f
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function shopOrders(int $aid, int $mid, array $f): array
+    {
+        if ($mid <= 0) {
+            throw new BusinessException('缺少会员ID');
+        }
+        $status    = trim((string) ($f['status'] ?? ''));
+        $orderKw   = trim((string) ($f['ordernum'] ?? ''));
+        $freight   = trim((string) ($f['freight_type'] ?? ''));
+        $minPrice  = trim((string) ($f['min_price'] ?? ''));
+        $maxPrice  = trim((string) ($f['max_price'] ?? ''));
+        $page      = max(1, (int) ($f['page'] ?? 1));
+        $pageSize  = (int) ($f['pagesize'] ?? 10);
+        $pageSize  = $pageSize > 0 ? min($pageSize, 100) : 10;
+
+        $query = ScopeService::queryAs('shop_order', $aid, 'o')
+            ->leftJoin('business b', 'b.id = o.bid')
+            ->where('o.mid', $mid)
+            ->where('o.delete', 0);
+
+        if ('' !== $status && ctype_digit($status)) {
+            $query->where('o.status', (int) $status);
+        }
+        if ('' !== $orderKw) {
+            $like = '%' . $orderKw . '%';
+            $query->where(function ($q) use ($like) {
+                $q->whereOr('o.ordernum', 'like', $like)->whereOr('o.sysOrderNo', 'like', $like);
+            });
+        }
+        if ('' !== $freight && ctype_digit($freight)) {
+            $query->where('o.freight_type', (int) $freight);
+        }
+        if ('' !== $minPrice && is_numeric($minPrice)) {
+            $query->where('o.totalprice', '>=', (float) $minPrice);
+        }
+        if ('' !== $maxPrice && is_numeric($maxPrice)) {
+            $query->where('o.totalprice', '<=', (float) $maxPrice);
+        }
+        $range = $this->timeRange((string) ($f['start_time'] ?? ''), (string) ($f['end_time'] ?? ''));
+        if (null !== $range) {
+            $query->whereBetween('o.createtime', $range);
+        }
+
+        $total = (clone $query)->count();
+        $rows  = $query
+            ->field('o.*, b.name as business_name')
+            ->order('o.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        $orderIds = array_map(static fn ($r) => (int) $r['id'], $rows);
+        $goodsMap = [];
+        if ($orderIds) {
+            $goods = ScopeService::query('shop_order_goods', $aid)
+                ->whereIn('orderid', $orderIds)
+                ->field('id, orderid, name, pic, ggname, num, sell_price, totalprice')
+                ->select()
+                ->toArray();
+            foreach ($goods as $g) {
+                $goodsMap[(int) $g['orderid']][] = [
+                    'id'         => (int) $g['id'],
+                    'name'       => (string) ($g['name'] ?? ''),
+                    'pic'        => (string) ($g['pic'] ?? ''),
+                    'ggname'     => (string) ($g['ggname'] ?? ''),
+                    'num'        => (int) ($g['num'] ?? 0),
+                    'sell_price' => (float) ($g['sell_price'] ?? 0),
+                    'totalprice' => (float) ($g['totalprice'] ?? 0),
+                ];
+            }
+        }
+
+        $payTypeMap = [
+            'wechat' => '微信支付', 'wxpay' => '微信支付', 'wxapp' => '微信支付',
+            'alipay' => '支付宝支付', 'alipay2' => '支付宝支付',
+            'balance' => '余额支付', 'cash' => '现金支付',
+            'mock' => '模拟支付', 'score' => '积分支付', 'admin' => '后台下单',
+        ];
+
+        $list = array_map(static function (array $r) use ($goodsMap, $payTypeMap) {
+            $area = trim((string) ($r['area'] ?? '') . ' ' . (string) ($r['area2'] ?? '') . ' ' . (string) ($r['address'] ?? ''));
+            $payRaw = (string) ($r['paytype'] ?? '');
+            return [
+                'id'            => (int) $r['id'],
+                'bid'           => (int) ($r['bid'] ?? 0),
+                'business_name' => (string) ($r['business_name'] ?? ''),
+                'ordernum'      => (string) ($r['ordernum'] ?? ''),
+                'sysOrderNo'    => (string) ($r['sysOrderNo'] ?? ''),
+                'goods'         => $goodsMap[(int) $r['id']] ?? [],
+                'product_price' => (float) ($r['product_price'] ?? 0),
+                'totalprice'    => (float) ($r['totalprice'] ?? 0),
+                'freight_price' => (float) ($r['freight_price'] ?? 0),
+                'paytype'       => (string) ($payTypeMap[$payRaw] ?? $payRaw),
+                'status'        => (int) ($r['status'] ?? 0),
+                'createtime'    => (int) ($r['createtime'] ?? 0),
+                'paytime'       => (int) ($r['paytime'] ?? 0),
+                'linkman'       => (string) ($r['linkman'] ?? ''),
+                'tel'           => (string) ($r['tel'] ?? ''),
+                'address'       => $area,
+                'remark'        => (string) ($r['remark'] ?? ''),
+                'freight_text'  => (string) ($r['freight_text'] ?? ''),
+                'freight_type'  => (int) ($r['freight_type'] ?? 0),
+                'platform'      => (string) ($r['platform'] ?? ''),
+            ];
+        }, $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 会员领取的优惠券记录（coupon_record by mid，对齐点大会员-优惠券）
+     * 筛选：status、使用时间(usetime)范围、remark 关键字
+     *
+     * @param array<string, mixed> $f
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function memberCoupons(int $aid, int $mid, array $f): array
+    {
+        if ($mid <= 0) {
+            throw new BusinessException('缺少会员ID');
+        }
+        $status   = trim((string) ($f['status'] ?? ''));
+        $remarkKw = trim((string) ($f['remark'] ?? ''));
+        $page     = max(1, (int) ($f['page'] ?? 1));
+        $pageSize = (int) ($f['pagesize'] ?? 10);
+        $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
+
+        $query = ScopeService::queryAs('coupon_record', $aid, 'r')
+            ->leftJoin('business b', 'b.id = r.bid')
+            ->where('r.mid', $mid);
+
+        if ('' !== $status && ctype_digit($status)) {
+            $query->where('r.status', (int) $status);
+        }
+        if ('' !== $remarkKw) {
+            $query->where('r.remark', 'like', '%' . $remarkKw . '%');
+        }
+        $range = $this->timeRange((string) ($f['start_time'] ?? ''), (string) ($f['end_time'] ?? ''));
+        if (null !== $range) {
+            // 截图为“使用时间”范围
+            $query->whereBetween('r.usetime', $range);
+        }
+
+        $total = (clone $query)->count();
+        $rows  = $query
+            ->field('r.*, b.name as business_name')
+            ->order('r.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        $list = array_map(static fn (array $r) => [
+            'id'            => (int) $r['id'],
+            'bid'           => (int) ($r['bid'] ?? 0),
+            'business_name' => (string) ($r['business_name'] ?? ''),
+            'couponname'    => (string) ($r['couponname'] ?? ''),
+            'money'         => (float) ($r['money'] ?? 0),
+            'discount'      => (float) ($r['discount'] ?? 0),
+            'minprice'      => (float) ($r['minprice'] ?? 0),
+            'status'        => (int) ($r['status'] ?? 0),
+            'limit_count'   => (int) ($r['limit_count'] ?? 0),
+            'used_count'    => (int) ($r['used_count'] ?? 0),
+            'createtime'    => (int) ($r['createtime'] ?? 0),
+            'receive_time'  => (int) ($r['receive_time'] ?? 0),
+            'starttime'     => (int) ($r['starttime'] ?? 0),
+            'endtime'       => (int) ($r['endtime'] ?? 0),
+            'usetime'       => (int) ($r['usetime'] ?? 0),
+            'remark'        => (string) ($r['remark'] ?? ''),
+        ], $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 批量改优惠券状态（0未使用 / 1已使用），限定会员归属防越权
+     *
+     * @param array<int, mixed> $ids
+     */
+    public function couponSetStatus(int $aid, int $mid, array $ids, int $status): void
+    {
+        if (!in_array($status, [0, 1], true)) {
+            throw new BusinessException('状态取值不正确');
+        }
+        $ids = array_values(array_filter(array_unique(array_map('intval', $ids)), static fn ($v) => $v > 0));
+        if (empty($ids)) {
+            throw new BusinessException('请选择优惠券记录');
+        }
+
+        $update = ['status' => $status];
+        if (1 === $status) {
+            $update['usetime'] = time();
+        } else {
+            $update['usetime'] = 0;
+        }
+
+        ScopeService::query('coupon_record', $aid)
+            ->where('mid', $mid)
+            ->whereIn('id', $ids)
+            ->update($update);
+    }
+
+    /**
+     * 批量删除优惠券记录，限定会员归属
+     *
+     * @param array<int, mixed> $ids
+     */
+    public function couponDelete(int $aid, int $mid, array $ids): int
+    {
+        $ids = array_values(array_filter(array_unique(array_map('intval', $ids)), static fn ($v) => $v > 0));
+        if (empty($ids)) {
+            throw new BusinessException('请选择优惠券记录');
+        }
+
+        return (int) ScopeService::query('coupon_record', $aid)
+            ->where('mid', $mid)
+            ->whereIn('id', $ids)
+            ->delete();
+    }
+
+    /**
+     * 会员作为分销员（佣金获得者）的佣金订单记录，对齐点大-分销订单
+     *
+     * 表口径（核对 member_commission_record 实测）：
+     *   r.mid     = 分销员（佣金获得者，即当前查看的会员 $distMid）
+     *   r.frommid = 下单人（来源会员）
+     *   商品行 parent1..4 = 下单人之上的第 1..4 级推荐人，命中分销员即“分销层级”
+     * 筛选：mid 下单人、status、type 订单类型、orderid 订单ID、ordernum 单号、createtime 范围
+     *
+     * @param array<string, mixed> $f
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function fenxiaoOrders(int $aid, int $distMid, array $f): array
+    {
+        if ($distMid <= 0) {
+            throw new BusinessException('缺少会员ID');
+        }
+        $typeMap = ['shop' => '商城订单'];
+
+        $buyerMid = (int) ($f['mid'] ?? 0);
+        $status   = trim((string) ($f['status'] ?? ''));
+        $type     = trim((string) ($f['type'] ?? ''));
+        $orderid  = (int) ($f['orderid'] ?? 0);
+        $orderKw  = trim((string) ($f['ordernum'] ?? ''));
+        $page     = max(1, (int) ($f['page'] ?? 1));
+        $pageSize = (int) ($f['pagesize'] ?? 10);
+        $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
+
+        $query = ScopeService::queryAs('member_commission_record', $aid, 'r')
+            ->leftJoin('member m', 'm.id = r.frommid')
+            ->leftJoin('shop_order o', 'o.id = r.orderid')
+            ->leftJoin('business b', 'b.id = o.bid')
+            ->leftJoin('shop_order_goods g', 'g.id = r.ogid')
+            ->where('r.mid', $distMid);
+
+        if ($buyerMid > 0) {
+            $query->where('r.frommid', $buyerMid);
+        }
+        if ('' !== $status && ctype_digit($status)) {
+            $query->where('r.status', (int) $status);
+        }
+        if ('' !== $type) {
+            $query->where('r.type', $type);
+        }
+        if ($orderid > 0) {
+            $query->where('r.orderid', $orderid);
+        }
+        if ('' !== $orderKw) {
+            $like = '%' . $orderKw . '%';
+            $query->where(function ($q) use ($like) {
+                $q->whereOr('o.ordernum', 'like', $like)->whereOr('o.sysOrderNo', 'like', $like);
+            });
+        }
+        $range = $this->timeRange((string) ($f['start_time'] ?? ''), (string) ($f['end_time'] ?? ''));
+        if (null !== $range) {
+            $query->whereBetween('r.createtime', $range);
+        }
+
+        $total = (clone $query)->count();
+        $rows  = $query
+            ->field('r.id, r.mid as dist_mid, r.frommid as buyer_mid, r.orderid, r.ogid, r.type, r.commission, r.score, r.remark, r.createtime, r.endtime, r.status, r.levelid,
+                m.nickname as m_nickname, m.headimg as m_headimg,
+                o.ordernum, o.sysOrderNo, o.bid, o.createtime as order_createtime,
+                b.name as business_name,
+                g.name as goods_name, g.pic as goods_pic, g.ggname as goods_gg, g.num as goods_num,
+                g.parent1, g.parent2, g.parent3, g.parent4')
+            ->order('r.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        $statusText = [0 => '未发放', 1 => '已发放', 2 => '已退回'];
+        $list = array_map(static function (array $r) use ($distMid, $typeMap, $statusText) {
+            // 分销层级：分销员 distMid 命中商品行 parentN 即第 N 级
+            $level = 0;
+            foreach ([1, 2, 3, 4] as $n) {
+                if ((int) ($r['parent' . $n] ?? 0) === $distMid) {
+                    $level = $n;
+                    break;
+                }
+            }
+            return [
+                'id'            => (int) $r['id'],
+                'orderid'       => (int) ($r['orderid'] ?? 0),
+                'bid'           => (int) ($r['bid'] ?? 0),
+                'business_name' => (string) ($r['business_name'] ?? ''),
+                'type'          => (string) ($r['type'] ?? ''),
+                'type_text'     => (string) ($typeMap[(string) ($r['type'] ?? '')] ?? (string) ($r['type'] ?? '')),
+                'mid'           => (int) ($r['buyer_mid'] ?? 0),
+                'nickname'      => (string) ($r['m_nickname'] ?? ''),
+                'headimg'       => (string) ($r['m_headimg'] ?? ''),
+                'goods_name'    => (string) ($r['goods_name'] ?? ''),
+                'goods_pic'     => (string) ($r['goods_pic'] ?? ''),
+                'goods_gg'      => (string) ($r['goods_gg'] ?? ''),
+                'goods_num'     => (int) ($r['goods_num'] ?? 0),
+                'ordernum'      => (string) ($r['ordernum'] ?? ''),
+                'order_createtime' => (int) ($r['order_createtime'] ?? 0),
+                'level'         => $level,
+                'real_level'    => $level,
+                'commission'    => (float) ($r['commission'] ?? 0),
+                'score'         => (int) ($r['score'] ?? 0),
+                'status'        => (int) ($r['status'] ?? 0),
+                'status_text'   => (string) ($statusText[(int) ($r['status'] ?? 0)] ?? '-'),
+                'remark'        => (string) ($r['remark'] ?? ''),
+                'createtime'    => (int) ($r['createtime'] ?? 0),
+            ];
+        }, $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
     }
 
     /* ================= 内部工具 ================= */

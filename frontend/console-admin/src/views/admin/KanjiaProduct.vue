@@ -392,7 +392,7 @@ onMounted(fetchList)
             </el-tooltip>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90" align="center" header-align="center">
+        <el-table-column label="操作" width="180">
           <template #default="{ row }">
             <div class="row-ops">
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>

@@ -197,6 +197,18 @@ Route::get('member/moneylog', 'Member/moneylog');
 Route::get('member/scorelog', 'Member/scorelog');
 Route::get('member/orders', 'Member/orders');
 Route::get('member/address', 'Member/address');
+// 会员对齐点大：加佣金 / 删除 / 导出 / 商城订单 / 优惠券 / 分销订单
+Route::post('member/addcommission', 'Member/addcommission');
+Route::post('member/del', 'Member/del');
+Route::get('member/excel', 'Member/excel');
+Route::get('member/shopOrders', 'Member/shopOrders');
+Route::get('member/shopOrdersExcel', 'Member/shopOrdersExcel');
+Route::get('member/coupons', 'Member/coupons');
+Route::post('member/couponSetSt', 'Member/couponSetSt');
+Route::post('member/couponDel', 'Member/couponDel');
+Route::get('member/couponsExcel', 'Member/couponsExcel');
+Route::get('member/fenxiaoOrders', 'Member/fenxiaoOrders');
+Route::get('member/fenxiaoExcel', 'Member/fenxiaoExcel');
 
 // 营销中心 - 积分设置
 Route::get('score/config', 'Score/config');

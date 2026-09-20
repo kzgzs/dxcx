@@ -187,7 +187,7 @@ onMounted(fetchList)
             </el-select>
           </el-form-item>
           <el-form-item>
-            <el-button type="primary" :icon="Search" @click="handleSearch" />
+            <el-button type="success" :icon="Search" @click="handleSearch" />
           </el-form-item>
         </el-form>
       </div>
@@ -215,8 +215,8 @@ onMounted(fetchList)
         </el-table-column>
         <el-table-column label="操作" width="150" fixed="right">
           <template #default="{ row }">
-            <el-button size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
