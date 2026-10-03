@@ -258,7 +258,8 @@ onMounted(() => {
         <el-form ref="formRef" :model="form" label-width="150px">
           <el-form-item v-if="form.id" label="快递鸟门店编码">
             <span class="kdn-no">{{ form.kdn_shop_no || '-' }}</span>
-            <span class="active-tag">已激活</span>
+            <span v-if="form.kdn_shop_no" class="active-tag">已激活</span>
+            <span v-else class="inactive-tag">未激活</span>
           </el-form-item>
           <el-form-item v-if="form.id" label="门店编码">
             <el-input v-model="form.shop_no" readonly />
@@ -266,12 +267,12 @@ onMounted(() => {
           <el-form-item label="*门店名称" prop="shop_name" :rules="[{ required: true, message: '请输入门店名称', trigger: 'blur' }]">
             <el-input v-model="form.shop_name" placeholder="门店名称" style="max-width: 420px" />
           </el-form-item>
-          <el-form-item label="*门店物品类型">
+          <el-form-item label="*门店物品类型" prop="cargo_type" :rules="[{ required: true, message: '请选择门店物品类型', trigger: 'change' }]">
             <el-radio-group v-model="form.cargo_type">
               <el-radio v-for="c in CARGO_TYPES" :key="c.value" :value="c.value" class="cargo-radio">{{ c.label }}</el-radio>
             </el-radio-group>
           </el-form-item>
-          <el-form-item label="*门店所在地区">
+          <el-form-item label="*门店所在地区" prop="province" :rules="[{ required: true, message: '请选择门店所在省市区', trigger: 'change' }]">
             <el-select v-model="form.province" placeholder="请选择省" style="width: 150px" @change="onProvinceChange">
               <el-option v-for="p in areaProvinces" :key="p.name" :label="p.name" :value="p.name" />
             </el-select>
@@ -281,15 +282,23 @@ onMounted(() => {
             <el-select v-model="form.district" placeholder="请选择区" style="width: 150px; margin-left: 8px">
               <el-option v-for="a in areaList" :key="a" :label="a" :value="a" />
             </el-select>
-            <div class="sub-tip">仅支持同省同市内的门店地址做修改，不同省市的只能重新新建店铺信息</div>
+            <div class="sub-tip">仅支持同省同市内的门店地址修改，不同省市的只能重新新建店铺信息</div>
           </el-form-item>
-          <el-form-item label="*门店详细地址">
+          <el-form-item label="*门店详细地址" prop="address" :rules="[{ required: true, message: '请输入门店详细地址', trigger: 'blur' }]">
             <el-input v-model="form.address" placeholder="请输入详细地址" style="max-width: 420px" />
             <el-button style="margin-left: 8px">搜索</el-button>
           </el-form-item>
-          <el-form-item label="*门店坐标">
-            <el-input v-model="form.lng" placeholder="经度 如 118.353355" style="width: 200px" />
-            <el-input v-model="form.lat" placeholder="纬度 如 35.104441" style="width: 200px; margin-left: 8px" />
+          <el-form-item label="*门店坐标" prop="lng" :rules="[{ required: true, message: '请选择门店坐标或填写经纬度', trigger: 'change' }]">
+            <div class="map-box">
+              <div class="map-zoom"><span>+</span><span>−</span></div>
+              <div class="map-toggle"><span class="on">地图</span><span>卫星</span></div>
+              <div class="map-marker"></div>
+              <div class="map-error">鉴权失败，请传入正确的key</div>
+            </div>
+            <div class="lnglat-row">
+              <el-input v-model="form.lng" placeholder="经度 如 118.353355" style="width: 200px" />
+              <el-input v-model="form.lat" placeholder="纬度 如 35.104441" style="width: 200px; margin-left: 8px" />
+            </div>
           </el-form-item>
           <el-form-item label="*联系人" prop="contact" :rules="[{ required: true, message: '请输入联系人', trigger: 'blur' }]">
             <el-input v-model="form.contact" placeholder="联系人" style="max-width: 420px" />
@@ -298,55 +307,55 @@ onMounted(() => {
             <el-input v-model="form.mobile" placeholder="手机号" style="max-width: 420px" />
           </el-form-item>
 
-          <el-form-item label="*身份证人像面">
+          <el-form-item label="*身份证人像面" prop="id_card_front" :rules="[{ required: true, message: '请上传身份证人像面', trigger: 'change' }]">
             <el-button @click="openPicker('id_card_front')">上传图片</el-button>
-            <span class="sub-tip">图片大小≤1.2MB</span>
+            <span class="sub-tip">图片大小1.2MB</span>
             <div v-if="form.id_card_front" class="pic-preview">
               <img :src="form.id_card_front" alt="" />
               <el-button link type="danger" class="pic-del" @click="form.id_card_front = ''">X</el-button>
             </div>
           </el-form-item>
-          <el-form-item label="*身份证国徽面">
+          <el-form-item label="*身份证国徽面" prop="id_card_back" :rules="[{ required: true, message: '请上传身份证国徽面', trigger: 'change' }]">
             <el-button @click="openPicker('id_card_back')">上传图片</el-button>
-            <span class="sub-tip">图片大小≤1.2MB</span>
+            <span class="sub-tip">图片大小1.2MB</span>
             <div v-if="form.id_card_back" class="pic-preview">
               <img :src="form.id_card_back" alt="" />
               <el-button link type="danger" class="pic-del" @click="form.id_card_back = ''">X</el-button>
             </div>
           </el-form-item>
-          <el-form-item label="*身份证号">
+          <el-form-item label="*身份证号" prop="id_card_no" :rules="[{ required: true, message: '请输入身份证号', trigger: 'blur' }]">
             <el-input v-model="form.id_card_no" placeholder="身份证号" style="max-width: 420px" />
           </el-form-item>
-          <el-form-item label="*身份证姓名">
+          <el-form-item label="*身份证姓名" prop="id_card_name" :rules="[{ required: true, message: '请输入身份证姓名', trigger: 'blur' }]">
             <el-input v-model="form.id_card_name" placeholder="身份证姓名" style="max-width: 420px" />
           </el-form-item>
-          <el-form-item label="*营业执照">
+          <el-form-item label="营业执照">
             <el-button @click="openPicker('business_license')">上传图片</el-button>
-            <span class="sub-tip">图片大小≤1.2MB</span>
+            <span class="sub-tip">图片大小1.2MB</span>
             <div v-if="form.business_license" class="pic-preview">
               <img :src="form.business_license" alt="" />
               <el-button link type="danger" class="pic-del" @click="form.business_license = ''">X</el-button>
             </div>
           </el-form-item>
-          <el-form-item label="*统一社会信用代码">
+          <el-form-item label="*统一社会信用代码" prop="credit_code" :rules="[{ required: true, message: '请输入统一社会信用代码', trigger: 'blur' }]">
             <el-input v-model="form.credit_code" placeholder="统一社会信用代码" style="max-width: 420px" />
           </el-form-item>
-          <el-form-item label="*门店图片">
+          <el-form-item label="*门店图片" prop="shop_pic" :rules="[{ required: true, message: '请上传门店图片', trigger: 'change' }]">
             <el-button @click="openPicker('shop_pic')">上传图片</el-button>
-            <span class="sub-tip">图片大小≤1.2MB</span>
+            <span class="sub-tip">图片大小1.2MB</span>
             <div v-if="form.shop_pic" class="pic-preview">
               <img :src="form.shop_pic" alt="" />
               <el-button link type="danger" class="pic-del" @click="form.shop_pic = ''">X</el-button>
             </div>
           </el-form-item>
-          <el-form-item label="*店主手持证件照">
+          <el-form-item label="*店主手持证件照" prop="holder_pic" :rules="[{ required: true, message: '请上传店主手持证件照', trigger: 'change' }]">
             <el-button @click="openPicker('holder_pic')">上传图片</el-button>
-            <span class="sub-tip">图片大小≤1.2MB</span>
+            <span class="sub-tip">图片大小1.2MB</span>
             <div v-if="form.holder_pic" class="pic-preview">
               <img :src="form.holder_pic" alt="" />
               <el-button link type="danger" class="pic-del" @click="form.holder_pic = ''">X</el-button>
             </div>
-            <div class="sub-tip">手持身份证或手持营业执照</div>
+            <div class="sub-tip">手持身份证或者手持营业执照</div>
           </el-form-item>
 
           <el-form-item class="submit-row">
@@ -423,6 +432,99 @@ onMounted(() => {
 .active-tag {
   color: #67c23a;
   font-size: 13px;
+}
+.inactive-tag {
+  color: #e6a23c;
+  font-size: 13px;
+}
+/* 腾讯地图占位（无 key 时显鉴权失败提示） */
+.map-box {
+  position: relative;
+  width: 460px;
+  height: 280px;
+  background: linear-gradient(135deg, #e8f0e3 0%, #dfeaf5 100%);
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  overflow: hidden;
+}
+.map-zoom {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+}
+.map-zoom span {
+  width: 26px;
+  height: 26px;
+  line-height: 26px;
+  text-align: center;
+  font-size: 16px;
+  color: #333;
+  cursor: pointer;
+}
+.map-zoom span + span {
+  border-top: 1px solid #ccc;
+}
+.map-toggle {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  display: flex;
+  font-size: 12px;
+}
+.map-toggle span {
+  padding: 4px 12px;
+  background: #fff;
+  border: 1px solid #ccc;
+  cursor: pointer;
+}
+.map-toggle span.on {
+  background: #08b869;
+  color: #fff;
+}
+.map-marker {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  width: 18px;
+  height: 18px;
+  margin-left: -9px;
+  border-radius: 50% 50% 50% 0;
+  background: #1976d2;
+  transform: rotate(-45deg);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.map-marker::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 5px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+}
+.map-error {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: #fff;
+  border: 1px solid #ffccc7;
+  border-radius: 3px;
+  padding: 5px 12px;
+  font-size: 12px;
+  color: #f5222d;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.15);
+  white-space: nowrap;
+}
+.lnglat-row {
+  margin-top: 10px;
 }
 .submit-row {
   padding-left: 0;
