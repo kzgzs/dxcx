@@ -1432,7 +1432,13 @@ Route::post('miandan/getOrder', 'Miandan/getOrder');
 Route::post('miandan/getPath', 'Miandan/getPath');
 Route::post('miandan/cancel', 'Miandan/cancel');
 Route::post('miandan/del', 'Miandan/del');
-Route::get('miandan/deliveryList', 'Miandan/deliveryList');
+Route::get('miandan/deliveryOptions', 'Miandan/deliveryOptions');
+Route::get('miandan/accountList', 'Miandan/accountList');
+Route::post('miandan/accountBind', 'Miandan/accountBind');
+Route::post('miandan/accountUnbind', 'Miandan/accountUnbind');
+Route::get('miandan/printerList', 'Miandan/printerList');
+Route::post('miandan/printerAdd', 'Miandan/printerAdd');
+Route::post('miandan/printerDel', 'Miandan/printerDel');
 
 Route::get('ewaybill/list', 'Ewaybill/list');
 Route::get('ewaybill/detail', 'Ewaybill/detail');

@@ -41,6 +41,8 @@ class Miandan extends BaseController
             'status'     => (string) $this->request->get('status', ''),
             'starttime'  => (string) $this->request->get('starttime', ''),
             'endtime'    => (string) $this->request->get('endtime', ''),
+            'sort_field' => (string) $this->request->get('sort_field', ''),
+            'sort_order' => (string) $this->request->get('sort_order', ''),
         ];
 
         return $this->success($this->miandanService->list($aid, $filters, $page, $pageSize));
@@ -112,14 +114,101 @@ class Miandan extends BaseController
     }
 
     /**
-     * 物流账号列表（mock 演示数据）
-     * GET /admin/miandan/deliveryList
+     * 物流公司下拉选项（绑定物流账号表单用）
+     * GET /admin/miandan/deliveryOptions
      */
-    public function deliveryList()
+    public function deliveryOptions()
+    {
+        return $this->success($this->miandanService->deliveryOptions());
+    }
+
+    /**
+     * 物流账号列表（落库回读）
+     * GET /admin/miandan/accountList
+     */
+    public function accountList()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        return $this->success($this->miandanService->deliveryAccounts($aid));
+        return $this->success($this->miandanService->accountList($aid));
+    }
+
+    /**
+     * 绑定物流账号（真实落库）
+     * POST /admin/miandan/accountBind {delivery_id, biz_id, password, remark_content}
+     */
+    public function accountBind()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $uid = (int) (($this->request->authPayload ?? [])['uid'] ?? 0);
+
+        $info = $this->request->post();
+        $info = is_array($info) ? $info : [];
+
+        $this->miandanService->accountBind($aid, $uid, $info);
+
+        return $this->success([], '绑定成功');
+    }
+
+    /**
+     * 解绑物流账号（落库置已解绑）
+     * POST /admin/miandan/accountUnbind {biz_id, delivery_id}
+     */
+    public function accountUnbind()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $uid = (int) (($this->request->authPayload ?? [])['uid'] ?? 0);
+
+        $bizId      = trim((string) $this->request->post('biz_id', ''));
+        $deliveryId = trim((string) $this->request->post('delivery_id', ''));
+
+        $this->miandanService->accountUnbind($aid, $uid, $bizId, $deliveryId);
+
+        return $this->success([], '解绑成功');
+    }
+
+    /**
+     * 打印员列表（落库回读）
+     * GET /admin/miandan/printerList
+     */
+    public function printerList()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success($this->miandanService->printerList($aid));
+    }
+
+    /**
+     * 添加打印员（会员ID或openid，真实落库）
+     * POST /admin/miandan/printerAdd {openid, nickname}
+     */
+    public function printerAdd()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $uid = (int) (($this->request->authPayload ?? [])['uid'] ?? 0);
+
+        $openid   = trim((string) $this->request->post('openid', ''));
+        $nickname = trim((string) $this->request->post('nickname', ''));
+
+        $this->miandanService->printerAdd($aid, $uid, $openid, $nickname);
+
+        return $this->success([], '添加成功');
+    }
+
+    /**
+     * 解绑打印员
+     * POST /admin/miandan/printerDel {openid}
+     */
+    public function printerDel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $uid = (int) (($this->request->authPayload ?? [])['uid'] ?? 0);
+
+        $openid = trim((string) $this->request->post('openid', ''));
+
+        $this->miandanService->printerDel($aid, $uid, $openid);
+
+        return $this->success([], '解绑成功');
     }
 
     /**

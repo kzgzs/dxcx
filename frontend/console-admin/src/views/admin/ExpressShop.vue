@@ -530,7 +530,7 @@ onMounted(() => {
   padding-left: 0;
 }
 .submit-row :deep(.el-form-item__content) {
-  margin-left: 0 !important;
+  margin-left: 150px !important;
 }
 .pic-del {
   vertical-align: top;

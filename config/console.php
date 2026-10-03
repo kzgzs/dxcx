@@ -23,5 +23,6 @@ return [
         'demo:scoreshop' => \app\command\DemoScoreshop::class, // 生成积分兑换订单管理演示数据（5种状态+自提/快递/同城配送，--purge 清除）
         'demo:lottery' => \app\command\DemoLottery::class, // 生成抽奖活动（大转盘+刮刮卡）演示数据，记录覆盖未领取/已领取/未中奖，--purge 清除
         'demo:confirmreward' => \app\command\DemoConfirmReward::class, // 生成租户后台「确认收货奖励」演示数据（设置+12条记录，DEMO-CR- 前缀，--purge 清除）
+        'demo:miandan' => \app\command\DemoMiandan::class, // 生成租户后台「扩展·物流助手」演示数据（运单正常/已取消/物流账号/打印员，DEMO-WL- 前缀，--purge 清除）
     ],
 ];

@@ -37,6 +37,8 @@ export interface MiandanOrder {
   receiver_address: string
   sender_name: string
   sender_mobile: string
+  cargo_detail_list: string
+  shop_goods_name: string
   status: number
   status_name: string
   waybill_id: string
@@ -55,12 +57,34 @@ export interface MiandanSet {
   is_mock?: boolean
 }
 
-/** 物流账号（mock 演示） */
-export interface DeliveryAccount {
+/** 快递公司下拉选项 */
+export interface DeliveryOption {
+  delivery_id: string
+  delivery_name: string
+}
+
+/** 物流账号（miandan_account） */
+export interface MiandanAccount {
+  id: number
   biz_id: string
   delivery_id: string
   delivery_name: string
   status_code: number
+  status_name: string
+  password: string
+  remark_content: string
+  quota_num: number
+  create_time: number
+  create_time_text: string
+}
+
+/** 打印员（miandan_printer） */
+export interface MiandanPrinter {
+  id: number
+  openid: string
+  nickname: string
+  headimg: string
+  createtime: number
 }
 
 /** 运单轨迹步骤 */
@@ -71,6 +95,8 @@ export interface PathStep {
 
 /** 运单轨迹结果 */
 export interface PathResult {
+  delivery_id: string
+  delivery_name: string
   waybill_id: string
   state: number
   state_text: string
@@ -97,6 +123,8 @@ export interface MiandanListQuery {
   status?: string
   starttime?: string
   endtime?: string
+  sort_field?: string
+  sort_order?: string
 }
 
 export function getMiandanList(params: MiandanListQuery) {
@@ -119,8 +147,32 @@ export function deleteMiandan(ids: number[]) {
   return request.post<unknown, null>('/admin/miandan/del', { ids })
 }
 
-export function getDeliveryList() {
-  return request.get<unknown, { list: DeliveryAccount[]; is_mock?: boolean }>('/admin/miandan/deliveryList')
+export function getDeliveryOptions() {
+  return request.get<unknown, { list: DeliveryOption[]; is_mock?: boolean }>('/admin/miandan/deliveryOptions')
+}
+
+export function getAccountList() {
+  return request.get<unknown, { list: MiandanAccount[]; total: number; is_mock?: boolean }>('/admin/miandan/accountList')
+}
+
+export function bindMiandanAccount(data: { delivery_id: string; biz_id: string; password?: string; remark_content?: string }) {
+  return request.post<unknown, null>('/admin/miandan/accountBind', data)
+}
+
+export function unbindMiandanAccount(data: { biz_id: string; delivery_id: string }) {
+  return request.post<unknown, null>('/admin/miandan/accountUnbind', data)
+}
+
+export function getPrinterList() {
+  return request.get<unknown, { list: MiandanPrinter[]; total: number; is_mock?: boolean }>('/admin/miandan/printerList')
+}
+
+export function addPrinter(data: { openid: string; nickname?: string }) {
+  return request.post<unknown, null>('/admin/miandan/printerAdd', data)
+}
+
+export function delPrinter(data: { openid: string }) {
+  return request.post<unknown, null>('/admin/miandan/printerDel', data)
 }
 
 export function getMiandanSet() {
