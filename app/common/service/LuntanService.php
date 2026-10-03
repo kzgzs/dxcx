@@ -220,6 +220,96 @@ class LuntanService
         ScopeService::query('luntan_order', $aid)->whereIn('luntan_id', $ids)->delete();
     }
 
+    /**
+     * 帖子详情（后台编辑回显；pics 拆数组）
+     */
+    public function adminPostDetail(int $aid, int $id): array
+    {
+        $row = ScopeService::query('luntan', $aid)->where('id', $id)->find();
+
+        if (empty($row)) {
+            throw new BusinessException('帖子不存在', 404, 404);
+        }
+
+        $row['pics_arr'] = $this->picsArr((string) $row['pics']);
+
+        return (array) $row;
+    }
+
+    /**
+     * 帖子新增/编辑（后台代发）
+     *
+     * 入参：id/mid/cid/content/pics(array|string)/video/readcount/zan/status
+     * - 编辑时 mid 变更则按会员重新带出昵称/头像
+     * - 新增时按 mid 带出昵称/头像，写 aid/createtime
+     */
+    public function adminPostSave(int $aid, array $data): int
+    {
+        $id     = (int) ($data['id'] ?? 0);
+        $mid    = (int) ($data['mid'] ?? 0);
+        $cid    = (int) ($data['cid'] ?? 0);
+        $status = (int) ($data['status'] ?? 1);
+
+        if (!in_array($status, [self::POST_PENDING, self::POST_NORMAL, self::POST_REJECTED, self::POST_WAIT_PAY], true)) {
+            $status = self::POST_NORMAL;
+        }
+
+        // pics 归一为逗号串（数组或逗号串皆可）
+        $pics = $data['pics'] ?? '';
+        if (is_array($pics)) {
+            $pics = implode(',', array_values(array_filter(array_map('strval', $pics))));
+        } else {
+            $pics = trim((string) $pics);
+        }
+
+        $row = [
+            'cid'        => $cid,
+            'mid'        => $mid,
+            'content'    => trim((string) ($data['content'] ?? '')),
+            'pics'       => $pics,
+            'video'      => trim((string) ($data['video'] ?? '')),
+            'readcount'  => max(0, (int) ($data['readcount'] ?? 0)),
+            'zan'        => max(0, (int) ($data['zan'] ?? 0)),
+            'status'     => $status,
+        ];
+
+        // 会员昵称/头像：mid>0 时按会员表带出
+        if ($mid > 0) {
+            $member = Db::name('member')->where('aid', $aid)->where('id', $mid)->find();
+            if (empty($member)) {
+                throw new BusinessException('发帖会员不存在');
+            }
+            $row['nickname'] = (string) ($member['nickname'] ?? '');
+            $row['headimg']  = (string) ($member['headimg'] ?? '');
+        }
+
+        if ($id > 0) {
+            $exists = ScopeService::query('luntan', $aid)->where('id', $id)->find();
+            if (empty($exists)) {
+                throw new BusinessException('帖子不存在', 404, 404);
+            }
+
+            // mid 改为 0（管理员代发）时清空会员身份
+            if (0 === $mid) {
+                $row['nickname'] = '';
+                $row['headimg']  = '';
+            }
+
+            Db::name('luntan')->where('aid', $aid)->where('id', $id)->update($row);
+
+            return $id;
+        }
+
+        $row['aid']        = $aid;
+        $row['createtime'] = time();
+        if (0 === $mid) {
+            $row['nickname'] = '管理员';
+            $row['headimg']  = '';
+        }
+
+        return (int) Db::name('luntan')->insertGetId($row);
+    }
+
     /* ================= B端：版块管理 ================= */
 
     /**
@@ -397,13 +487,21 @@ class LuntanService
         if ('' !== $keyword) {
             $query->where('content|nickname', 'like', '%' . $keyword . '%');
         }
+        if (!empty($f['starttime'])) {
+            $query->where('createtime', '>=', $this->stampOf($f['starttime']));
+        }
+        if (!empty($f['endtime'])) {
+            $query->where('createtime', '<', $this->stampOf($f['endtime']) + 86400);
+        }
 
         $total = (clone $query)->count();
         $list  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
 
         foreach ($list as &$row) {
-            $post = Db::name('luntan')->where('aid', $aid)->where('id', $row['sid'])->field('id,content,nickname')->find();
-            $row['post_content'] = mb_substr((string) ($post['content'] ?? ''), 0, 60);
+            $post = Db::name('luntan')->where('aid', $aid)->where('id', $row['sid'])->field('id,content,nickname,pics,video')->find();
+            $row['post_content'] = (string) ($post['content'] ?? '');
+            $row['post_pics']    = $this->picsArr((string) ($post['pics'] ?? ''));
+            $row['post_video']    = (string) ($post['video'] ?? '');
             $row['replycount']   = (int) Db::name('luntan_pinglun_reply')->where('aid', $aid)->where('pid', $row['id'])->count();
             $row['createtime_text'] = date('Y-m-d H:i:s', (int) $row['createtime']);
         }
@@ -453,13 +551,19 @@ class LuntanService
         if ('' !== $keyword) {
             $query->where('content|nickname', 'like', '%' . $keyword . '%');
         }
+        if (!empty($f['starttime'])) {
+            $query->where('createtime', '>=', $this->stampOf($f['starttime']));
+        }
+        if (!empty($f['endtime'])) {
+            $query->where('createtime', '<', $this->stampOf($f['endtime']) + 86400);
+        }
 
         $total = (clone $query)->count();
         $list  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
 
         foreach ($list as &$row) {
             $pl = Db::name('luntan_pinglun')->where('aid', $aid)->where('id', $row['pid'])->field('id,content')->find();
-            $row['pinglun_content'] = mb_substr((string) ($pl['content'] ?? ''), 0, 60);
+            $row['pinglun_content'] = (string) ($pl['content'] ?? '');
             $row['createtime_text'] = date('Y-m-d H:i:s', (int) $row['createtime']);
         }
         unset($row);
@@ -501,6 +605,19 @@ class LuntanService
         $info['pingluncheck'] = (int) $info['pingluncheck'];
         $info['cansave']      = (int) $info['cansave'];
         $info['status']       = (int) $info['status'];
+
+        // 发帖条件候选：所有人(-1) + 会员等级（对齐点大 sendtj 多选 chips）
+        $defaultCid = (int) Db::name('member_level_category')->where('aid', $aid)->where('isdefault', 1)->value('id');
+        $levels = Db::name('member_level')
+            ->where('aid', $aid)
+            ->where('cid', $defaultCid)
+            ->order('sort,id')
+            ->field('id,name')
+            ->select()->toArray();
+        if (empty($levels)) {
+            $levels = Db::name('member_level')->where('aid', $aid)->order('sort,id')->field('id,name')->select()->toArray();
+        }
+        $info['member_levels'] = array_values($levels);
 
         return $info;
     }

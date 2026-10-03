@@ -59,6 +59,8 @@ export interface LuntanPinglunItem {
   zan: number
   createtime: number
   post_content?: string
+  post_pics?: string[]
+  post_video?: string
   replycount?: number
   createtime_text?: string
 }
@@ -89,6 +91,7 @@ export interface LuntanSyssetData {
   pingluncheck: number
   cansave: number
   status: number
+  member_levels?: { id: number; name: string }[]
 }
 
 export interface LuntanListQuery {
@@ -141,6 +144,27 @@ export function setLuntanTop(ids: number[], st: number) {
 
 export function deleteLuntan(ids: number[]) {
   return request.post<unknown, null>('/admin/luntan/delete', { ids })
+}
+
+// 帖子新增/编辑入参
+export interface LuntanPostSaveParams {
+  id?: number
+  mid: number
+  cid: number
+  content: string
+  pics?: string
+  video?: string
+  readcount?: number
+  zan?: number
+  status: number
+}
+
+export function getLuntanDetail(id: number) {
+  return request.get<unknown, LuntanPostItem>('/admin/luntan/detail', { params: { id } })
+}
+
+export function saveLuntanPost(data: LuntanPostSaveParams) {
+  return request.post<unknown, { id: number }>('/admin/luntan/save', data)
 }
 
 export function getLuntanCategoryOptions() {

@@ -1,35 +1,51 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { getCollectRewardRecords } from '../../api/marketing'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import {
+  deleteCollectRewardRecords,
+  getCollectRewardRecords,
+} from '../../api/marketing'
 import type { CollectRewardRecordItem } from '../../api/marketing'
 
 const loading = ref(false)
 const tableData = ref<CollectRewardRecordItem[]>([])
 const total = ref(0)
+const selected = ref<CollectRewardRecordItem[]>([])
 
 const query = reactive({
+  ordernum: '',
+  ordertime: null as [Date, Date] | null,
+  keyword: '',
+  reward_type: '' as number | '',
   ordertype: '',
-  mid: 0,
   page: 1,
   pagesize: 10,
 })
 
-const ORDERTYPE_TEXT: Record<string, string> = {
-  shop: '商城订单',
-  collage: '拼团订单',
-  seckill: '秒杀订单',
-  kanjia: '砍价订单',
-  tuangou: '团购订单',
-  yuyue: '预约订单',
-  scoreshop: '积分商城',
-}
+const ORDERTYPE_OPTIONS = [
+  { value: 'shop', label: '商城订单' },
+  { value: 'collage', label: '多人拼团订单' },
+  { value: 'tuangou', label: '团购订单' },
+  { value: 'scoreshop', label: '积分兑换订单' },
+  { value: 'businessshop', label: '商家订单' },
+]
 
 async function fetchList() {
   loading.value = true
   try {
+    const ordertimeStart = query.ordertime?.[0]
+      ? Math.floor(query.ordertime[0].getTime() / 1000)
+      : undefined
+    const ordertimeEnd = query.ordertime?.[1]
+      ? Math.floor(query.ordertime[1].getTime() / 1000)
+      : undefined
     const data = await getCollectRewardRecords({
-      ordertype: query.ordertype,
-      mid: query.mid > 0 ? query.mid : undefined,
+      ordernum: query.ordernum || undefined,
+      keyword: query.keyword || undefined,
+      reward_type: query.reward_type !== '' && Number(query.reward_type) > 0 ? Number(query.reward_type) : undefined,
+      ordertype: query.ordertype || undefined,
+      ordertime_start: ordertimeStart,
+      ordertime_end: ordertimeEnd,
       page: query.page,
       pagesize: query.pagesize,
     })
@@ -47,11 +63,28 @@ function handleSearch() {
   fetchList()
 }
 
-function handleReset() {
-  query.ordertype = ''
-  query.mid = 0
-  query.page = 1
+async function doDelete(ids: number[]) {
+  if (ids.length === 0) return
+  await ElMessageBox.confirm('确定要删除所选奖励记录吗？删除后无法恢复！', '操作确认', {
+    type: 'warning',
+  })
+  await deleteCollectRewardRecords(ids)
+  ElMessage.success('删除成功')
+  selected.value = []
   fetchList()
+}
+
+function handleBatchDelete() {
+  const ids = selected.value.map((r) => r.id)
+  if (ids.length === 0) {
+    ElMessage.warning('请先选择要删除的记录')
+    return
+  }
+  doDelete(ids)
+}
+
+function handleRowDelete(row: CollectRewardRecordItem) {
+  doDelete([row.id])
 }
 
 onMounted(fetchList)
@@ -60,42 +93,100 @@ onMounted(fetchList)
 <template>
   <div>
     <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="订单类型">
-          <el-select v-model="query.ordertype" placeholder="全部" clearable style="width: 140px">
-            <el-option v-for="(label, key) in ORDERTYPE_TEXT" :key="key" :label="label" :value="key" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="会员ID">
-          <el-input-number v-model="query.mid" :min="0" controls-position="right" style="width: 130px" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+      <div class="toolbar-row">
+        <el-button type="danger" size="small" @click="handleBatchDelete">批量删除</el-button>
+        <el-form inline @submit.prevent class="search-form" @keyup.enter="handleSearch">
+          <el-form-item label="订单号">
+            <el-input v-model="query.ordernum" clearable style="width: 130px" />
+          </el-form-item>
+          <el-form-item label="下单时间">
+            <el-date-picker
+              v-model="query.ordertime"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              style="width: 220px"
+            />
+          </el-form-item>
+          <el-form-item label="会员信息">
+            <el-input
+              v-model="query.keyword"
+              placeholder="昵称、手机号"
+              clearable
+              style="width: 130px"
+            />
+          </el-form-item>
+          <el-form-item label="奖励类型">
+            <el-select v-model="query.reward_type" placeholder="全部" clearable style="width: 110px">
+              <el-option label="积分" :value="1" />
+              <el-option label="优惠券" :value="2" />
+              <el-option label="余额返现" :value="3" />
+              <el-option label="佣金返现" :value="4" />
+            </el-select>
+          </el-form-item>
+          <el-form-item label="订单类型">
+            <el-select v-model="query.ordertype" placeholder="全部" clearable style="width: 130px">
+              <el-option
+                v-for="o in ORDERTYPE_OPTIONS"
+                :key="o.value"
+                :label="o.label"
+                :value="o.value"
+              />
+            </el-select>
+          </el-form-item>
+          <el-form-item>
+            <el-button type="success" @click="handleSearch">查询</el-button>
+          </el-form-item>
+        </el-form>
+      </div>
     </el-card>
 
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="订单类型" width="110">
-          <template #default="{ row }">{{ ORDERTYPE_TEXT[row.ordertype] || row.ordertype }}</template>
-        </el-table-column>
-        <el-table-column label="订单号" min-width="150">
-          <template #default="{ row }">{{ row.ordernum || `#${row.orderid}` }}</template>
-        </el-table-column>
-        <el-table-column label="会员" min-width="130">
+      <el-table
+        v-loading="loading"
+        :data="tableData"
+        class="admin-table"
+        @selection-change="(rows: CollectRewardRecordItem[]) => (selected = rows)"
+      >
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="奖励ID" width="80" />
+        <el-table-column label="会员信息" min-width="150">
           <template #default="{ row }">
             <div class="member-cell">
-              <el-avatar v-if="row.headimg" :src="row.headimg" :size="28" />
-              <span>{{ row.nickname || `会员${row.mid}` }}</span>
+              <el-avatar v-if="row.headimg" :src="row.headimg" :size="36" />
+              <div>
+                <div>{{ row.nickname || `会员${row.mid}` }}</div>
+                <div class="sub-text">会员ID：{{ row.mid }}</div>
+              </div>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="reward_text" label="奖励内容" min-width="160" />
-        <el-table-column prop="ordertime_text" label="下单时间" width="170" />
-        <el-table-column prop="createtime_text" label="发放时间" width="170" />
+        <el-table-column label="订单号" min-width="180">
+          <template #default="{ row }">
+            <div>{{ row.ordernum || `#${row.orderid}` }}</div>
+            <div class="sub-text">{{ row.ordertime_text }}</div>
+            <div v-if="row.business" class="sub-text">商家：{{ row.business }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="订单类型" width="120">
+          <template #default="{ row }">{{ row.ordertype_text || row.ordertype }}</template>
+        </el-table-column>
+        <el-table-column label="商品信息" min-width="160">
+          <template #default="{ row }">
+            <div class="goods-text">{{ row.goods_title || '—' }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="奖励类型" width="100">
+          <template #default="{ row }">{{ row.reward_type_text }}</template>
+        </el-table-column>
+        <el-table-column prop="reward_text" label="奖励金额/面额" min-width="140" />
+        <el-table-column prop="createtime_text" label="领取时间" width="160" />
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <el-button link type="danger" size="small" @click="handleRowDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <el-pagination
@@ -115,21 +206,56 @@ onMounted(fetchList)
 
 <style scoped>
 .toolbar-card {
-  margin-bottom: 16px;
+  margin-bottom: 3px;
 }
 
-.toolbar-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 10px;
 }
 
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
+.search-form {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+}
+
+.search-form :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 10px;
+}
+
+.admin-table :deep(th) {
+  background: #e6e6e6;
+}
+
+.admin-table :deep(.cell) {
+  text-align: left;
 }
 
 .member-cell {
   display: flex;
   align-items: center;
   gap: 8px;
+}
+
+.goods-text {
+  color: #606266;
+  font-size: 13px;
+}
+
+.sub-text {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
 }
 </style>

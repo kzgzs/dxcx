@@ -72,7 +72,6 @@ import MemberList from '../views/admin/MemberList.vue'
 import MemberLevel from '../views/admin/MemberLevel.vue'
 // ===== 会员组三页+共享海报引擎（P18-4） =====
 import LevelUpAudit from '../views/admin/LevelUpAudit.vue'
-import MemberCharts from '../views/admin/MemberCharts.vue'
 import ShopPoster from '../views/admin/ShopPoster.vue'
 import MemberPoster from '../views/admin/MemberPoster.vue'
 // ===== 六业务分享海报（批次4-D 任务189：拼团/幸运拼团/砍价/团购/积分兑换/周期购） =====
@@ -87,9 +86,6 @@ import ClearCache from '../views/admin/ClearCache.vue'
 import MppaySet from '../views/admin/MppaySet.vue'
 import WxpaySet from '../views/admin/WxpaySet.vue'
 import Sysset from '../views/admin/Sysset.vue'
-// 余额宝两页（P19-3 任务181：收益明细 / 提现审核）
-import YuebaoLog from '../views/admin/YuebaoLog.vue'
-import YuebaoWithdraw from '../views/admin/YuebaoWithdraw.vue'
 import Freight from '../views/admin/Freight.vue'
 import ExpressData from '../views/admin/ExpressData.vue'
 import SalesStat from '../views/admin/SalesStat.vue'
@@ -109,6 +105,7 @@ import ShortcutMenuSet from '../views/admin/ShortcutMenuSet.vue'
 // ===== 营销补全四页（P13-1：优惠券管理/领取记录/签到/赠送奖励） =====
 import CouponManage from '../views/admin/CouponManage.vue'
 import CouponRecord from '../views/admin/CouponRecord.vue'
+void CouponRecord // 保留：CouponManage 行操作打开领取记录（另一片接入）
 import SignSet from '../views/admin/SignSet.vue'
 import RewardSet from '../views/admin/RewardSet.vue'
 // ===== 赠送促销四页（批次4-A 任务186：注册赠送/充值赠送/商品促销/购物返现） =====
@@ -130,30 +127,17 @@ import CommissionLog from '../views/admin/CommissionLog.vue'
 import HexiaoLog from '../views/admin/HexiaoLog.vue'
 import InvoiceList from '../views/admin/InvoiceList.vue'
 import WxpayLog from '../views/admin/WxpayLog.vue'
+import WxTransferAuth from '../views/admin/WxTransferAuth.vue'
 // ===== 财务记录三页（P18-5/任务177：佣金记录/分红记录/计次核销记录） =====
 import CommissionRecord from '../views/admin/CommissionRecord.vue'
-import FenhongLog from '../views/admin/FenhongLog.vue'
-import HexiaoShopproduct from '../views/admin/HexiaoShopproduct.vue'
 // ===== 三套分红页（P19-5/任务183：团队/股东/区域分红预览与发放） =====
-import TeamFenhong from '../views/admin/TeamFenhong.vue'
-import Gdfenhong from '../views/admin/Gdfenhong.vue'
-import AreaFenhong from '../views/admin/AreaFenhong.vue'
-// ===== 奖金池四页（P19-6/任务184：利润池/区域池/达标池/发放记录） =====
-import PrizePoolProfit from '../views/admin/PrizePoolProfit.vue'
-import AreaPrizePool from '../views/admin/AreaPrizePool.vue'
-import ReachPrizePool from '../views/admin/ReachPrizePool.vue'
-import PrizePoolLog from '../views/admin/PrizePoolLog.vue'
 // ===== 团购整套六页（批次4-B 任务187：商品/订单/评价/分类/卡密/设置） =====
 import TuangouProduct from '../views/admin/TuangouProduct.vue'
 import TuangouOrder from '../views/admin/TuangouOrder.vue'
 import TuangouComment from '../views/admin/TuangouComment.vue'
 import TuangouCategory from '../views/admin/TuangouCategory.vue'
-import TuangouCode from '../views/admin/TuangouCode.vue'
 import TuangouSet from '../views/admin/TuangouSet.vue'
 // ===== 营销小项集合六页（批次4-E 任务190：口令/红包/竞猜/活动评价/收货奖励记录/数据统计） =====
-import KoulingManage from '../views/admin/KoulingManage.vue'
-import HongbaoManage from '../views/admin/HongbaoManage.vue'
-import FifaManage from '../views/admin/FifaManage.vue'
 import ActivityComment from '../views/admin/ActivityComment.vue'
 import CollectRewardRecord from '../views/admin/CollectRewardRecord.vue'
 import DataStatistics from '../views/admin/DataStatistics.vue'
@@ -219,9 +203,8 @@ import KechengOrder from '../views/admin/KechengOrder.vue'
 import KechengStudylog from '../views/admin/KechengStudylog.vue'
 import KechengPoster from '../views/admin/KechengPoster.vue'
 import KechengSet from '../views/admin/KechengSet.vue'
-// ===== 知识付费题库与讲师（批次5-D2 任务198） =====
+// ===== 知识付费题库（批次5-D2 任务198；讲师审核菜单已下线） =====
 import KechengTiku from '../views/admin/KechengTiku.vue'
-import KechengLecturer from '../views/admin/KechengLecturer.vue'
 
 /**
  * 平台绑定组件工厂：八个菜单项共用 PlatformBinding，initialTab 直达对应端
@@ -282,6 +265,17 @@ function activityCommentOf(type: 'collage' | 'seckill') {
   return defineComponent({
     name: `ActivityComment-${type}`,
     render: () => h(ActivityComment, { type }),
+  })
+}
+
+/**
+ * 积分兑换组件工厂：ScoreshopManage 多实例按菜单直达对应 tab（set/category/product/order），
+ * 各自独立避免 KeepAlive 串档
+ */
+function scoreshopTabOf(tab: 'set' | 'category' | 'product' | 'order') {
+  return defineComponent({
+    name: `ScoreshopManage-${tab}`,
+    render: () => h(ScoreshopManage, { initialTab: tab }),
   })
 }
 
@@ -385,12 +379,8 @@ export const tenantMenus: MenuNode[] = [
       { name: '加佣金', key: 'member-addcommission', hide: true },
       { name: '等级及分销', key: 'member-level-index', component: MemberLevel },
       { name: '升级申请记录', key: 'member-level-applyorder', component: LevelUpAudit },
-      // 会员侧仅保留 4 个可见菜单（对照点大）：会员关系图、团队/股东/区域分红隐藏，路由保留可达
-      { name: '会员关系图', key: 'member-charts', component: MemberCharts, hide: true },
+      // 会员侧仅保留 4 个可见菜单（对照点大）：会员关系图、团队/股东/区域分红页面已删除
       { name: '分享海报', key: 'member-poster-index', component: MemberPoster },
-      { name: '团队分红', key: 'teamfenhong', component: TeamFenhong, hide: true },
-      { name: '股东分红', key: 'gdfenhong', component: Gdfenhong, hide: true },
-      { name: '区域分红', key: 'areafenhong', component: AreaFenhong, hide: true },
       { name: '会员等级背景设置', key: 'member-level-bgset', hide: true },
       { name: '优惠券', key: 'coupon-record', hide: true },
       { name: '会员画像', key: 'team-member-huaxiang', hide: true },
@@ -406,8 +396,7 @@ export const tenantMenus: MenuNode[] = [
       { name: '充值记录', key: 'money-rechargelog', component: RechargeLog },
       { name: '余额提现', key: 'money-withdrawlog', component: WithdrawAudit },
       { name: '微信转账记录', key: 'money-wx-transfer-log', component: WxpayLog },
-      { name: '余额宝明细', key: 'yuebao-moneylog', component: YuebaoLog },
-      { name: '余额宝提现', key: 'yuebao-withdrawlog', component: YuebaoWithdraw },
+      { name: '微信转账授权记录', key: 'wx-transfer-auth', component: merchantViewOf('WxTransferAuth', WxTransferAuth) },
       { name: '佣金记录', key: 'commission-record', component: CommissionRecord },
       { name: '佣金明细', key: 'commission-commissionlog', component: commissionLogOf('log') },
       { name: '佣金提现', key: 'commission-withdrawlog', component: commissionLogOf('withdraw') },
@@ -431,9 +420,7 @@ export const tenantMenus: MenuNode[] = [
           { name: '聚合收款码', key: 'maidan-set', component: MaidanSet },
         ],
       },
-      { name: '分红记录', key: 'commission-fenhonglog', component: FenhongLog },
       { name: '核销记录', key: 'hexiao-index', component: HexiaoLog },
-      { name: '计次核销记录', key: 'hexiao-shopproduct', component: HexiaoShopproduct },
       { name: '发票管理', key: 'invoice-index', component: InvoiceList },
       { name: '买单余额抵扣比例', key: 'maidan-money-dec-dandu-bl', hide: true },
       { name: '买单虚拟销量', key: 'maidan-sales-virtual-business', hide: true },
@@ -444,14 +431,7 @@ export const tenantMenus: MenuNode[] = [
     name: '营销',
     key: 'yingxiao',
     child: [
-      {
-        name: '优惠券',
-        key: 'coupon',
-        child: [
-          { name: '优惠券管理', key: 'coupon-index', component: CouponManage },
-          { name: '领取记录', key: 'coupon-record-list', component: CouponRecord },
-        ],
-      },
+      { name: '优惠券', key: 'coupon', component: CouponManage },
       { name: '注册赠送', key: 'member-register-give', component: RegisterGive },
       { name: '充值赠送', key: 'money-giveset', component: MoneyGiveset },
       { name: '购物满减', key: 'manjian-set', component: Promotion },
@@ -512,7 +492,6 @@ export const tenantMenus: MenuNode[] = [
           { name: '订单管理', key: 'tuangou-order-index', component: TuangouOrder },
           { name: '评价管理', key: 'tuangou-comment-index', component: TuangouComment },
           { name: '商品分类', key: 'tuangou-category-index', component: TuangouCategory },
-          { name: '商品卡密', key: 'tuangou-code-index', component: TuangouCode },
           { name: '分享海报', key: 'tuangou-poster-index', component: TuangouPoster },
           { name: '系统设置', key: 'tuangou-set-index', component: TuangouSet },
         ],
@@ -521,11 +500,11 @@ export const tenantMenus: MenuNode[] = [
         name: '积分兑换',
         key: 'scoreshop',
         child: [
-          { name: '商品管理', key: 'scoreshop-product-index', component: ScoreshopManage },
-          { name: '订单管理', key: 'scoreshop-order-index', component: ScoreshopManage },
-          { name: '商品分类', key: 'scoreshop-category-index', component: ScoreshopManage },
+          { name: '商品管理', key: 'scoreshop-product-index', component: scoreshopTabOf('product') },
+          { name: '订单管理', key: 'scoreshop-order-index', component: scoreshopTabOf('order') },
+          { name: '商品分类', key: 'scoreshop-category-index', component: scoreshopTabOf('category') },
           { name: '分享海报', key: 'scoreshop-poster-index', component: ScoreshopPoster },
-          { name: '系统设置', key: 'scoreshop-set-index', component: ScoreshopManage },
+          { name: '系统设置', key: 'scoreshop-set-index', component: scoreshopTabOf('set') },
         ],
       },
       {
@@ -535,21 +514,6 @@ export const tenantMenus: MenuNode[] = [
           { name: '活动列表', key: 'choujiang-index', component: LotteryManage },
           { name: '抽奖记录', key: 'choujiang-record', component: LotteryRecord },
         ],
-      },
-      {
-        name: '口令游戏',
-        key: 'kouling',
-        child: [{ name: '口令/谜语管理', key: 'kouling-index', component: KoulingManage }],
-      },
-      {
-        name: '微信红包',
-        key: 'hongbao',
-        child: [{ name: '红包活动管理', key: 'hongbao-index', component: HongbaoManage }],
-      },
-      {
-        name: '世界杯竞猜',
-        key: 'fifa',
-        child: [{ name: '赛事竞猜管理', key: 'fifa-index', component: FifaManage }],
       },
       {
         name: '短视频',
@@ -564,29 +528,11 @@ export const tenantMenus: MenuNode[] = [
         ],
       },
       {
-        name: '线下补助',
-        key: 'offline-subsidies',
-        child: [
-          { name: '数据统计', key: 'offline-subsidies-log', component: defineAsyncComponent(() => import('../views/admin/OfflineSubsidiesLog.vue')) },
-          { name: '补助配置', key: 'offline-subsidies-set', component: defineAsyncComponent(() => import('../views/admin/OfflineSubsidiesSet.vue')) },
-        ],
-      },
-      {
         name: '确认收货奖励',
         key: 'order-collect-reward',
         child: [
           { name: '奖励记录', key: 'order-collect-reward-index', component: CollectRewardRecord },
           { name: '奖励设置', key: 'order-collect-reward-set', component: RewardSet },
-        ],
-      },
-      {
-        name: '奖金池',
-        key: 'commission-prizepool',
-        child: [
-          { name: '利润奖金池', key: 'commission-prizepool-index', component: PrizePoolProfit },
-          { name: '区域奖金池', key: 'commission-area-prizepool-index', component: AreaPrizePool },
-          { name: '达标奖金池', key: 'commission-reach-prizepool-index', component: ReachPrizePool },
-          { name: '发放记录', key: 'commission-prizepool-log', component: PrizePoolLog },
         ],
       },
       { name: '数据统计', key: 'data-statistics-index', component: DataStatistics },
@@ -654,7 +600,6 @@ export const tenantMenus: MenuNode[] = [
           { name: '课程列表', key: 'kecheng-list-index', component: KechengList },
           { name: '课程章节', key: 'kecheng-chapter-index', component: KechengChapter },
           { name: '题库管理', key: 'kecheng-tiku-index', component: KechengTiku },
-          { name: '讲师审核', key: 'kecheng-lecturer-index', component: KechengLecturer },
           { name: '课程订单', key: 'kecheng-order-index', component: KechengOrder },
           { name: '学习记录', key: 'kecheng-studylog-index', component: KechengStudylog },
           { name: '课程海报', key: 'kecheng-poster-index', component: KechengPoster },
@@ -673,6 +618,9 @@ export const tenantMenus: MenuNode[] = [
           { name: '提现记录', key: 'peisong-money-withdrawlog', component: defineAsyncComponent(() => import('../views/admin/PeisongWithdrawLog.vue')) },
           { name: '系统设置', key: 'peisong-set', component: defineAsyncComponent(() => import('../views/admin/PeisongSet.vue')) },
           { name: '码科跑腿对接', key: 'peisong-makeset', component: defineAsyncComponent(() => import('../views/admin/PeisongMakeset.vue')) },
+          { name: '快递鸟设置', key: 'peisong-express-set', component: defineAsyncComponent(() => import('../views/admin/ExpressSet.vue')) },
+          { name: '快递鸟门店', key: 'peisong-express-shop', component: defineAsyncComponent(() => import('../views/admin/ExpressShop.vue')) },
+          { name: '快递鸟记录', key: 'peisong-express-record', component: defineAsyncComponent(() => import('../views/admin/ExpressRecord.vue')) },
         ],
       },
       { name: '物流助手', key: 'miandan-index', component: defineAsyncComponent(() => import('../views/admin/MiandanIndex.vue')) },

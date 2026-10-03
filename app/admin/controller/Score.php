@@ -8,6 +8,7 @@ use app\BaseController;
 use app\common\exception\BusinessException;
 use app\common\service\ScoreService;
 use app\common\service\ScopeService;
+use util\ExcelUtil;
 
 /**
  * 租户后台 - 积分管理（admin 应用，JWT role=admin，aid 走 ScopeService）
@@ -93,6 +94,87 @@ class Score extends BaseController
         $pageSize = (int) $this->request->get('pagesize', 10);
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
 
-        return $this->success($this->scoreService->adminLog($aid, $mid, $page, $pageSize));
+        return $this->success($this->scoreService->adminScoreLogList($aid, [
+            'mid'        => $mid,
+            'nickname'   => '',
+            'remark'     => '',
+            'start_date' => '',
+            'end_date'   => '',
+            'page'       => $page,
+            'pagesize'   => $pageSize,
+        ]));
+    }
+
+    /**
+     * 积分明细（后台完整列表：搜索 mid/nickname/时间/remark；对齐点大 score/scorelog.html）
+     * GET /admin/score/logList?mid=&nickname=&remark=&start_date=&end_date=&page=&pagesize=
+     */
+    public function logList()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success($this->scoreService->adminScoreLogList($aid, [
+            'mid'        => $this->request->get('mid', 0),
+            'nickname'   => $this->request->get('nickname', ''),
+            'remark'     => $this->request->get('remark', ''),
+            'start_date' => $this->request->get('start_date', ''),
+            'end_date'   => $this->request->get('end_date', ''),
+            'page'       => $this->request->get('page', 1),
+            'pagesize'   => $this->request->get('pagesize', 10),
+        ]));
+    }
+
+    /**
+     * 积分明细批量删除（入参兼容单 id 与 ids[]）
+     * POST /admin/score/logDelete {ids[] | id}
+     */
+    public function logDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) {
+            $single = (int) $this->request->post('id', 0);
+            if ($single > 0) {
+                $ids = [$single];
+            }
+        }
+        $n = $this->scoreService->deleteScoreLog($aid, $ids);
+        return $this->success(['deleted' => $n], '删除成功');
+    }
+
+    /**
+     * 积分撤销（对齐点大 Score::cancel；未撤销才处理，反向冲正）
+     * POST /admin/score/cancel {ids[] | id}
+     */
+    public function cancel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) {
+            $single = (int) $this->request->post('id', 0);
+            if ($single > 0) {
+                $ids = [$single];
+            }
+        }
+        $n = $this->scoreService->cancelScoreLog($aid, $ids);
+        return $this->success(['canceled' => $n], '撤销成功');
+    }
+
+    /**
+     * 积分明细导出
+     * GET /admin/score/logExport
+     */
+    public function logExport()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+        [$titles, $rows] = $this->scoreService->scoreLogExport($aid, [
+            'mid' => $this->request->get('mid', 0), 'nickname' => $this->request->get('nickname', ''),
+            'remark' => $this->request->get('remark', ''),
+            'start_date' => $this->request->get('start_date', ''), 'end_date' => $this->request->get('end_date', ''),
+        ]);
+        ExcelUtil::export($titles, $rows, '积分明细_' . date('YmdHis'));
     }
 }
+

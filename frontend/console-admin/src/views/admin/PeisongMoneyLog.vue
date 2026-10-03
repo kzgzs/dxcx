@@ -1,23 +1,39 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { delPeisongMoneyLog, getPeisongMoneyLogList } from '../../api/peisong'
+import {
+  delPeisongMoneyLog,
+  getPeisongMoneyLogList,
+  getPeisongUserList,
+} from '../../api/peisong'
 import type { PeisongMoneyLogItem } from '../../api/peisong'
 import { formatTime } from '../../utils/time'
 
-// 租户后台 - 同城配送·提成明细（批次8 任务223；对标参考系统 PeisongMoney::moneylog）
+// 租户后台 - 同城配送·提成明细（照截图：左 删除/导出EXCEL；右 配送员下拉/昵称/搜索；列 配送员/变更金额/变更后金额/变更时间/备注/操作）
 
 const loading = ref(false)
 const tableData = ref<PeisongMoneyLogItem[]>([])
 const total = ref(0)
-const selection = ref<PeisongMoneyLogItem[]>([])
+const selected = ref<PeisongMoneyLogItem[]>([])
+const riderOptions = ref<{ id: number; realname: string; tel: string }[]>([])
 
 const query = reactive({
   page: 1,
   pagesize: 10,
+  uid: '' as number | '',
   realname: '',
-  uid: '',
 })
+
+async function fetchRiders() {
+  try {
+    const data = await getPeisongUserList({ page: 1, pagesize: 100 })
+    riderOptions.value = (data.list || []).map((u) => ({
+      id: Number(u.id),
+      realname: String(u.realname || ''),
+      tel: String(u.tel || ''),
+    }))
+  } catch { /* 拦截器 */ }
+}
 
 async function fetchList() {
   loading.value = true
@@ -25,14 +41,12 @@ async function fetchList() {
     const data = await getPeisongMoneyLogList({
       page: query.page,
       pagesize: query.pagesize,
+      uid: query.uid === '' ? undefined : query.uid,
       realname: query.realname || undefined,
-      uid: query.uid || undefined,
     })
     tableData.value = data.list || []
     total.value = data.total || 0
-  } catch {
-    // axios 拦截器已提示
-  } finally {
+  } catch { /* 拦截器 */ } finally {
     loading.value = false
   }
 }
@@ -42,141 +56,151 @@ function handleSearch() {
   fetchList()
 }
 
-function handleReset() {
-  query.realname = ''
-  query.uid = ''
-  query.page = 1
-  fetchList()
-}
-
-async function handleDel(row?: PeisongMoneyLogItem) {
-  const ids = row ? [row.id] : selection.value.map((v) => v.id)
-  if (!ids.length) return ElMessage.warning('请先选择明细')
-  await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条明细？`, '提示', { type: 'warning' })
+async function handleDelete(row?: PeisongMoneyLogItem) {
+  const ids = row ? [row.id] : selected.value.map((v) => v.id)
+  if (!ids.length) {
+    ElMessage.warning('请先选择明细')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '操作确认', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   await delPeisongMoneyLog(ids)
   ElMessage.success('删除成功')
   fetchList()
 }
 
-function shortDate(ts: number): string {
-  if (!ts) return '-'
-  const full = formatTime(ts)
-  return full.length >= 10 ? full.slice(2, 10) : full
+// 导出EXCEL（按当前筛选条件全量导出 CSV，Excel 可直接打开）
+async function handleExport() {
+  try {
+    const data = await getPeisongMoneyLogList({
+      page: 1,
+      pagesize: 100000,
+      uid: query.uid === '' ? undefined : query.uid,
+      realname: query.realname || undefined,
+    })
+    const rows = data.list || []
+    const header = ['配送员', '变更金额', '变更后剩余', '变更时间', '备注']
+    const lines = rows.map((r) => [
+      `${r.realname || ''} ${r.tel || ''}`.trim(),
+      String(r.money),
+      String(r.after),
+      r.createtime ? formatTime(r.createtime) : '',
+      r.remark || '',
+    ])
+    const csv = '﻿' + [header, ...lines].map((l) => l.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+    const a = document.createElement('a')
+    a.href = URL.createObjectURL(blob)
+    a.download = '提成明细.csv'
+    a.click()
+    URL.revokeObjectURL(a.href)
+    ElMessage.success(`已导出 ${rows.length} 条`)
+  } catch { /* 拦截器 */ }
 }
 
 onMounted(() => {
   fetchList()
+  fetchRiders()
 })
 </script>
 
 <template>
   <div>
-    <!-- 搜索工具栏 -->
-    <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="配送员">
-          <el-input v-model="query.realname" placeholder="姓名" clearable style="width: 130px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="配送员ID">
-          <el-input v-model="query.uid" placeholder="ID" clearable style="width: 90px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+    <!-- 一行工具条：左 删除/导出EXCEL；右 配送员/昵称/搜索 -->
+    <el-card shadow="never" class="toolbar">
+      <div class="toolbar-inner">
+        <div class="toolbar-left">
+          <el-button @click="handleDelete()">删除</el-button>
+          <el-button @click="handleExport">导出EXCEL</el-button>
+        </div>
+        <div class="toolbar-right">
+          <span class="tf-label">配送员</span>
+          <el-select v-model="query.uid" placeholder="全部" clearable style="width: 150px">
+            <el-option
+              v-for="u in riderOptions"
+              :key="u.id"
+              :label="u.realname"
+              :value="u.id"
+            />
+          </el-select>
+          <span class="tf-label">昵称</span>
+          <el-input
+            v-model="query.realname"
+            placeholder=""
+            clearable
+            style="width: 160px"
+            @keyup.enter="handleSearch"
+          />
+          <button class="search-btn" title="搜索" @click="handleSearch">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M11.4 10.2a6 6 0 1 0-1.2 1.2l3.4 3.4 1.2-1.2-3.4-3.4zM7 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+          </button>
+        </div>
+      </div>
     </el-card>
 
-    <!-- 列表 -->
     <el-card shadow="never">
-      <div class="op-row">
-        <el-button type="danger" plain @click="handleDel()">批量删除</el-button>
-      </div>
-
-      <el-table v-loading="loading" :data="tableData" stripe border size="small" @selection-change="(rows: PeisongMoneyLogItem[]) => (selection = rows)">
-        <el-table-column type="selection" width="42" />
-        <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-        <el-table-column label="配送员" min-width="120" show-overflow-tooltip>
+      <el-table v-loading="loading" :data="tableData" border @selection-change="(rows: PeisongMoneyLogItem[]) => (selected = rows)">
+        <el-table-column type="selection" width="40" />
+        <el-table-column label="配送员" min-width="160">
           <template #default="{ row }">
-            {{ row.realname || `配送员${row.uid}` }}
-            <span v-if="row.tel" class="sub-text">{{ row.tel }}</span>
+            <div>{{ row.realname || '-' }}</div>
+            <div v-if="row.tel" class="sub">{{ row.tel }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="变更金额" width="100" class-name="compact-col">
+        <el-table-column label="变更金额" width="110">
           <template #default="{ row }">
             <span :class="Number(row.money) >= 0 ? 'money-plus' : 'money-minus'">
               {{ Number(row.money) >= 0 ? '+' : '' }}{{ Number(row.money).toFixed(2) }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="变更后剩余" width="104" class-name="compact-col">
-          <template #default="{ row }">￥{{ Number(row.after).toFixed(2) }}</template>
+        <el-table-column label="变更后金额" width="110">
+          <template #default="{ row }">{{ Number(row.after).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="180" show-overflow-tooltip>
+        <el-table-column label="变更时间" width="150" sortable>
+          <template #default="{ row }">{{ row.createtime ? formatTime(row.createtime) : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '-' }}</template>
         </el-table-column>
-        <el-table-column label="变更时间" width="88" class-name="compact-col">
+        <el-table-column label="操作" width="90">
           <template #default="{ row }">
-            <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ shortDate(row.createtime) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="76" fixed="right" class-name="compact-col">
-          <template #default="{ row }">
-            <el-button link type="danger" size="small" @click="handleDel(row)">删除</el-button>
+            <div class="row-ops">
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
 
       <el-pagination
-        class="pagination"
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :current-page="query.page"
-        :page-size="query.pagesize"
-        :page-sizes="[10, 20, 50, 100]"
-        @current-change="(p: number) => { query.page = p; fetchList() }"
-        @size-change="(s: number) => { query.pagesize = s; query.page = 1; fetchList() }"
+        class="pager" background layout="total, sizes, prev, pager, next, jumper"
+        :total="total" v-model:current-page="query.page" v-model:page-size="query.pagesize"
+        :page-sizes="[10, 20, 50]" @current-change="fetchList" @size-change="handleSearch"
       />
     </el-card>
   </div>
 </template>
 
 <style scoped>
-.toolbar-card {
-  margin-bottom: 12px;
-}
-
-.op-row {
-  margin-bottom: 12px;
-}
-
-.money-plus {
-  color: #67c23a;
-  font-weight: 600;
-}
-
-.money-minus {
-  color: #f56c6c;
-  font-weight: 600;
-}
-
-.sub-text {
-  color: #909399;
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
-}
+.toolbar { margin-bottom: 3px; }
+.toolbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.toolbar-left { display: flex; gap: 8px; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.tf-label { font-size: 13px; color: #606266; white-space: nowrap; }
+.search-btn { width: 30px; height: 30px; border: none; background: #67c23a; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; }
+.el-card { border-radius: 0; }
+.el-table :deep(th) { background: #e6e6e6; text-align: left; }
+.el-table :deep(td .cell) { text-align: left; }
+.pager { margin-top: 12px; justify-content: flex-end; }
+.sub { color: #909399; font-size: 12px; }
+.row-ops { display: flex; gap: 10px; flex-wrap: nowrap; }
+.money-plus { color: #2ba84a; font-weight: 600; }
+.money-minus { color: #333; font-weight: 600; }
 </style>

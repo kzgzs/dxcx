@@ -82,8 +82,14 @@ export interface MaidanSetData {
   maidan_login: number
   maidan_getlocation: number
   maidan_payaftertourl: string
+  maidan_score_discount: number
   h5_url: string
+  mp_path: string
   shop_name: string
+  platform_arr: string[]
+  show_wx: boolean
+  show_alipay: boolean
+  is_platform: boolean
 }
 
 // 手机号找会员（含等级/余额/积分/折扣）
@@ -126,6 +132,11 @@ export function mdRefund(data: { id: number; money: number; reason: string }) {
   return request.post<unknown, null>('/admin/maidan/refund', data)
 }
 
+// 买单记录批量删除
+export function mdDelete(ids: number[]) {
+  return request.post<unknown, null>('/admin/maidan/logdel', { ids })
+}
+
 // 买单记录导出（xlsx Blob）
 export function mdExport(params: MaidanListQuery) {
   return request.get('/admin/maidan/export', {
@@ -141,6 +152,15 @@ export function mdGetSet() {
 }
 
 // 收款码设置保存
-export function mdSaveSet(data: { maidan_login: number; maidan_getlocation: number; maidan_payaftertourl: string }) {
+export function mdSaveSet(data: { maidan_login: number; maidan_getlocation: number; maidan_payaftertourl: string; maidan_score_discount: number }) {
   return request.post<unknown, null>('/admin/maidan/saveSet', data)
+}
+
+// 上传域名校验文件
+export function mdUploadJstxt(file: File) {
+  const fd = new FormData()
+  fd.append('file', file)
+  return request.post<unknown, null>('/admin/maidan/uploadJstxt', fd, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  })
 }

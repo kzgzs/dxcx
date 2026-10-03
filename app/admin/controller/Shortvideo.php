@@ -41,7 +41,8 @@ class Shortvideo extends BaseController
             trim((string) $this->request->get('bid', '')),
             $page,
             $pageSize,
-            trim((string) $this->request->get('createtime', ''))
+            trim((string) $this->request->get('createtime', '')),
+            trim((string) $this->request->get('orderby', ''))
         ));
     }
 

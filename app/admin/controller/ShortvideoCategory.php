@@ -36,6 +36,7 @@ class ShortvideoCategory extends BaseController
             $aid,
             trim((string) $this->request->get('bid', '')),
             trim((string) $this->request->get('keyword', '')),
+            trim((string) $this->request->get('status', '')),
             $page,
             $pageSize
         ));
@@ -78,5 +79,23 @@ class ShortvideoCategory extends BaseController
         $this->shortvideoService->categoryDelete($aid, (int) $this->request->post('id', 0));
 
         return $this->success([], '删除成功');
+    }
+
+    /**
+     * 分类批量开启/关闭
+     * POST /admin/shortvideo/category/status {ids[],status}
+     */
+    public function status()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $ids = (array) $this->request->post('ids/a', []);
+        if (empty($ids)) {
+            $ids = [(int) $this->request->post('id', 0)];
+        }
+
+        $this->shortvideoService->categoryStatus($aid, array_map('intval', $ids), (int) $this->request->post('status', 1));
+
+        return $this->success([], '操作成功');
     }
 }

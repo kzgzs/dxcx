@@ -20,18 +20,29 @@ class KechengStudylog extends BaseController
 
     /**
      * 学习记录列表
-     * GET /admin/kechengStudylog/list?page&pagesize&keyword&kcid
+     * GET /admin/kechengStudylog/list?page&pagesize
      */
     public function list()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $keyword  = trim((string) $this->request->get('keyword', ''));
-        $kcid     = (int) $this->request->get('kcid', 0);
         $page     = max(1, (int) $this->request->get('page', 1));
         $pageSize = (int) $this->request->get('pagesize', 10);
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
 
-        return $this->success($this->kechengService->studylogList($aid, $keyword, $kcid, $page, $pageSize));
+        return $this->success($this->kechengService->studylogList($aid, $page, $pageSize));
+    }
+
+    /**
+     * 删除学习记录
+     * POST /admin/kechengStudylog/delete {id}
+     */
+    public function delete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $this->kechengService->studylogDelete($aid, (int) $this->request->post('id', 0));
+
+        return $this->success([], '删除成功');
     }
 }

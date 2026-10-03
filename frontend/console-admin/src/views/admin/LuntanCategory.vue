@@ -1,287 +1,345 @@
 <script setup lang="ts">
+// 用户论坛 - 分类管理（对齐点大 LuntanCategory/index + edit）
+// - 列表：添加/删除；列 ID/名称/图片/序号/状态
+// - 添加/编辑平铺主区域、右上角 X 关闭
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteLuntanCategory, getLuntanCategoryList, saveLuntanCategory } from '../../api/luntan'
+import {
+  deleteLuntanCategory,
+  getLuntanCategoryList,
+  saveLuntanCategory,
+} from '../../api/luntan'
 import type { LuntanCategoryItem } from '../../api/luntan'
+import ImgIconPicker from '../../components/ImgIconPicker.vue'
 
-// ============ 列表 ============
+const viewMode = ref<'list' | 'edit'>('list')
+
+// ============ 列表（拍平树：父级在前，子级缩进） ============
+interface FlatRow extends LuntanCategoryItem {
+  _level: number
+}
 const loading = ref(false)
-const tree = ref<LuntanCategoryItem[]>([])
+const flatList = ref<FlatRow[]>([])
+const selected = ref<FlatRow[]>([])
 
-async function fetchList() {
+function flatten(tree: LuntanCategoryItem[]): FlatRow[] {
+  const out: FlatRow[] = []
+  const walk = (rows: LuntanCategoryItem[], level: number) => {
+    rows.forEach((r) => {
+      out.push({ ...r, _level: level })
+      if (r.children && r.children.length) walk(r.children, level + 1)
+    })
+  }
+  walk(tree, 0)
+  return out
+}
+
+async function load() {
   loading.value = true
   try {
-    tree.value = await getLuntanCategoryList()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    const tree = await getLuntanCategoryList()
+    flatList.value = flatten(tree || [])
   } finally {
     loading.value = false
   }
 }
 
-// ============ 编辑弹窗 ============
-const dialogVisible = ref(false)
+function handleBatchDelete() {
+  const ids = selected.value.map((r) => r.id)
+  if (ids.length === 0) {
+    ElMessage.warning('请选择分类')
+    return
+  }
+  ElMessageBox.confirm('确定要删除选中的分类吗？', '删除确认', { type: 'warning' })
+    .then(async () => {
+      await deleteLuntanCategory(ids)
+      ElMessage.success('删除成功')
+      load()
+    })
+    .catch(() => {})
+}
+
+function handleRowDelete(row: FlatRow) {
+  ElMessageBox.confirm(`确定要删除分类「${row.name}」吗？`, '删除确认', { type: 'warning' })
+    .then(async () => {
+      await deleteLuntanCategory([row.id])
+      ElMessage.success('删除成功')
+      load()
+    })
+    .catch(() => {})
+}
+
+// ============ 整页编辑 ============
+const saving = ref(false)
 const form = reactive({
   id: 0,
-  pid: 0,
   name: '',
   pic: '',
   banner: '',
-  sort: 1,
-  status: 1,
-  goods_status: 0,
-  post_pay: 0,
-  post_score: 0,
-  top_options: [] as { hour: number; price: number }[],
-  coupon_ids: '',
-  starttime: '',
-  endtime: '',
-  limitnum: 0,
+  sort: 0,
+  status: 1 as number,
 })
 
-function openAdd(pid: number) {
-  Object.assign(form, {
-    id: 0,
-    pid,
-    name: '',
-    pic: '',
-    banner: '',
-    sort: 1,
-    status: 1,
-    goods_status: 0,
-    post_pay: 0,
-    post_score: 0,
-    top_options: [],
-    coupon_ids: '',
-    starttime: '',
-    endtime: '',
-    limitnum: 0,
-  })
-  dialogVisible.value = true
+function resetForm() {
+  Object.assign(form, { id: 0, name: '', pic: '', banner: '', sort: 0, status: 1 })
+}
+
+function openAdd() {
+  resetForm()
+  viewMode.value = 'edit'
 }
 
 function openEdit(row: LuntanCategoryItem) {
   Object.assign(form, {
     id: row.id,
-    pid: row.pid,
-    name: row.name,
+    name: row.name || '',
     pic: row.pic || '',
     banner: row.banner || '',
-    sort: row.sort,
-    status: row.status,
-    goods_status: row.goods_status,
-    post_pay: row.post_pay,
-    post_score: row.post_score,
-    top_options: (row.top_options || []).map((t) => ({ hour: t.hour, price: t.price })),
-    coupon_ids: row.coupon_ids || '',
-    starttime: row.starttime_text || '',
-    endtime: row.endtime_text || '',
-    limitnum: row.limitnum,
+    sort: row.sort ?? 0,
+    status: row.status ? 1 : 0,
   })
-  dialogVisible.value = true
+  viewMode.value = 'edit'
 }
 
-function addTopRow() {
-  form.top_options.push({ hour: 24, price: 0 })
+function backToList() {
+  viewMode.value = 'list'
+  resetForm()
+  load()
 }
 
-function removeTopRow(idx: number) {
-  form.top_options.splice(idx, 1)
+// 图标 / banner 选图
+const iconPickerVisible = ref(false)
+const bannerPickerVisible = ref(false)
+function onIconPick(urls: string[]) {
+  if (urls[0]) form.pic = urls[0]
+}
+function onBannerPick(urls: string[]) {
+  if (urls[0]) form.banner = urls[0]
 }
 
 async function handleSave() {
   if (!form.name.trim()) {
-    ElMessage.warning('请填写版块名称')
+    ElMessage.warning('请填写分类名称')
     return
   }
+  saving.value = true
   try {
     await saveLuntanCategory({
       id: form.id || undefined,
-      pid: form.pid,
+      pid: 0,
       name: form.name.trim(),
       pic: form.pic,
       banner: form.banner,
       sort: form.sort,
       status: form.status,
-      goods_status: form.goods_status,
-      post_pay: form.post_pay,
-      post_score: form.post_score,
-      top_options: form.top_options,
-      coupon_ids: form.coupon_ids,
-      starttime: form.starttime,
-      endtime: form.endtime,
-      limitnum: form.limitnum,
     })
     ElMessage.success('保存成功')
-    dialogVisible.value = false
-    fetchList()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    backToList()
+  } finally {
+    saving.value = false
   }
 }
 
-function handleDelete(row: LuntanCategoryItem) {
-  ElMessageBox.confirm(`确定要删除版块「${row.name}」吗？`, '删除确认', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await deleteLuntanCategory([row.id])
-        ElMessage.success('删除成功')
-        fetchList()
-      } catch {
-        // 错误提示已由 axios 拦截器统一弹出
-      }
-    })
-    .catch(() => {})
-}
-
-onMounted(fetchList)
+onMounted(load)
 </script>
 
 <template>
   <div>
-    <el-card shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>版块管理（二级结构）</span>
-          <el-button type="primary" @click="openAdd(0)">新增顶级版块</el-button>
+    <!-- ============ 列表视图 ============ -->
+    <div v-if="viewMode === 'list'">
+      <div class="page-title">帖子分类</div>
+
+      <el-card shadow="never" class="toolbar">
+        <div class="toolbar-left">
+          <el-button type="success" @click="openAdd">添加</el-button>
+          <el-button @click="handleBatchDelete">删除</el-button>
         </div>
-      </template>
+      </el-card>
 
-      <el-table v-loading="loading" :data="tree" stripe row-key="id" default-expand-all :tree-props="{ children: 'children' }">
-        <el-table-column prop="name" label="版块名称" min-width="180" />
-        <el-table-column label="帖子数" width="90">
-          <template #default="{ row }">{{ row.postnum || 0 }}</template>
-        </el-table-column>
-        <el-table-column prop="sort" label="排序" width="70" />
-        <el-table-column label="挂商品" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.goods_status ? 'success' : 'info'" size="small">{{ row.goods_status ? '开启' : '关闭' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="发帖收费" width="110">
-          <template #default="{ row }">
-            <span v-if="row.post_pay">{{ row.post_score }} 积分</span>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="置顶套餐" width="130">
-          <template #default="{ row }">
-            <span v-if="row.top_options && row.top_options.length">{{ row.top_options.length }} 档</span>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="发帖赠券" width="130">
-          <template #default="{ row }">
-            <span v-if="row.coupon_ids">券 {{ row.coupon_ids }} / 限 {{ row.limitnum }} 次</span>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.status ? 'success' : 'info'" size="small">{{ row.status ? '启用' : '停用' }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
-          <template #default="{ row }">
-            <el-button v-if="row.pid === 0" link type="primary" @click="openAdd(row.id)">加子版块</el-button>
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
+      <el-card shadow="never" class="table-card">
+        <el-table v-loading="loading" :data="flatList" border size="small" @selection-change="(rows: FlatRow[]) => (selected = rows)">
+          <el-table-column type="selection" width="40" />
+          <el-table-column prop="id" label="ID" width="80" />
+          <el-table-column label="名称" min-width="200">
+            <template #default="{ row }">
+              <span :style="{ paddingLeft: row._level * 20 + 'px' }">{{ row.name }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="图片" width="120">
+            <template #default="{ row }">
+              <el-image
+                v-if="row.pic"
+                :src="row.pic"
+                :preview-src-list="[row.pic]"
+                preview-teleported
+                fit="cover"
+                class="cate-img"
+              />
+              <span v-else class="no-img">暂无图片</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="sort" label="序号" width="90" />
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <span :class="row.status ? 'st-on' : 'st-off'">{{ row.status ? '显示' : '隐藏' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="140">
+            <template #default="{ row }">
+              <div class="row-ops">
+                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+                <el-button link type="danger" @click="handleRowDelete(row)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+          <template #empty>暂无数据</template>
+        </el-table>
+      </el-card>
+    </div>
 
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑版块' : form.pid ? '新增子版块' : '新增顶级版块'" width="640px">
-      <el-form label-width="110px">
-        <el-form-item label="版块名称" required>
-          <el-input v-model="form.name" placeholder="如：生活闲聊" style="width: 260px" />
+    <!-- ============ 整页编辑 ============ -->
+    <div v-else class="edit-page">
+      <div class="edit-head">
+        <div class="edit-title">＋ {{ form.id ? '编辑分类' : '添加分类' }}</div>
+        <el-button class="edit-close" circle @click="backToList">
+          <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M764.288 214.595 512 466.883 259.712 214.595a32 32 0 0 0-45.248 45.248L466.752 512 214.464 764.288a32 32 0 1 0 45.248 45.248L512 557.117l252.288 252.419a32 32 0 0 0 45.248-45.248L557.248 512l252.288-252.157a32 32 0 0 0-45.248-45.248z" /></svg>
+        </el-button>
+      </div>
+
+      <el-form label-width="90px" class="edit-form">
+        <el-form-item label="分类名称">
+          <el-input v-model="form.name" placeholder="请输入分类名称" style="width: 240px" />
         </el-form-item>
-        <el-form-item label="图标">
-          <el-input v-model="form.pic" placeholder="图片地址" />
-        </el-form-item>
-        <el-form-item label="横幅 Banner">
-          <el-input v-model="form.banner" placeholder="图片地址" />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort" :min="0" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="启用" inactive-text="停用" />
-        </el-form-item>
-        <el-form-item label="帖子挂商品">
-          <el-switch v-model="form.goods_status" :active-value="1" :inactive-value="0" />
-          <span class="tip">开启后发帖可选择挂载商城商品</span>
-        </el-form-item>
-        <el-form-item label="发帖收积分">
-          <el-switch v-model="form.post_pay" :active-value="1" :inactive-value="0" />
-          <el-input-number v-if="form.post_pay" v-model="form.post_score" :min="1" style="margin-left: 8px" />
-          <span v-if="form.post_pay" class="tip">发帖扣除的积分数</span>
-        </el-form-item>
-        <el-form-item label="付费置顶套餐">
-          <div style="width: 100%">
-            <div v-for="(t, idx) in form.top_options" :key="idx" class="top-row">
-              <el-input-number v-model="t.hour" :min="1" controls-position="right" style="width: 110px" />
-              <span>小时</span>
-              <el-input-number v-model="t.price" :min="0" :precision="2" controls-position="right" style="width: 130px" />
-              <span>元</span>
-              <el-button link type="danger" @click="removeTopRow(idx)">移除</el-button>
-            </div>
-            <el-button size="small" @click="addTopRow">+ 添加套餐</el-button>
+        <el-form-item label="分类图标">
+          <el-button @click="iconPickerVisible = true">上传图片</el-button>
+          <span class="field-tip">建议尺寸：400×400像素</span>
+          <div class="pic-preview">
+            <el-image v-if="form.pic" :src="form.pic" fit="cover" class="preview-box" />
+            <div v-else class="preview-box preview-empty">暂无图片</div>
           </div>
         </el-form-item>
-        <el-form-item label="发帖赠券">
-          <el-input v-model="form.coupon_ids" placeholder="优惠券 ID，多个用逗号分隔" style="width: 260px" />
+        <el-form-item label="banner图">
+          <el-button @click="bannerPickerVisible = true">上传图片</el-button>
+          <span class="field-tip">建议尺寸：690×260像素</span>
+          <div class="pic-preview">
+            <el-image v-if="form.banner" :src="form.banner" fit="cover" class="preview-banner" />
+            <div v-else class="preview-banner preview-empty">暂无图片</div>
+          </div>
         </el-form-item>
-        <el-form-item v-if="form.coupon_ids" label="每人限领次数">
-          <el-input-number v-model="form.limitnum" :min="0" />
-          <span class="tip">0 表示不限</span>
+        <el-form-item label="序号">
+          <el-input-number v-model="form.sort" :min="0" :controls="false" style="width: 200px" />
+          <span class="field-tip">用于排序,越大越靠前</span>
         </el-form-item>
-        <el-form-item v-if="form.coupon_ids" label="赠券开始时间">
-          <el-date-picker
-            v-model="form.starttime"
-            type="datetime"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            placeholder="留空表示不限"
-          />
+        <el-form-item label="状态">
+          <el-radio-group v-model="form.status">
+            <el-radio :value="1">显示</el-radio>
+            <el-radio :value="0">隐藏</el-radio>
+          </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="form.coupon_ids" label="赠券结束时间">
-          <el-date-picker
-            v-model="form.endtime"
-            type="datetime"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            placeholder="留空表示不限"
-          />
+        <el-form-item>
+          <el-button type="primary" :loading="saving" @click="handleSave">提 交</el-button>
         </el-form-item>
       </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleSave">保存</el-button>
-      </template>
-    </el-dialog>
+    </div>
+
+    <ImgIconPicker v-model:visible="iconPickerVisible" @pick="onIconPick" />
+    <ImgIconPicker v-model:visible="bannerPickerVisible" @pick="onBannerPick" />
   </div>
 </template>
 
 <style scoped>
-.card-header {
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  padding: 2px 4px 8px;
+}
+.toolbar {
+  margin-bottom: 3px;
+}
+.toolbar :deep(.el-card__body) {
+  padding: 10px 14px;
+}
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+}
+.table-card {
+  margin-top: 3px;
+}
+.cate-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+}
+.no-img {
+  color: #c0c4cc;
+  font-size: 12px;
+}
+.st-on {
+  color: #67c23a;
+}
+.st-off {
+  color: #909399;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  column-gap: 8px;
+}
+.row-ops .el-button {
+  margin: 0;
+  padding: 0;
+  height: auto;
+  font-size: 12px;
+}
+/* 整页编辑 */
+.edit-page {
+  background: #fff;
+  border-radius: 6px;
+  padding: 16px 20px;
+}
+.edit-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-bottom: 12px;
 }
-
-.top-row {
+.edit-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
+}
+.edit-close {
+  border: none;
+  background: transparent;
+  color: #909399;
+}
+.field-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 8px;
+}
+.pic-preview {
+  margin-top: 8px;
+}
+.preview-box {
+  width: 120px;
+  height: 120px;
+  border-radius: 4px;
+}
+.preview-banner {
+  width: 240px;
+  height: 90px;
+  border-radius: 4px;
+}
+.preview-empty {
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.tip {
-  margin-left: 8px;
-  color: #999;
+  justify-content: center;
+  color: #c0c4cc;
   font-size: 12px;
 }
 </style>

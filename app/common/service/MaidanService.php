@@ -457,6 +457,19 @@ class MaidanService
     }
 
     /**
+     * 按ID批量删除买单记录（严格 aid 隔离）
+     *
+     * @param array<int, int> $ids
+     */
+    public function deleteByIds(int $aid, array $ids): void
+    {
+        Db::name('maidan_order')
+            ->where('aid', $aid)
+            ->whereIn('id', $ids)
+            ->delete();
+    }
+
+    /**
      * 导出组装（与列表同口径过滤）
      *
      * @param array<string, mixed> $f
@@ -495,15 +508,26 @@ class MaidanService
     /* ================= 聚合收款码设置 ================= */
 
     /**
-     * 收款码设置读取（maidan_login/maidan_getlocation/maidan_payaftertourl + H5 买单页链接）
+     * 收款码设置读取（maidan_login/maidan_getlocation/maidan_payaftertourl/maidan_score_discount + H5 买单页链接）
      *
      * @return array<string, mixed>
      */
     public function setOf(int $aid): array
     {
-        $row = ScopeService::query('admin_set', $aid)
-            ->field('maidan_login,maidan_getlocation,maidan_payaftertourl,name')
-            ->find();
+        try {
+            $row = ScopeService::query('admin_set', $aid)
+                ->field('maidan_login,maidan_getlocation,maidan_payaftertourl,maidan_score_discount,name')
+                ->find();
+        } catch (\PDOException $e) {
+            // 新环境未跑迁移、maidan_score_discount 列不存在时降级查询
+            $row = ScopeService::query('admin_set', $aid)
+                ->field('maidan_login,maidan_getlocation,maidan_payaftertourl,name')
+                ->find();
+        }
+
+        $adminRow = Db::name('admin')->where('id', $aid)->field('platform')->find();
+        $platformStr = trim((string) ($adminRow['platform'] ?? ''));
+        $platformArr = array_filter(array_map('trim', explode(',', $platformStr)));
 
         $domain = trim((string) env('APP.DOMAIN', ''));
 
@@ -511,30 +535,89 @@ class MaidanService
             $domain = request()->domain();
         }
 
-        // H5 买单页链接（微信/支付宝扫码进入）
-        $h5Url = rtrim($domain, '/') . '/h5/maidan/index.html?aid=' . $aid;
+        // H5 买单页链接（微信/支付宝扫码进入）——对标 canzhao: {PRE_URL2}/h5/{aid}.html#/pagesB/maidan/pay
+        $h5Url = rtrim($domain, '/') . '/h5/' . $aid . '.html#/pagesB/maidan/pay';
 
         return [
-            'maidan_login'         => (int) ($row['maidan_login'] ?? 1),
-            'maidan_getlocation'   => (int) ($row['maidan_getlocation'] ?? 0),
-            'maidan_payaftertourl' => (string) ($row['maidan_payaftertourl'] ?? ''),
-            'h5_url'               => $h5Url,
-            'shop_name'            => (string) ($row['name'] ?? ''),
+            'maidan_login'          => (int) ($row['maidan_login'] ?? 1),
+            'maidan_getlocation'     => (int) ($row['maidan_getlocation'] ?? 0),
+            'maidan_payaftertourl'   => (string) ($row['maidan_payaftertourl'] ?? ''),
+            'maidan_score_discount'  => (int) ($row['maidan_score_discount'] ?? 1),
+            'h5_url'                 => $h5Url,
+            'mp_path'                => 'pagesB/maidan/pay',
+            'shop_name'              => (string) ($row['name'] ?? ''),
+            'platform_arr'           => $platformArr,
+            'show_wx'                => in_array('wx', $platformArr, true),
+            'show_alipay'             => in_array('alipay', $platformArr, true),
+            'is_platform'            => true,
         ];
     }
 
     /**
-     * 收款码设置保存（白名单三字段）
+     * 收款码设置保存（白名单四字段）
      *
      * @param array<string, mixed> $data
      */
     public function saveSet(int $aid, array $data): void
     {
         ScopeService::query('admin_set', $aid)->update([
-            'maidan_login'         => (int) ($data['maidan_login'] ?? 0) === 1 ? 1 : 0,
-            'maidan_getlocation'   => (int) ($data['maidan_getlocation'] ?? 0) === 1 ? 1 : 0,
-            'maidan_payaftertourl' => trim((string) ($data['maidan_payaftertourl'] ?? '')),
+            'maidan_login'          => (int) ($data['maidan_login'] ?? 0) === 1 ? 1 : 0,
+            'maidan_getlocation'    => (int) ($data['maidan_getlocation'] ?? 0) === 1 ? 1 : 0,
+            'maidan_payaftertourl'  => trim((string) ($data['maidan_payaftertourl'] ?? '')),
+            'maidan_score_discount' => (int) ($data['maidan_score_discount'] ?? 0) === 1 ? 1 : 0,
         ]);
+    }
+
+    /**
+     * 上传域名校验文件（对标 canzhao Maidan::uploadjstxt）
+     * 微信txt 放 h5/ 目录；支付宝html 放根目录
+     *
+     * @param array<string, mixed> $file $_FILES['file'] 结构
+     */
+    public function uploadJstxt(array $file): string
+    {
+        if (empty($file['tmp_name'] ?? '')) {
+            throw new BusinessException('请选择文件');
+        }
+
+        $type = (string) ($file['type'] ?? '');
+        if (!in_array($type, ['text/plain', 'text/html'], true)) {
+            throw new BusinessException('文件类型错误');
+        }
+
+        $ext = strtolower(pathinfo((string) $file['name'], PATHINFO_EXTENSION));
+        $content = file_get_contents($file['tmp_name']);
+
+        if (false === $content || !preg_match('/^[A-Za-z0-9]+$/', $content)) {
+            throw new BusinessException('上传文件不合法,请重新上传');
+        }
+
+        $fileName = (string) $file['name'];
+
+        // 安全：禁止路径穿越
+        foreach (['../', '..\\', '\\\\', '<?php', '<%', '<?', '%00', "\0"] as $bad) {
+            if (false !== strpos($fileName, $bad)) {
+                throw new BusinessException('文件名不合法');
+            }
+        }
+
+        $root = public_path();
+
+        if ('txt' === $ext) {
+            $dest = rtrim($root, '/\\') . '/h5/' . $fileName;
+        } elseif ('html' === $ext) {
+            $dest = rtrim($root, '/\\') . '/' . $fileName;
+        } else {
+            throw new BusinessException('上传文件不合法,请重新上传');
+        }
+
+        if (!move_uploaded_file($file['tmp_name'], $dest)) {
+            if (!rename($file['tmp_name'], $dest)) {
+                throw new BusinessException('上传失败');
+            }
+        }
+
+        return $dest;
     }
 
     /* ================= 内部工具 ================= */

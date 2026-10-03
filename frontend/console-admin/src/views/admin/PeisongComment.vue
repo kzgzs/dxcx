@@ -3,28 +3,39 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   delPeisongComment,
-  getPeisongCommentDetail,
   getPeisongCommentList,
-  getPeisongUserOptions,
+  getPeisongUserList,
+  replyPeisongComment,
 } from '../../api/peisong'
-import type { PeisongCommentItem, PsUserOption } from '../../api/peisong'
+import type { PeisongCommentItem } from '../../api/peisong'
 import { formatTime } from '../../utils/time'
 
-// 租户后台 - 同城配送·配送评价（批次8 任务223；对标参考系统 PeisongComment）
+// 租户后台 - 同城配送·评价列表（照截图：左删除 + 右配送员/评价内容/评价时间/搜索一行；行操作 回复/删除）
 
 const loading = ref(false)
 const tableData = ref<PeisongCommentItem[]>([])
 const total = ref(0)
-const selection = ref<PeisongCommentItem[]>([])
-const psOptions = ref<PsUserOption[]>([])
+const selected = ref<PeisongCommentItem[]>([])
+const riderOptions = ref<{ id: number; realname: string; tel: string }[]>([])
 
 const query = reactive({
   page: 1,
   pagesize: 10,
-  psid: '',
+  psid: '' as number | '',
   content: '',
   timeRange: null as [string, string] | null,
 })
+
+async function fetchRiders() {
+  try {
+    const data = await getPeisongUserList({ page: 1, pagesize: 100 })
+    riderOptions.value = (data.list || []).map((u) => ({
+      id: Number(u.id),
+      realname: String(u.realname || ''),
+      tel: String(u.tel || ''),
+    }))
+  } catch { /* 拦截器 */ }
+}
 
 async function fetchList() {
   loading.value = true
@@ -39,19 +50,8 @@ async function fetchList() {
     })
     tableData.value = data.list || []
     total.value = data.total || 0
-  } catch {
-    // axios 拦截器已提示
-  } finally {
+  } catch { /* 拦截器 */ } finally {
     loading.value = false
-  }
-}
-
-async function fetchPsOptions() {
-  try {
-    const data = await getPeisongUserOptions()
-    psOptions.value = data.list || []
-  } catch {
-    // 忽略
   }
 }
 
@@ -60,32 +60,47 @@ function handleSearch() {
   fetchList()
 }
 
-function handleReset() {
-  query.psid = ''
-  query.content = ''
-  query.timeRange = null
-  query.page = 1
-  fetchList()
+// 回复弹窗
+const replyVisible = ref(false)
+const replySubmitting = ref(false)
+const replyRow = ref<PeisongCommentItem | null>(null)
+const replyForm = reactive({ content: '' })
+
+function openReply(row: PeisongCommentItem) {
+  replyRow.value = row
+  replyForm.content = row.reply_content || ''
+  replyVisible.value = true
 }
 
-// 详情弹窗
-const detailVisible = ref(false)
-const detailData = ref<{ detail: PeisongCommentItem; member: { nickname: string; headimg: string } } | null>(null)
-
-async function handleDetail(row: PeisongCommentItem) {
+async function submitReply() {
+  if (!replyRow.value) return
+  replySubmitting.value = true
   try {
-    const data = await getPeisongCommentDetail(row.id)
-    detailData.value = data
-    detailVisible.value = true
-  } catch {
-    // axios 拦截器已提示
+    await replyPeisongComment({ id: replyRow.value.id, content: replyForm.content })
+    ElMessage.success('回复成功')
+    replyVisible.value = false
+    fetchList()
+  } catch { /* 拦截器 */ } finally {
+    replySubmitting.value = false
   }
 }
 
-async function handleDel(row?: PeisongCommentItem) {
-  const ids = row ? [row.id] : selection.value.map((v) => v.id)
-  if (!ids.length) return ElMessage.warning('请先选择评价')
-  await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条评价？`, '提示', { type: 'warning' })
+// 删除
+async function handleDelete(row?: PeisongCommentItem) {
+  const ids = row ? [row.id] : selected.value.map((v) => v.id)
+  if (!ids.length) {
+    ElMessage.warning('请先选择评价')
+    return
+  }
+  try {
+    await ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '操作确认', {
+      type: 'warning',
+      confirmButtonText: '确定',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
   await delPeisongComment(ids)
   ElMessage.success('删除成功')
   fetchList()
@@ -93,161 +108,127 @@ async function handleDel(row?: PeisongCommentItem) {
 
 onMounted(() => {
   fetchList()
-  fetchPsOptions()
+  fetchRiders()
 })
 </script>
 
 <template>
   <div>
-    <!-- 搜索工具栏 -->
-    <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="配送员">
-          <el-select v-model="query.psid" placeholder="全部" clearable filterable style="width: 150px">
-            <el-option v-for="u in psOptions" :key="u.id" :label="`${u.realname}（${u.tel}）`" :value="String(u.id)" />
+    <!-- 一行工具条：左 删除；右 配送员/评价内容/评价时间/搜索 -->
+    <el-card shadow="never" class="toolbar">
+      <div class="toolbar-inner">
+        <div class="toolbar-left">
+          <el-button @click="handleDelete()">删除</el-button>
+        </div>
+        <div class="toolbar-right">
+          <span class="tf-label">配送员</span>
+          <el-select v-model="query.psid" placeholder="全部" clearable style="width: 150px">
+            <el-option
+              v-for="u in riderOptions"
+              :key="u.id"
+              :label="u.realname"
+              :value="u.id"
+            />
           </el-select>
-        </el-form-item>
-        <el-form-item label="评价内容">
-          <el-input v-model="query.content" placeholder="关键字" clearable style="width: 150px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="时间">
+          <span class="tf-label">评价内容</span>
+          <el-input
+            v-model="query.content"
+            placeholder=""
+            clearable
+            style="width: 160px"
+            @keyup.enter="handleSearch"
+          />
+          <span class="tf-label">评价时间</span>
           <el-date-picker
             v-model="query.timeRange"
             type="daterange"
-            range-separator="至"
-            start-placeholder="开始"
-            end-placeholder="结束"
+            range-separator="~"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
             value-format="YYYY-MM-DD"
-            style="width: 220px"
+            style="width: 240px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+          <button class="search-btn" title="搜索" @click="handleSearch">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M11.4 10.2a6 6 0 1 0-1.2 1.2l3.4 3.4 1.2-1.2-3.4-3.4zM7 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+          </button>
+        </div>
+      </div>
     </el-card>
 
-    <!-- 列表 -->
     <el-card shadow="never">
-      <div class="op-row">
-        <el-button type="danger" plain @click="handleDel()">批量删除</el-button>
-      </div>
-
-      <el-table v-loading="loading" :data="tableData" stripe border size="small" @selection-change="(rows: PeisongCommentItem[]) => (selection = rows)">
-        <el-table-column type="selection" width="42" />
-        <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-        <el-table-column label="会员" min-width="110" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.nickname || `会员${row.mid}` }}</template>
-        </el-table-column>
-        <el-table-column label="评分" width="130" class-name="compact-col">
+      <el-table v-loading="loading" :data="tableData" border @selection-change="(rows: PeisongCommentItem[]) => (selected = rows)">
+        <el-table-column type="selection" width="40" />
+        <el-table-column label="配送员" min-width="140">
           <template #default="{ row }">
-            <el-rate :model-value="row.score" disabled size="small" />
+            <div>{{ row.psuser?.realname || '-' }}</div>
+            <div v-if="row.psuser?.tel" class="sub">{{ row.psuser.tel }}</div>
           </template>
         </el-table-column>
-        <el-table-column prop="content" label="评价内容" min-width="180" show-overflow-tooltip>
+        <el-table-column label="配送商家" min-width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.business?.name || '自营' }}</template>
+        </el-table-column>
+        <el-table-column label="评价人信息" min-width="140">
+          <template #default="{ row }">
+            <div class="member-cell">
+              <el-image v-if="row.headimg" :src="row.headimg" fit="cover" class="member-img" />
+              <span>{{ row.nickname || '-' }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="评分" width="90">
+          <template #default="{ row }">{{ row.score }}星</template>
+        </el-table-column>
+        <el-table-column prop="content" label="评价内容" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">{{ row.content || '-' }}</template>
         </el-table-column>
-        <el-table-column label="配送员" min-width="110" show-overflow-tooltip>
+        <el-table-column label="评价时间" width="150" sortable>
+          <template #default="{ row }">{{ row.createtime ? formatTime(row.createtime) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="130">
           <template #default="{ row }">
-            <span v-if="row.psuser.realname">{{ row.psuser.realname }}<span class="sub-text">{{ row.psuser.tel }}</span></span>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="商家" min-width="110" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.business.name || '自营' }}</template>
-        </el-table-column>
-        <el-table-column label="订单号" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.ordernum || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="时间" width="88" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ formatTime(row.createtime).slice(2, 10) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="110" fixed="right" class-name="compact-col">
-          <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="handleDetail(row)">详情</el-button>
-            <el-button link type="danger" size="small" @click="handleDel(row)">删除</el-button>
+            <div class="row-ops">
+              <el-button link type="primary" @click="openReply(row)">回复</el-button>
+              <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
 
       <el-pagination
-        class="pagination"
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :current-page="query.page"
-        :page-size="query.pagesize"
-        :page-sizes="[10, 20, 50, 100]"
-        @current-change="(p: number) => { query.page = p; fetchList() }"
-        @size-change="(s: number) => { query.pagesize = s; query.page = 1; fetchList() }"
+        class="pager" background layout="total, sizes, prev, pager, next, jumper"
+        :total="total" v-model:current-page="query.page" v-model:page-size="query.pagesize"
+        :page-sizes="[10, 20, 50]" @current-change="fetchList" @size-change="handleSearch"
       />
     </el-card>
 
-    <!-- 详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="评价详情" width="520px" destroy-on-close>
-      <template v-if="detailData">
-        <el-descriptions :column="1" border size="small">
-          <el-descriptions-item label="会员">{{ detailData.member.nickname || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="评分">
-            <el-rate :model-value="Number(detailData.detail.score)" disabled size="small" />
-          </el-descriptions-item>
-          <el-descriptions-item label="评价内容">{{ detailData.detail.content || '-' }}</el-descriptions-item>
-          <el-descriptions-item v-if="detailData.detail.content_pic && detailData.detail.content_pic.length" label="评价图片">
-            <el-image
-              v-for="(pic, i) in detailData.detail.content_pic"
-              :key="i"
-              :src="pic"
-              :preview-src-list="detailData.detail.content_pic"
-              fit="cover"
-              class="comment-pic"
-            />
-          </el-descriptions-item>
-          <el-descriptions-item label="回复">{{ detailData.detail.reply_content || '未回复' }}</el-descriptions-item>
-          <el-descriptions-item label="时间">{{ detailData.detail.createtime ? formatTime(detailData.detail.createtime) : '-' }}</el-descriptions-item>
-        </el-descriptions>
-      </template>
+    <!-- 回复弹窗 -->
+    <el-dialog v-model="replyVisible" title="回复评价" width="480px" destroy-on-close>
+      <el-form label-width="80px">
+        <el-form-item label="回复内容">
+          <el-input v-model="replyForm.content" type="textarea" :rows="4" placeholder="请输入回复内容" />
+        </el-form-item>
+      </el-form>
       <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
+        <el-button @click="replyVisible = false">取消</el-button>
+        <el-button type="primary" :loading="replySubmitting" @click="submitReply">确定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.toolbar-card {
-  margin-bottom: 12px;
-}
-
-.op-row {
-  margin-bottom: 12px;
-}
-
-.sub-text {
-  color: #909399;
-  font-size: 12px;
-  margin-left: 4px;
-}
-
-.comment-pic {
-  width: 64px;
-  height: 64px;
-  margin-right: 6px;
-  border-radius: 4px;
-}
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
-}
+.toolbar { margin-bottom: 3px; }
+.toolbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.toolbar-left { display: flex; gap: 8px; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.tf-label { font-size: 13px; color: #606266; white-space: nowrap; }
+.search-btn { width: 30px; height: 30px; border: none; background: #67c23a; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; }
+.el-card { border-radius: 0; }
+.el-table :deep(th) { background: #e6e6e6; text-align: left; }
+.el-table :deep(td .cell) { text-align: left; }
+.pager { margin-top: 12px; justify-content: flex-end; }
+.sub { color: #909399; font-size: 12px; }
+.row-ops { display: flex; gap: 10px; flex-wrap: nowrap; }
+.member-cell { display: flex; align-items: center; gap: 6px; }
+.member-img { width: 30px; height: 30px; border-radius: 50%; background: #f2f3f5; }
 </style>

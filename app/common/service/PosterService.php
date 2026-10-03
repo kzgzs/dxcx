@@ -27,7 +27,7 @@ use think\facade\Db;
 class PosterService
 {
     /** 合法海报类型（yuyue：任务222 预约域海报，仿 ShopPoster 模式） */
-    public const TYPES = ['product', 'index', 'collage', 'kanjia', 'lucky_collage', 'tuangou', 'scoreshop', 'cycle', 'fifa', 'shortvideo', 'kecheng', 'yuyue'];
+    public const TYPES = ['product', 'index', 'collage', 'collageteam', 'kanjia', 'kanjiateam', 'lucky_collage', 'lucky_collageteam', 'tuangou', 'tuangouteam', 'scoreshop', 'cycle', 'fifa', 'shortvideo', 'kecheng', 'yuyue'];
 
     /** 合法平台 */
     /** 合法平台（mp 微信公众号 / wx 微信小程序 / alipay 支付宝小程序 / baidu 百度小程序 / toutiao 抖音小程序 / qq QQ小程序 / h5 手机H5 / app 手机APP） */
@@ -234,13 +234,17 @@ class PosterService
         } else {
             // 六业务默认模板：主图/商品名/价格/业务标签/二维码（占位符对齐参考系统 ApiXxx::textReplaceArr）
             $tag = [
-                'collage'       => '多人拼团 · 满员开团',
-                'kanjia'        => '邀请好友砍一刀 · 越砍越便宜',
-                'lucky_collage' => '幸运拼团 · 满团抽奖开奖',
-                'tuangou'       => '限时团购 · 限量特惠',
-                'scoreshop'     => '积分兑换 · 好物免费换',
-                'cycle'         => '周期购 · 一次下单定期配送',
-                'yuyue'         => '预约服务 · 在线预约', // 任务222
+                'collage'          => '多人拼团 · 满员开团',
+                'collageteam'      => '多人拼团 · 我已参团，快来拼单',
+                'kanjia'           => '邀请好友砍一刀 · 越砍越便宜',
+                'kanjiateam'       => '我已发起砍价 · 快来帮我砍一刀',
+                'lucky_collage'    => '幸运拼团 · 满团抽奖开奖',
+                'lucky_collageteam' => '幸运拼团 · 我已参团，快来拼单',
+                'tuangou'          => '限时团购 · 限量特惠',
+                'tuangouteam'      => '我已参团团购 · 快来一起拼单',
+                'scoreshop'        => '积分兑换 · 好物免费换',
+                'cycle'            => '周期购 · 一次下单定期配送',
+                'yuyue'            => '预约服务 · 在线预约', // 任务222
             ][$type] ?? '';
 
             $price = 'scoreshop' === $type ? '[所需积分]积分' : '[商品销售价]';

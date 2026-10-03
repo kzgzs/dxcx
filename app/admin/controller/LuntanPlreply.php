@@ -29,10 +29,12 @@ class LuntanPlreply extends BaseController
         $aid = ScopeService::aidOf($this->request);
 
         return $this->success($this->service->adminPlreplyList($aid, [
-            'status'   => (string) $this->request->get('status', ''),
-            'keyword'  => trim((string) $this->request->get('keyword', '')),
-            'page'     => max(1, (int) $this->request->get('page', 1)),
-            'pagesize' => (int) $this->request->get('pagesize', 10),
+            'status'    => (string) $this->request->get('status', ''),
+            'keyword'   => trim((string) $this->request->get('keyword', '')),
+            'starttime' => trim((string) $this->request->get('starttime', '')),
+            'endtime'   => trim((string) $this->request->get('endtime', '')),
+            'page'      => max(1, (int) $this->request->get('page', 1)),
+            'pagesize'  => (int) $this->request->get('pagesize', 10),
         ]));
     }
 

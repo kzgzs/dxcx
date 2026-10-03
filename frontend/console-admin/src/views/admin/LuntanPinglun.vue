@@ -1,161 +1,275 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+// 用户论坛 - 评论列表（对齐点大 LuntanPinglun/index）
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { auditLuntanPinglun, deleteLuntanPinglun, getLuntanPinglunList } from '../../api/luntan'
+import {
+  auditLuntanPinglun,
+  deleteLuntanPinglun,
+  getLuntanPinglunList,
+} from '../../api/luntan'
 import type { LuntanPinglunItem } from '../../api/luntan'
 
-// ============ 列表 ============
 const loading = ref(false)
 const list = ref<LuntanPinglunItem[]>([])
 const total = ref(0)
-const page = ref(1)
-const pagesize = ref(10)
-const statusFilter = ref<string>('')
-const keywordFilter = ref('')
+const query = reactive({ page: 1, pagesize: 10, keyword: '' })
+const dateRange = ref<[string, string] | null>(null)
+const selected = ref<LuntanPinglunItem[]>([])
 
-async function fetchList() {
+async function load() {
   loading.value = true
   try {
     const res = await getLuntanPinglunList({
-      page: page.value,
-      pagesize: pagesize.value,
-      status: statusFilter.value,
-      keyword: keywordFilter.value,
+      page: query.page,
+      pagesize: query.pagesize,
+      keyword: query.keyword || undefined,
+      starttime: dateRange.value?.[0] || undefined,
+      endtime: dateRange.value?.[1] || undefined,
     })
-    list.value = res.list
-    total.value = res.total
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    list.value = res.list || []
+    total.value = res.total || 0
   } finally {
     loading.value = false
   }
 }
 
 function handleSearch() {
-  page.value = 1
-  fetchList()
+  query.page = 1
+  load()
 }
 
-// ============ 审核 / 删除 ============
-async function handleAudit(row: LuntanPinglunItem, status: number) {
-  try {
-    await auditLuntanPinglun([row.id], status)
-    ElMessage.success(status === 1 ? '已显示' : '已隐藏')
-    fetchList()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+function selectedIds() {
+  return selected.value.map((r) => r.id)
+}
+
+function batchSet(status: number) {
+  const ids = selectedIds()
+  if (ids.length === 0) {
+    ElMessage.warning('请选择评论')
+    return
   }
-}
-
-function handleDelete(row: LuntanPinglunItem) {
-  ElMessageBox.confirm('确定要删除该评论吗？其回评一并清理。', '删除确认', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await deleteLuntanPinglun([row.id])
-        ElMessage.success('删除成功')
-        fetchList()
-      } catch {
-        // 错误提示已由 axios 拦截器统一弹出
-      }
+  auditLuntanPinglun(ids, status)
+    .then(() => {
+      ElMessage.success(status === 1 ? '已通过' : '已驳回')
+      load()
     })
     .catch(() => {})
 }
 
-onMounted(fetchList)
+function batchDelete() {
+  const ids = selectedIds()
+  if (ids.length === 0) {
+    ElMessage.warning('请选择评论')
+    return
+  }
+  ElMessageBox.confirm('确定要删除选中的评论吗？其回评一并清理。', '删除确认', { type: 'warning' })
+    .then(async () => {
+      await deleteLuntanPinglun(ids)
+      ElMessage.success('删除成功')
+      load()
+    })
+    .catch(() => {})
+}
+
+function rowSet(row: LuntanPinglunItem, status: number) {
+  auditLuntanPinglun([row.id], status)
+    .then(() => {
+      ElMessage.success(status === 1 ? '已通过' : '已驳回')
+      load()
+    })
+    .catch(() => {})
+}
+
+function rowDelete(row: LuntanPinglunItem) {
+  ElMessageBox.confirm('确定要删除该评论吗？其回评一并清理。', '删除确认', { type: 'warning' })
+    .then(async () => {
+      await deleteLuntanPinglun([row.id])
+      ElMessage.success('删除成功')
+      load()
+    })
+    .catch(() => {})
+}
+
+onMounted(load)
 </script>
 
 <template>
   <div>
-    <el-card shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>论坛评论</span>
-          <div class="filter-bar">
-            <el-select v-model="statusFilter" placeholder="全部状态" clearable style="width: 130px" @change="handleSearch">
-              <el-option label="显示" value="1" />
-              <el-option label="待审核" value="0" />
-            </el-select>
-            <el-input
-              v-model="keywordFilter"
-              placeholder="内容/昵称"
-              clearable
-              style="width: 200px"
-              @keyup.enter="handleSearch"
-              @clear="handleSearch"
-            />
-            <el-button type="primary" @click="handleSearch">搜索</el-button>
-          </div>
-        </div>
-      </template>
+    <div class="page-title">帖子评论</div>
 
-      <el-table v-loading="loading" :data="list" stripe row-key="id">
-        <el-table-column label="会员" width="140">
+    <el-card shadow="never" class="toolbar">
+      <div class="toolbar-left">
+        <el-button @click="batchDelete">删除</el-button>
+        <el-button @click="batchSet(1)">通过</el-button>
+        <el-button @click="batchSet(0)">驳回</el-button>
+      </div>
+      <div class="toolbar-right">
+        <el-input v-model="query.keyword" placeholder="标题" clearable style="width: 160px" @keyup.enter="handleSearch" @clear="handleSearch" />
+        <el-date-picker
+          v-model="dateRange"
+          type="daterange"
+          value-format="YYYY-MM-DD"
+          range-separator="至"
+          start-placeholder="开始日期"
+          end-placeholder="结束日期"
+          style="width: 240px"
+          @change="handleSearch"
+        />
+        <el-button type="success" class="search-btn" @click="handleSearch">
+          <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274205 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.186354 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
+        </el-button>
+      </div>
+    </el-card>
+
+    <el-card shadow="never" class="table-card">
+      <el-table v-loading="loading" :data="list" border size="small" @selection-change="(rows: LuntanPinglunItem[]) => (selected = rows)">
+        <el-table-column type="selection" width="40" />
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column label="用户信息" width="150">
           <template #default="{ row }">
             <div class="member-cell">
-              <el-avatar v-if="row.headimg" :src="row.headimg" :size="28" />
-              <el-avatar v-else :size="28">{{ (row.nickname || '会员').slice(0, 1) }}</el-avatar>
+              <el-avatar :size="28" :src="row.headimg || undefined">{{ (row.nickname || '会员').slice(0, 1) }}</el-avatar>
               <span>{{ row.nickname || `会员${row.mid}` }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="content" label="评论内容" min-width="220" show-overflow-tooltip />
-        <el-table-column prop="post_content" label="所属帖子" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="zan" label="点赞" width="70" />
-        <el-table-column prop="replycount" label="回评" width="70" />
+        <el-table-column label="帖子内容" min-width="240">
+          <template #default="{ row }">
+            <div class="post-text">{{ row.post_content || '-' }}</div>
+            <div v-if="row.post_pics && row.post_pics.length" class="pic-row">
+              <el-image v-for="(p, i) in row.post_pics" :key="i" :src="p" :preview-src-list="row.post_pics" :initial-index="i" fit="cover" class="post-pic" preview-teleported />
+            </div>
+            <video v-if="row.post_video" :src="row.post_video" controls class="post-video" />
+          </template>
+        </el-table-column>
+        <el-table-column label="内容" min-width="160">
+          <template #default="{ row }">{{ row.content || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="replycount" label="回复数" width="80">
+          <template #default="{ row }"><span class="num-blue">{{ row.replycount || 0 }}</span></template>
+        </el-table-column>
+        <el-table-column label="发布时间" width="150">
+          <template #default="{ row }">{{ row.createtime_text || '-' }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'warning'" size="small">{{ row.status === 1 ? '显示' : '待审核' }}</el-tag>
+            <span :class="row.status === 1 ? 'st-on' : 'st-off'">{{ row.status === 1 ? '已审核' : '未审核' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="createtime_text" label="时间" width="160" />
-        <el-table-column label="操作" width="170" fixed="right">
+        <el-table-column label="操作" width="150">
           <template #default="{ row }">
-            <template v-if="row.status === 0">
-              <el-button link type="success" @click="handleAudit(row, 1)">通过</el-button>
-            </template>
-            <el-button v-else link type="warning" @click="handleAudit(row, 0)">隐藏</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <div class="row-ops">
+              <el-button v-if="row.status === 0" link type="success" @click="rowSet(row, 1)">通过</el-button>
+              <el-button v-if="row.status === 0" link type="danger" @click="rowSet(row, 0)">驳回</el-button>
+              <el-button link type="danger" @click="rowDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
+        <template #empty>暂无数据</template>
       </el-table>
 
       <el-pagination
-        v-if="total > 0"
-        class="pager"
-        v-model:current-page="page"
-        v-model:page-size="pagesize"
+        v-model:current-page="query.page"
+        v-model:page-size="query.pagesize"
         :total="total"
-        layout="total, prev, pager, next"
-        @current-change="fetchList"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @current-change="load"
+        @size-change="load"
       />
     </el-card>
   </div>
 </template>
 
 <style scoped>
-.card-header {
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  padding: 2px 4px 8px;
+}
+.toolbar {
+  margin-bottom: 3px;
+}
+.toolbar :deep(.el-card__body) {
+  padding: 10px 14px;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
 }
-
-.filter-bar {
+.toolbar-left {
   display: flex;
   gap: 8px;
 }
-
+.toolbar-left .el-button {
+  margin: 0;
+}
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.search-btn {
+  padding: 8px 14px;
+}
+.search-btn svg {
+  display: block;
+}
+.table-card {
+  margin-top: 3px;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
 .member-cell {
   display: flex;
   align-items: center;
   gap: 6px;
 }
-
-.pager {
-  margin-top: 12px;
-  justify-content: flex-end;
+.post-text {
+  color: #303133;
+  word-break: break-all;
+}
+.pic-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.post-pic {
+  width: 44px;
+  height: 44px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.post-video {
+  margin-top: 6px;
+  width: 160px;
+  display: block;
+}
+.num-blue {
+  color: #409eff;
+}
+.st-on {
+  color: #67c23a;
+}
+.st-off {
+  color: #909399;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  column-gap: 8px;
+}
+.row-ops .el-button {
+  margin: 0;
+  padding: 0;
+  height: auto;
+  font-size: 12px;
 }
 </style>

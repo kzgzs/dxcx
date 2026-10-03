@@ -114,6 +114,8 @@ export interface PeisongOrderQuery {
   page?: number
   pagesize?: number
   ordernum?: string
+  /** 下单人ID */
+  mid?: string | number
   psid?: string | number
   status?: string | number
   /** 1系统配送 2码科配送 3已拒绝 */
@@ -178,6 +180,11 @@ export function getPeisongCommentDetail(id: number) {
 
 export function delPeisongComment(ids: number[]) {
   return request.post<unknown, null>('/admin/peisong/comment/del', { ids })
+}
+
+/** 回复评价（回复内容真实落库） */
+export function replyPeisongComment(data: { id: number; content: string }) {
+  return request.post<unknown, null>('/admin/peisong/comment/reply', data)
 }
 
 // ==================== 4. 提成明细（peisong_moneylog） ====================

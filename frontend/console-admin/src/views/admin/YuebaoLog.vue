@@ -1,63 +1,52 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { getYuebaoMoneylogList } from '../../api/yuebao'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteYuebaoMoneyLog, exportYuebaoMoneyLog, getYuebaoMoneylogList } from '../../api/yuebao'
 import type { YuebaoMoneyLogItem, YuebaoMoneyLogStat } from '../../api/yuebao'
 import { formatTime } from '../../utils/time'
 
-// 流水类型：1收益增加 / 2提现减少 / 3转余额减少 / 4退款返回
-const TYPE_TAG: Record<number, 'success' | 'danger' | 'warning' | 'primary'> = {
-  1: 'success',
-  2: 'danger',
-  3: 'warning',
-  4: 'primary',
-}
-
+/**
+ * 余额宝明细（member_yuebao_moneylog）对齐 canzhao yuebao/moneylog.html
+ * 工具栏[删除,导出EXCEL]；行[删除]
+ */
 const loading = ref(false)
+const exporting = ref(false)
 const tableData = ref<YuebaoMoneyLogItem[]>([])
+const selectedRows = ref<YuebaoMoneyLogItem[]>([])
 const total = ref(0)
 const stat = ref<YuebaoMoneyLogStat>({ income: 0, expense: 0, net: 0 })
 
 const query = reactive({
   page: 1,
   pagesize: 10,
-  type: '',
-  nickname: '',
   mid: '',
-  timeRange: null as [string, string] | null,
+  nickname: '',
 })
+
+function buildParams() {
+  return {
+    page: query.page,
+    pagesize: query.pagesize,
+    mid: query.mid ? Number(query.mid) : undefined,
+    nickname: query.nickname || undefined,
+  }
+}
 
 async function fetchList() {
   loading.value = true
   try {
-    const data = await getYuebaoMoneylogList({
-      page: query.page,
-      pagesize: query.pagesize,
-      type: query.type || undefined,
-      nickname: query.nickname || undefined,
-      mid: query.mid ? Number(query.mid) : undefined,
-      start_date: query.timeRange?.[0] || undefined,
-      end_date: query.timeRange?.[1] || undefined,
-    })
+    const data = await getYuebaoMoneylogList(buildParams())
     tableData.value = data.list || []
     total.value = data.total || 0
     stat.value = data.stat || { income: 0, expense: 0, net: 0 }
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     loading.value = false
   }
 }
 
 function handleSearch() {
-  query.page = 1
-  fetchList()
-}
-
-function handleReset() {
-  query.type = ''
-  query.nickname = ''
-  query.mid = ''
-  query.timeRange = null
   query.page = 1
   fetchList()
 }
@@ -73,10 +62,54 @@ function handleSizeChange(size: number) {
   fetchList()
 }
 
-function shortDate(ts: number): string {
-  if (!ts) return '-'
-  const full = formatTime(ts)
-  return full.length >= 10 ? full.slice(2, 10) : full
+function handleSelectionChange(rows: YuebaoMoneyLogItem[]) {
+  selectedRows.value = rows
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    const blob = await exportYuebaoMoneyLog(buildParams())
+    downloadBlob(blob, `余额宝明细_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.xlsx`)
+  } catch {
+    // 拦截器统一提示
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function doDelete(ids: number[]) {
+  await ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '操作确认', {
+    type: 'warning',
+    confirmButtonText: '确 定',
+    cancelButtonText: '取 消',
+  })
+  await deleteYuebaoMoneyLog({ ids })
+  ElMessage.success('删除成功')
+  fetchList()
+}
+
+function handleBatchDelete() {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选数据')
+    return
+  }
+  doDelete(selectedRows.value.map((r) => r.id)).catch(() => {})
+}
+
+function handleRowDelete(row: YuebaoMoneyLogItem) {
+  doDelete([row.id]).catch(() => {})
 }
 
 onMounted(() => {
@@ -86,101 +119,67 @@ onMounted(() => {
 
 <template>
   <div>
-    <!-- 顶部统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">收入合计（收益/退回）</div>
-          <div class="stat-value success">￥{{ Number(stat.income).toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">支出合计（提现/转余额）</div>
-          <div class="stat-value danger">￥{{ Number(stat.expense).toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">净额</div>
-          <div class="stat-value primary">￥{{ Number(stat.net).toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 搜索工具栏 -->
+    <!-- 工具栏：批量按钮 + 搜索 同一行 -->
     <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="类型">
-          <el-select v-model="query.type" placeholder="全部" clearable style="width: 120px">
-            <el-option label="收益增加" value="1" />
-            <el-option label="提现减少" value="2" />
-            <el-option label="转余额减少" value="3" />
-            <el-option label="退款返回" value="4" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="昵称">
-          <el-input v-model="query.nickname" placeholder="会员昵称" clearable style="width: 130px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="会员ID">
-          <el-input v-model="query.mid" placeholder="ID" clearable style="width: 90px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="时间">
-          <el-date-picker
-            v-model="query.timeRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            value-format="YYYY-MM-DD"
-            style="width: 220px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+      <div class="toolbar-line">
+        <div class="toolbar-actions">
+          <el-button @click="handleBatchDelete">删除</el-button>
+          <el-button :loading="exporting" @click="handleExport">导出EXCEL</el-button>
+        </div>
+        <div class="toolbar-search">
+          <el-input v-model="query.mid" placeholder="会员ID" clearable class="tw-mid" @keyup.enter="handleSearch" />
+          <el-input v-model="query.nickname" placeholder="昵称" clearable class="tw-nick" @keyup.enter="handleSearch" />
+          <el-button type="success" class="search-icon-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z"/></svg>
+          </el-button>
+        </div>
+      </div>
     </el-card>
 
-    <!-- 列表 -->
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe border size="small">
-        <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-        <el-table-column label="会员" min-width="110" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.nickname || `会员${row.mid}` }}
-            <span v-if="row.tel" class="sub-text">{{ row.tel }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="92" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tag :type="TYPE_TAG[row.type] || 'info'" size="small">{{ row.type_text }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="变动金额" width="96" class-name="compact-col">
-          <template #default="{ row }">
-            <span :class="Number(row.money) >= 0 ? 'money-plus' : 'money-minus'">
-              {{ Number(row.money) >= 0 ? '+' : '' }}{{ Number(row.money).toFixed(2) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="变动后" width="96" class-name="compact-col">
-          <template #default="{ row }">￥{{ Number(row.after).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.remark || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="时间" width="88" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ shortDate(row.createtime) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-      </el-table>
-
+    <!-- 表格 -->
+    <el-card shadow="never" class="table-card">
+      <div class="table-stat">
+        <span>收入 <b>￥{{ Number(stat.income).toFixed(2) }}</b></span>
+        <span>支出 <b>￥{{ Number(stat.expense).toFixed(2) }}</b></span>
+        <span>净额 <b>￥{{ Number(stat.net).toFixed(2) }}</b></span>
+      </div>
+      <div class="table-scroll">
+        <el-table v-loading="loading" :data="tableData" border size="small" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="42" />
+          <el-table-column prop="mid" label="会员ID" width="80" />
+          <el-table-column label="会员信息" min-width="160">
+            <template #default="{ row }">
+              <span>{{ row.nickname || ('会员' + row.mid) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="变更金额" width="110" sortable="custom">
+            <template #default="{ row }">
+              <span :class="Number(row.money) >= 0 ? 'money-plus' : 'money-minus'">
+                {{ Number(row.money) >= 0 ? '+' : '' }}{{ Number(row.money).toFixed(2) }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column label="变更后" width="110" sortable="custom">
+            <template #default="{ row }">{{ Number(row.after).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column prop="type_text" label="类型" width="110" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.type_text || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="变更时间" width="150" sortable="custom">
+            <template #default="{ row }">{{ row.createtime ? formatTime(row.createtime) : '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.remark || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="80">
+            <template #default="{ row }">
+              <div class="row-ops">
+                <el-button link type="danger" @click="handleRowDelete(row)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
       <el-pagination
         class="pagination"
         background
@@ -197,60 +196,103 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.stat-row {
-  margin-bottom: 12px;
+.toolbar-card :deep(.el-card__body) {
+  padding: 8px 10px;
+}
+.toolbar-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+.toolbar-actions .el-button {
+  margin-left: 0;
+}
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.toolbar-search :deep(.el-input__inner) {
+  text-align: left;
+}
+.tw-mid { width: 90px; flex-shrink: 0; }
+.tw-nick { width: 130px; flex-shrink: 0; }
+.search-icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.search-icon-btn svg {
+  display: block;
 }
 
-.stat-card .stat-label {
-  color: #909399;
-  font-size: 13px;
+.table-card :deep(.el-card__body) {
+  padding: 5px;
 }
-
-.stat-card .stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  margin-top: 4px;
+.table-stat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  color: #606266;
 }
-
-.stat-value.primary {
-  color: #409eff;
-}
-
-.stat-value.danger {
-  color: #f56c6c;
-}
-
-.stat-value.success {
-  color: #67c23a;
-}
-
-.toolbar-card {
-  margin-bottom: 12px;
-}
-
-.money-plus {
-  color: #67c23a;
+.table-stat b {
+  color: #303133;
   font-weight: 600;
 }
-
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+.table-scroll :deep(.el-table) {
+  --el-table-header-bg-color: #e6e6e6;
+  --el-table-header-text-color: #303133;
+}
+.table-scroll :deep(.el-table th .cell),
+.table-scroll :deep(.el-table td .cell) {
+  text-align: left;
+}
+.table-scroll :deep(.el-table td .cell) {
+  padding: 3px 6px;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  white-space: nowrap;
+}
+.row-ops :deep(.el-button) {
+  margin: 0;
+  padding: 0;
+}
+.money-plus {
+  color: #03bc01;
+  font-weight: 600;
+}
 .money-minus {
   color: #f56c6c;
   font-weight: 600;
 }
-
-.sub-text {
-  color: #909399;
-  font-size: 12px;
-}
-
 .pagination {
-  margin-top: 16px;
+  margin-top: 8px;
   justify-content: flex-end;
-}
-
-/* 紧凑列：收紧单元格左右内边距 */
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
 }
 </style>

@@ -31,9 +31,11 @@ class LuntanPinglun extends BaseController
         return $this->success($this->service->adminPinglunList($aid, [
             'status'   => (string) $this->request->get('status', ''),
             'sid'      => (int) $this->request->get('sid', 0),
-            'keyword'  => trim((string) $this->request->get('keyword', '')),
-            'page'     => max(1, (int) $this->request->get('page', 1)),
-            'pagesize' => (int) $this->request->get('pagesize', 10),
+            'keyword'   => trim((string) $this->request->get('keyword', '')),
+            'starttime' => trim((string) $this->request->get('starttime', '')),
+            'endtime'   => trim((string) $this->request->get('endtime', '')),
+            'page'      => max(1, (int) $this->request->get('page', 1)),
+            'pagesize'  => (int) $this->request->get('pagesize', 10),
         ]));
     }
 

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   mdCoupons,
@@ -10,15 +10,19 @@ import {
   type MaidanMember,
   type MaidanPreviewResult,
 } from '../../api/maidan'
+import { getStoreList } from '../../api/store'
 
 const tel = ref('')
 const searching = ref(false)
 const member = ref<MaidanMember | null>(null)
 
+const mdid = ref(0)
 const money = ref<number>(0)
 const couponrid = ref(0)
 const useScore = ref(false)
 const coupons = ref<MaidanCoupon[]>([])
+
+const stores = ref<{ id: number; name: string }[]>([])
 
 const previewing = ref(false)
 const preview = ref<MaidanPreviewResult | null>(null)
@@ -29,7 +33,15 @@ const hasDiscount = computed(() => {
   return d > 0 && d < 10
 })
 
-// 手机号找会员
+async function loadStores() {
+  try {
+    const result = await getStoreList({ page: 1, pagesize: 100 })
+    stores.value = (result.list || []).map((s) => ({ id: s.id, name: s.name }))
+  } catch {
+    stores.value = []
+  }
+}
+
 async function handleSearch() {
   const t = tel.value.trim()
   if (!t) {
@@ -55,7 +67,6 @@ async function handleSearch() {
   }
 }
 
-// 金额变化：刷新可用券并重新试算
 async function handleMoneyChange() {
   if (!member.value) return
   couponrid.value = 0
@@ -72,7 +83,6 @@ async function handleMoneyChange() {
   }
 }
 
-// 券/积分变化重新试算
 async function handlePreview() {
   if (!member.value || !(Number(money.value) > 0)) {
     preview.value = null
@@ -93,14 +103,13 @@ async function handlePreview() {
   }
 }
 
-// 确认收款
 async function handlePay() {
   if (!member.value) {
     ElMessage.warning('请先查询会员')
     return
   }
   if (!(Number(money.value) > 0)) {
-    ElMessage.warning('请输入消费金额')
+    ElMessage.warning('请输入正确的金额')
     return
   }
   const payMoney = preview.value ? preview.value.paymoney : Number(money.value)
@@ -115,14 +124,14 @@ async function handlePay() {
   }
   paying.value = true
   try {
-    const result = await mdPay({
+    await mdPay({
       tel: tel.value.trim(),
       money: Number(money.value) || 0,
       couponrid: couponrid.value,
       usescore: useScore.value ? 1 : 0,
+      mdid: mdid.value || 0,
     })
-    ElMessage.success(`收款成功，实付 ¥${Number(result.paymoney).toFixed(2)}`)
-    // 重置现场
+    ElMessage.success(`收款成功，实付 ¥${payMoney.toFixed(2)}`)
     tel.value = ''
     member.value = null
     money.value = 0
@@ -136,58 +145,73 @@ async function handlePay() {
     paying.value = false
   }
 }
+
+onMounted(() => {
+  loadStores()
+})
 </script>
 
 <template>
   <div class="maidan-add-page">
-    <div class="page-card">
-      <div class="card-title">买单扣费（余额收款）</div>
+    <el-card shadow="never" class="add-card">
+      <template #header>
+        <span class="card-header-text">买单扣费</span>
+      </template>
 
-      <el-form label-width="110px" class="pay-form">
+      <el-form label-width="110px" class="add-form">
         <el-form-item label="会员手机号">
           <el-input
             v-model="tel"
-            placeholder="输入会员手机号查询"
-            style="width: 240px"
+            placeholder="请输入会员手机号"
+            style="width: 220px"
             maxlength="20"
             clearable
             @keyup.enter="handleSearch"
           />
-          <el-button type="primary" :loading="searching" @click="handleSearch" style="margin-left: 10px">
-            查询会员
-          </el-button>
+          <el-button :loading="searching" @click="handleSearch" style="margin-left: 10px">查找会员</el-button>
         </el-form-item>
-      </el-form>
 
-      <!-- 会员信息卡 -->
-      <div class="member-card" v-if="member">
-        <div class="member-line">
-          <span class="member-name">{{ member.nickname || '会员' + member.mid }}</span>
-          <el-tag size="small" v-if="member.levelname">{{ member.levelname }}</el-tag>
-          <el-tag size="small" type="warning" v-if="hasDiscount">{{ member.discount }}折</el-tag>
-          <span class="member-tel">{{ member.tel }}</span>
-        </div>
-        <div class="member-line sub">
-          <span>余额：<b>¥{{ Number(member.money).toFixed(2) }}</b></span>
-          <span>积分：<b>{{ member.score }}</b></span>
-        </div>
-      </div>
+        <el-form-item label="昵称">
+          <el-input
+            :model-value="member ? (member.nickname || ('会员' + member.mid)) : '暂无'"
+            readonly
+            style="width: 220px"
+          />
+          <span class="form-aux" v-if="!member">请输入手机号点击查找</span>
+        </el-form-item>
 
-      <template v-if="member">
-        <el-form label-width="110px" class="pay-form">
-          <el-form-item label="消费金额">
-            <el-input-number
-              v-model="money"
-              :min="0"
-              :max="9999999"
-              :precision="2"
-              :step="1"
-              style="width: 180px"
-              @change="handleMoneyChange"
-            />
-            <span class="form-tip">输入实际消费金额，系统自动计算折扣、券与积分抵扣</span>
-          </el-form-item>
-          <el-form-item label="优惠券">
+        <el-form-item label="余额">
+          <el-input
+            :model-value="member ? '¥' + Number(member.money).toFixed(2) : '暂无'"
+            readonly
+            style="width: 220px"
+          />
+          <span class="form-aux" v-if="member && member.levelname">{{ member.levelname }}</span>
+          <span class="form-aux" v-if="member && hasDiscount">{{ member.discount }}折</span>
+        </el-form-item>
+
+        <el-form-item label="所属门店">
+          <el-select v-model="mdid" placeholder="请选择" clearable style="width: 220px">
+            <el-option label="请选择" :value="0" />
+            <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="支付金额">
+          <el-input-number
+            v-model="money"
+            :min="0"
+            :max="9999999"
+            :precision="2"
+            :step="1"
+            style="width: 200px"
+            @change="handleMoneyChange"
+          />
+          <span class="form-aux">仅支持余额支付</span>
+        </el-form-item>
+
+        <template v-if="member">
+          <el-form-item label="优惠券" v-if="coupons.length > 0">
             <el-select v-model="couponrid" placeholder="不使用优惠券" clearable style="width: 320px" @change="handlePreview">
               <el-option
                 v-for="c in coupons"
@@ -197,122 +221,83 @@ async function handlePay() {
               />
             </el-select>
           </el-form-item>
+
           <el-form-item label="积分抵扣">
             <el-switch v-model="useScore" @change="handlePreview" />
-            <span class="form-tip">开启后按系统设置自动计算积分可抵金额</span>
           </el-form-item>
-        </el-form>
+        </template>
 
-        <!-- 试算结果 -->
-        <div class="preview-box" v-if="preview" v-loading="previewing">
-          <div class="preview-row">
-            <span>消费金额</span><b>¥{{ Number(preview.money).toFixed(2) }}</b>
+        <el-form-item v-if="preview" v-loading="previewing">
+          <div class="preview-box">
+            <div class="preview-row">
+              <span>消费金额</span><b>¥{{ Number(preview.money).toFixed(2) }}</b>
+            </div>
+            <div class="preview-row" v-if="preview.disprice > 0">
+              <span>会员折扣</span><b class="minus">-¥{{ Number(preview.disprice).toFixed(2) }}</b>
+            </div>
+            <div class="preview-row" v-if="preview.couponmoney > 0">
+              <span>优惠券抵扣</span><b class="minus">-¥{{ Number(preview.couponmoney).toFixed(2) }}</b>
+            </div>
+            <div class="preview-row" v-if="preview.scoredk > 0">
+              <span>积分抵扣（{{ preview.decscore }}积分）</span><b class="minus">-¥{{ Number(preview.scoredk).toFixed(2) }}</b>
+            </div>
+            <div class="preview-row total">
+              <span>实付金额</span><b>¥{{ Number(preview.paymoney).toFixed(2) }}</b>
+            </div>
+            <div class="preview-row warn" v-if="!preview.enough">
+              <span>会员余额不足，无法完成收款</span>
+            </div>
           </div>
-          <div class="preview-row" v-if="preview.disprice > 0">
-            <span>等级折扣优惠</span><b class="minus">-¥{{ Number(preview.disprice).toFixed(2) }}</b>
-          </div>
-          <div class="preview-row" v-if="preview.couponmoney > 0">
-            <span>优惠券抵扣</span><b class="minus">-¥{{ Number(preview.couponmoney).toFixed(2) }}</b>
-          </div>
-          <div class="preview-row" v-if="preview.scoredk > 0">
-            <span>积分抵扣（{{ preview.decscore }}积分）</span><b class="minus">-¥{{ Number(preview.scoredk).toFixed(2) }}</b>
-          </div>
-          <div class="preview-row total">
-            <span>实付金额（余额支付）</span><b>¥{{ Number(preview.paymoney).toFixed(2) }}</b>
-          </div>
-          <div class="preview-row warn" v-if="!preview.enough">
-            <span>会员余额不足，无法完成收款</span>
-          </div>
-        </div>
+        </el-form-item>
 
-        <el-form label-width="110px" class="pay-form">
-          <el-form-item>
-            <el-button
-              type="primary"
-              size="large"
-              :loading="paying"
-              :disabled="!preview || !preview.enough || !(Number(money) > 0)"
-              @click="handlePay"
-            >
-              确认收款
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </template>
-
-      <div class="page-note">
-        <p>说明：</p>
-        <p>1. 按会员手机号查询后输入消费金额，系统按等级折扣 → 优惠券 → 积分抵扣顺序计算实付金额。</p>
-        <p>2. 点击「确认收款」从会员余额扣款，交易写入买单记录；全额退款时余额原路退回并返还积分、释放优惠券。</p>
-        <p>3. 会员余额不足时无法收款，可引导会员先充值。</p>
-      </div>
-    </div>
+        <el-form-item>
+          <el-button
+            type="success"
+            :loading="paying"
+            :disabled="!member || !(Number(money) > 0) || (preview !== null && (!preview.enough))"
+            @click="handlePay"
+          >
+            提 交
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
   </div>
 </template>
 
 <style scoped>
 .maidan-add-page {
-  padding: 12px;
+  padding: 8px;
 }
-.page-card {
-  background: #fff;
-  border-radius: 4px;
-  padding: 16px 20px;
+.add-card :deep(.el-card__header) {
+  padding: 10px 16px;
 }
-.card-title {
+.card-header-text {
   font-size: 15px;
   font-weight: 600;
   color: #303133;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
 }
-.pay-form {
-  max-width: 860px;
+.add-card :deep(.el-card__body) {
+  padding: 16px 20px;
 }
-.form-tip {
+.add-form {
+  max-width: 760px;
+}
+.form-aux {
   margin-left: 10px;
   color: #909399;
   font-size: 12px;
 }
-.member-card {
-  max-width: 860px;
-  margin: 0 0 16px;
-  padding: 12px 16px;
-  background: #f0f9eb;
-  border: 1px solid #e1f3d8;
-  border-radius: 4px;
-}
-.member-line {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.member-line.sub {
-  margin-top: 6px;
-  color: #606266;
-  font-size: 13px;
-}
-.member-name {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-}
-.member-tel {
-  color: #909399;
-  font-size: 13px;
-}
 .preview-box {
-  max-width: 560px;
-  margin: 0 0 16px;
-  padding: 12px 16px;
+  width: 460px;
+  padding: 10px 16px;
   background: #f7f8fa;
   border-radius: 4px;
 }
 .preview-row {
   display: flex;
   justify-content: space-between;
-  padding: 4px 0;
+  padding: 3px 0;
   font-size: 13px;
   color: #606266;
 }
@@ -325,28 +310,15 @@ async function handlePay() {
 .preview-row.total {
   border-top: 1px dashed #dcdfe6;
   margin-top: 6px;
-  padding-top: 10px;
-  font-size: 15px;
+  padding-top: 8px;
+  font-size: 14px;
 }
 .preview-row.total b {
   color: #f56c6c;
-  font-size: 18px;
+  font-size: 17px;
 }
 .preview-row.warn {
   color: #f56c6c;
   font-weight: 600;
-}
-.page-note {
-  margin-top: 8px;
-  padding: 12px 14px;
-  background: #f7f8fa;
-  border-radius: 4px;
-  color: #909399;
-  font-size: 12px;
-  line-height: 1.9;
-  max-width: 860px;
-}
-.page-note p {
-  margin: 0;
 }
 </style>

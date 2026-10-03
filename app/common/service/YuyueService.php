@@ -68,7 +68,27 @@ class YuyueService
             ->select()
             ->toArray();
 
-        return ['list' => array_map(fn (array $row) => $this->formatCategory($row), $rows)];
+        // 对齐截图：主类目(pid=0) + 子类目(pid>0) 两级树，前端按 depth 缩进、仅主类目显示「添加子分类」
+        $formatted = array_map(fn (array $row) => $this->formatCategory($row), $rows);
+
+        $byPid = [];
+        foreach ($formatted as $row) {
+            $byPid[(int) $row['pid']][] = $row;
+        }
+
+        $tree = [];
+        foreach ($byPid[0] ?? [] as $parent) {
+            $parent['depth']    = 0;
+            $parent['children'] = [];
+            foreach ($byPid[(int) $parent['id']] ?? [] as $child) {
+                $child['depth']    = 1;
+                $child['children'] = [];
+                $parent['children'][] = $child;
+            }
+            $tree[] = $parent;
+        }
+
+        return ['list' => $tree];
     }
 
     /**
@@ -86,11 +106,12 @@ class YuyueService
         }
 
         $status = (int) ($data['status'] ?? 1);
+        $pid     = (int) ($data['pid'] ?? 0);
 
         $id = (int) Db::name('yuyue_category')->insertGetId([
             'aid'        => $aid,
             'bid'        => 0,
-            'pid'        => 0,
+            'pid'        => $pid,
             'name'       => $name,
             'pic'        => trim((string) ($data['pic'] ?? '')),
             'sort'       => (int) ($data['sort'] ?? 1),
@@ -111,6 +132,14 @@ class YuyueService
         $category = $this->findCategory($aid, (int) ($data['id'] ?? 0));
 
         $update = [];
+
+        if (array_key_exists('pid', $data)) {
+            $pid = (int) $data['pid'];
+            if ($pid === (int) $category['id']) {
+                throw new BusinessException('上级分类不能选择自身');
+            }
+            $update['pid'] = $pid;
+        }
 
         if ($this->hasValue($data, 'name')) {
             $name = trim((string) $data['name']);
@@ -247,9 +276,43 @@ class YuyueService
         }
 
         $product = (array) $product;
-        $product['pics'] = '' !== (string) ($product['pics'] ?? '') ? explode(',', (string) $product['pics']) : [];
+
+        // 逗号串字段 → 数组（供前端条件组回显）
+        $csvToArray = static function (string $v): array {
+            if ('' === $v) {
+                return [];
+            }
+            return array_values(array_filter(explode(',', $v), static fn ($x) => '' !== $x));
+        };
+
+        $product['pics']       = $csvToArray((string) ($product['pics'] ?? ''));
+        $product['fwtype']      = $csvToArray((string) ($product['fwtype'] ?? ''));
+        $product['fwid']        = $csvToArray((string) ($product['fwid'] ?? ''));
+        $product['fwpeoid']    = $csvToArray((string) ($product['fwpeoid'] ?? ''));
+        $product['yyzhouqi']    = $csvToArray((string) ($product['yyzhouqi'] ?? ''));
+        $product['timepoint']   = $csvToArray((string) ($product['timepoint'] ?? ''));
+        $product['yytimeday']  = $csvToArray((string) ($product['yytimeday'] ?? ''));
+        $product['gettj']      = $csvToArray((string) ($product['gettj'] ?? ''));
+
+        // JSON 字段 → 数组（设置表单 / 规格分组）
+        $product['formdata']  = $this->decodeJsonList((string) ($product['formdata'] ?? ''));
+        $product['guigedata'] = $this->decodeJsonList((string) ($product['guigedata'] ?? ''));
 
         return $product;
+    }
+
+    /**
+     * JSON 字符串解码为数组（非法/空返回 []）
+     *
+     * @return array<int, mixed>
+     */
+    protected function decodeJsonList(string $json): array
+    {
+        if ('' === trim($json)) {
+            return [];
+        }
+        $decoded = json_decode($json, true);
+        return is_array($decoded) ? $decoded : [];
     }
 
     /**
@@ -276,7 +339,7 @@ class YuyueService
 
         $status = (int) ($data['status'] ?? 1);
 
-        $id = (int) Db::name('yuyue_product')->insertGetId([
+        $id = (int) Db::name('yuyue_product')->insertGetId(array_merge([
             'aid'        => $aid,
             'bid'        => 0,
             'name'       => $name,
@@ -292,7 +355,7 @@ class YuyueService
             'createtime' => time(),
             'is_delete'  => 0,
             'ischecked'  => 1,
-        ]);
+        ], $this->productExtraFields($data)));
 
         return ['id' => $id];
     }
@@ -356,10 +419,15 @@ class YuyueService
         }
 
         if ($this->hasValue($data, 'status')) {
-            if (!in_array((int) $data['status'], [0, 1], true)) {
+            if (!in_array((int) $data['status'], [0, 1, 2], true)) {
                 throw new BusinessException('状态值无效');
             }
             $update['status'] = (int) $data['status'];
+        }
+
+        // 四个条件组 + 服务信息三部分扩展字段（数组/JSON 已在 productExtraFields 内归一）
+        foreach ($this->productExtraFields($data) as $k => $v) {
+            $update[$k] = $v;
         }
 
         if (!empty($update)) {
@@ -467,6 +535,89 @@ class YuyueService
     }
 
     /**
+     * 服务商品扩展字段（服务方式/结算/可预约日期/可预约时间 四个条件组 + 服务信息三部分）落库映射
+     * 对齐截图字段口径：fwtype/yyzhouqi/timepoint/yytimeday/fwid/fwpeoid/gettj 等数组→逗号串；formdata/guigedata→JSON
+     *
+     * @param array<string, mixed> $data
+     * @return array<string, mixed>
+     */
+    protected function productExtraFields(array $data): array
+    {
+        $csv = static function ($v): string {
+            if (is_array($v)) {
+                return implode(',', array_values(array_filter($v, static fn ($x) => '' !== trim((string) $x))));
+            }
+            return trim((string) $v);
+        };
+
+        $fields = [];
+
+        // 第一部分基础
+        if (array_key_exists('danwei', $data))     { $fields['danwei'] = trim((string) $data['danwei']); }
+        if (array_key_exists('fwid', $data))      { $fields['fwid'] = $csv($data['fwid']); }
+        if (array_key_exists('fwtype', $data))     { $fields['fwtype'] = $csv($data['fwtype']); }
+        if (array_key_exists('isareaxz', $data))  { $fields['isareaxz'] = (int) $data['isareaxz'] === 1 ? 1 : 0; }
+        if (array_key_exists('areadata', $data))   { $fields['areadata'] = trim((string) $data['areadata']); }
+        if (array_key_exists('fwpeople', $data))  { $fields['fwpeople'] = (int) $data['fwpeople'] === 1 ? 1 : 0; }
+        if (array_key_exists('fwpeoid', $data))   { $fields['fwpeoid'] = $csv($data['fwpeoid']); }
+
+        // 规格分组 JSON
+        if (array_key_exists('guigedata', $data)) {
+            $fields['guigedata'] = is_array($data['guigedata'])
+                ? json_encode($data['guigedata'], JSON_UNESCAPED_UNICODE)
+                : (string) $data['guigedata'];
+        }
+
+        // 尾款
+        if (array_key_exists('balance', $data)) { $fields['balance'] = round((float) $data['balance'], 2); }
+
+        // 结算方式：0按单计算提成 / 1按提成比例计费提成
+        if (array_key_exists('jiesuantype', $data)) { $fields['jiesuantype'] = (int) $data['jiesuantype'] === 1 ? 1 : 0; }
+        if (array_key_exists('tcmoney', $data))     { $fields['tcmoney'] = round((float) $data['tcmoney'], 2); }
+        if (array_key_exists('tichengtype', $data)) { $fields['tichengtype'] = (int) $data['tichengtype'] === 1 ? 1 : 0; }
+        if (array_key_exists('tc_bfb', $data))      { $fields['tc_bfb'] = round((float) $data['tc_bfb'], 2); }
+
+        // 可预约日期：1按周期 / 2按时间 / 3按固定周期
+        if (array_key_exists('rqtype', $data))      { $fields['rqtype'] = (int) $data['rqtype']; }
+        if (array_key_exists('yyzhouqi', $data))    { $fields['yyzhouqi'] = $csv($data['yyzhouqi']); }
+        if (array_key_exists('yybegintime', $data)) { $fields['yybegintime'] = trim((string) $data['yybegintime']); }
+        if (array_key_exists('yyendtime', $data))   { $fields['yyendtime'] = trim((string) $data['yyendtime']); }
+        if (array_key_exists('yytimeday', $data))   { $fields['yytimeday'] = $csv($data['yytimeday']); }
+
+        // 可预约时间：1时间段 / 2时间点
+        if (array_key_exists('datetype', $data))  { $fields['datetype'] = (int) $data['datetype'] === 2 ? 2 : 1; }
+        if (array_key_exists('zaohour', $data))   { $fields['zaohour'] = (int) $data['zaohour']; }
+        if (array_key_exists('wanhour', $data))   { $fields['wanhour'] = (int) $data['wanhour']; }
+        if (array_key_exists('timejg', $data))    { $fields['timejg'] = (int) $data['timejg']; }
+        if (array_key_exists('timepoint', $data)) { $fields['timepoint'] = $csv($data['timepoint']); }
+        if (array_key_exists('yynum', $data))     { $fields['yynum'] = max(1, (int) $data['yynum']); }
+        if (array_key_exists('pdprehour', $data))  { $fields['pdprehour'] = (int) $data['pdprehour']; }
+
+        // 设置表单 JSON
+        if (array_key_exists('formdata', $data)) {
+            $fields['formdata'] = is_array($data['formdata'])
+                ? json_encode($data['formdata'], JSON_UNESCAPED_UNICODE)
+                : (string) $data['formdata'];
+        }
+
+        // 购买条件
+        if (array_key_exists('gettj', $data)) { $fields['gettj'] = $csv($data['gettj']); }
+
+        // 上架时间范围（status=2 设置上架时间）
+        if (array_key_exists('start_time', $data)) { $fields['start_time'] = trim((string) $data['start_time']); }
+        if (array_key_exists('end_time', $data))   { $fields['end_time'] = trim((string) $data['end_time']); }
+
+        // 显示状态
+        if (array_key_exists('is_open', $data))   { $fields['is_open'] = (int) $data['is_open'] === 0 ? 0 : 1; }
+        if (array_key_exists('noopentip', $data)) { $fields['noopentip'] = trim((string) $data['noopentip']); }
+
+        // 会员等级折扣：0跟随系统 / 1参与 / 2不参与
+        if (array_key_exists('level_discount', $data)) { $fields['level_discount'] = (int) $data['level_discount']; }
+
+        return $fields;
+    }
+
+    /**
      * 服务商品列表行格式化（契约键：cname/bname/sell_price/sales/sort/ischecked/check_reason）
      *
      * @param array<string, mixed> $row
@@ -502,30 +653,40 @@ class YuyueService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function workerList(int $aid, string $keyword, string $status, int $page, int $pageSize): array
+    public function workerList(int $aid, string $realname, string $status, int $page, int $pageSize): array
     {
-        $query = ScopeService::query('yuyue_worker', $aid);
+        $query = ScopeService::queryAs('yuyue_worker', $aid, 'w')
+            ->leftJoin('member m', 'm.id = w.mid')
+            ->field('w.*, m.nickname AS member_nickname, m.headimg AS member_headimg');
 
-        if ('' !== $keyword) {
-            $like = '%' . $keyword . '%';
+        if ('' !== $realname) {
+            $like = '%' . $realname . '%';
             $query->where(function ($q) use ($like) {
-                $q->where('realname', 'like', $like)
-                    ->whereOr('tel', 'like', $like);
+                $q->where('w.realname', 'like', $like)
+                    ->whereOr('w.un', 'like', $like);
             });
         }
         if ('' !== $status) {
-            $query->where('status', (int) $status);
+            $query->where('w.status', (int) $status);
         }
 
         $total = (clone $query)->count();
 
-        $rows = $query->order('id', 'desc')
+        $rows = $query->order('w.sort', 'desc')
+            ->order('w.id', 'desc')
             ->page($page, $pageSize)
             ->select()
             ->toArray();
 
+        foreach ($rows as $k => $v) {
+            $rows[$k]['doing_count'] = (int) Db::name('yuyue_order')
+                ->where('worker_id', (int) $v['id'])->where('delete', 0)->where('status', 1)->count();
+            $rows[$k]['done_count'] = (int) Db::name('yuyue_order')
+                ->where('worker_id', (int) $v['id'])->where('delete', 0)->where('status', 2)->count();
+        }
+
         return [
-            'list'     => array_map(fn (array $row) => $this->formatWorker($row), $rows),
+            'list'     => $rows,
             'total'    => $total,
             'page'     => $page,
             'pagesize' => $pageSize,
@@ -533,31 +694,46 @@ class YuyueService
     }
 
     /**
-     * 新建技师 {name,pic,phone,category_id(可无),desc,status}
+     * 新建服务人员 {un,pwd?,mid?,realname,tel,cid?,headimg?,jineng?,desc?,sort?,status?}
      *
      * @param array<string, mixed> $data
      * @return array{id: int}
      */
     public function workerAdd(int $aid, array $data): array
     {
-        $name = trim((string) ($data['name'] ?? ''));
+        $realname = trim((string) ($data['realname'] ?? ''));
+        $un       = trim((string) ($data['un'] ?? ''));
 
-        if ('' === $name) {
-            throw new BusinessException('请填写技师姓名');
+        if ('' === $un) {
+            throw new BusinessException('请填写登录账号');
+        }
+        if ('' === $realname) {
+            throw new BusinessException('请填写姓名');
         }
 
-        $status = (int) ($data['status'] ?? 1);
+        $dup = Db::name('yuyue_worker')->where('aid', $aid)->where('un', $un)->find();
+        if (!empty($dup)) {
+            throw new BusinessException('该账号已被占用');
+        }
+
+        $pwd = (string) ($data['pwd'] ?? '');
 
         $id = (int) Db::name('yuyue_worker')->insertGetId([
             'aid'        => $aid,
             'bid'        => 0,
-            'realname'   => $name,
-            'headimg'    => trim((string) ($data['pic'] ?? '')),
-            'tel'        => trim((string) ($data['phone'] ?? '')),
-            'cid'        => (int) ($data['category_id'] ?? 0),
+            'mid'        => (int) ($data['mid'] ?? 0),
+            'un'         => $un,
+            'pwd'        => '' === $pwd ? '' : md5($pwd),
+            'realname'   => $realname,
+            'tel'        => trim((string) ($data['tel'] ?? '')),
+            'cid'        => (int) ($data['cid'] ?? 0),
+            'headimg'    => trim((string) ($data['headimg'] ?? '')),
+            'jineng'     => trim((string) ($data['jineng'] ?? '')),
             'desc'       => trim((string) ($data['desc'] ?? '')),
-            'status'     => in_array($status, [0, 1], true) ? $status : 1,
-            'sort'       => 0,
+            'status'     => in_array((int) ($data['status'] ?? 1), [0, 1], true) ? (int) $data['status'] : 1,
+            'sort'       => (int) ($data['sort'] ?? 0),
+            'money'      => 0,
+            'totalmoney' => 0,
             'createtime' => time(),
         ]);
 
@@ -565,7 +741,7 @@ class YuyueService
     }
 
     /**
-     * 编辑技师（空值视为不修改）
+     * 编辑服务人员（pwd 空则不改）
      *
      * @param array<string, mixed> $data
      */
@@ -575,31 +751,27 @@ class YuyueService
 
         $update = [];
 
-        if ($this->hasValue($data, 'name')) {
-            $name = trim((string) $data['name']);
-
-            if ('' === $name) {
-                throw new BusinessException('请填写技师姓名');
+        if ($this->hasValue($data, 'un')) {
+            $un = trim((string) $data['un']);
+            if ('' === $un) {
+                throw new BusinessException('请填写登录账号');
             }
-            $update['realname'] = $name;
+            $update['un'] = $un;
         }
-
-        if ($this->hasValue($data, 'pic')) {
-            $update['headimg'] = trim((string) $data['pic']);
+        if ($this->hasValue($data, 'pwd')) {
+            $pwd = trim((string) $data['pwd']);
+            if ('' !== $pwd) {
+                $update['pwd'] = md5($pwd);
+            }
         }
-
-        if ($this->hasValue($data, 'phone')) {
-            $update['tel'] = trim((string) $data['phone']);
-        }
-
-        if ($this->hasValue($data, 'category_id')) {
-            $update['cid'] = (int) $data['category_id'];
-        }
-
-        if ($this->hasValue($data, 'desc')) {
-            $update['desc'] = trim((string) $data['desc']);
-        }
-
+        if ($this->hasValue($data, 'mid'))      { $update['mid'] = (int) $data['mid']; }
+        if ($this->hasValue($data, 'realname')) { $update['realname'] = trim((string) $data['realname']); }
+        if ($this->hasValue($data, 'tel'))      { $update['tel'] = trim((string) $data['tel']); }
+        if ($this->hasValue($data, 'cid'))      { $update['cid'] = (int) $data['cid']; }
+        if ($this->hasValue($data, 'headimg')) { $update['headimg'] = trim((string) $data['headimg']); }
+        if ($this->hasValue($data, 'jineng'))  { $update['jineng'] = trim((string) $data['jineng']); }
+        if ($this->hasValue($data, 'desc'))    { $update['desc'] = trim((string) $data['desc']); }
+        if ($this->hasValue($data, 'sort'))    { $update['sort'] = (int) $data['sort']; }
         if ($this->hasValue($data, 'status')) {
             if (!in_array((int) $data['status'], [0, 1], true)) {
                 throw new BusinessException('状态值无效');
@@ -610,6 +782,125 @@ class YuyueService
         if (!empty($update)) {
             Db::name('yuyue_worker')->where('id', (int) $worker['id'])->update($update);
         }
+    }
+
+    /**
+     * 加余额（money 为负表示扣除），写流水并回读余额
+     */
+    public function workerAddMoney(int $aid, int $id, float $money, string $remark): array
+    {
+        if (0.0 === $money) {
+            throw new BusinessException('请输入金额');
+        }
+
+        $worker = $this->findWorker($aid, $id);
+
+        $after = round((float) $worker['money'] + $money, 2);
+
+        Db::name('yuyue_worker')->where('aid', $aid)->where('id', $id)->update(['money' => $after]);
+
+        Db::name('yuyue_worker_moneylog')->insert([
+            'aid'        => $aid,
+            'bid'        => (int) $worker['bid'],
+            'uid'        => $id,
+            'money'      => $money,
+            'after'      => $after,
+            'createtime' => time(),
+            'remark'     => '' === $remark ? '余额调整' : $remark,
+        ]);
+
+        return ['money' => $after];
+    }
+
+    /**
+     * 查看服务记录：按服务人员过滤的订单列表（复用订单筛选：商品名称/下单人/手机号/下单时间/状态）
+     *
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function workerOrderList(int $aid, int $workerId, string $proname, string $linkman, string $tel, string $ctime, string $status, int $page, int $pageSize): array
+    {
+        $query = ScopeService::queryAs('yuyue_order', $aid, 'o')
+            ->leftJoin('member m', 'm.id = o.mid')
+            ->leftJoin('yuyue_worker w', 'w.id = o.worker_id')
+            ->leftJoin('yuyue_worker_order wo', 'wo.id = o.worker_orderid')
+            ->where('o.worker_id', $workerId)
+            ->where('o.delete', 0)
+            ->field('o.*, m.nickname AS member_nickname, m.headimg AS member_headimg, w.realname AS worker_name, w.tel AS worker_tel, wo.status AS wo_status, wo.createtime AS wo_createtime, wo.starttime AS wo_starttime, wo.daodiantime AS wo_daodiantime, wo.endtime AS wo_endtime');
+
+        if ('' !== $proname) { $query->where('o.proname', 'like', '%' . $proname . '%'); }
+        if ('' !== $linkman) { $query->where('o.linkman', 'like', '%' . $linkman . '%'); }
+        if ('' !== $tel)      { $query->where('o.tel', 'like', '%' . $tel . '%'); }
+        if ('' !== $ctime)    { $ts = strtotime($ctime); if ($ts) { $query->where('o.createtime', '>=', $ts)->where('o.createtime', '<', $ts + 86400); } }
+        if ('' !== $status)   { $query->where('o.status', (int) $status); }
+
+        $total = (clone $query)->count();
+
+        $rows = $query->order('o.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        foreach ($rows as $k => $v) {
+            $rows[$k] = $this->formatAdminOrder($v);
+        }
+
+        return [
+            'list'     => $rows,
+            'total'    => $total,
+            'page'     => $page,
+            'pagesize' => $pageSize,
+        ];
+    }
+
+    /**
+     * 查进度：服务单时间线（已发布/已接单/已到店/已完成）
+     *
+     * @return array<string, mixed>
+     */
+    public function workerOrderProgress(int $aid, int $orderId): array
+    {
+        $order = ScopeService::queryAs('yuyue_order', $aid, 'o')
+            ->leftJoin('yuyue_worker_order wo', 'wo.id = o.worker_orderid')
+            ->where('o.id', $orderId)
+            ->where('o.delete', 0)
+            ->field('o.*, wo.createtime AS wo_createtime, wo.starttime AS wo_starttime, wo.daodiantime AS wo_daodiantime, wo.endtime AS wo_endtime, wo.status AS wo_status, o.linkman, o.tel')
+            ->find();
+
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+
+        $steps = [];
+        if (!empty($order['wo_createtime'])) {
+            $steps[] = ['time' => date('Y-m-d H:i', (int) $order['wo_createtime']), 'text' => '已发布服务单'];
+        }
+        if (!empty($order['wo_starttime'])) {
+            $steps[] = ['time' => date('Y-m-d H:i', (int) $order['wo_starttime']), 'text' => '已接单'];
+        }
+        // 等待顾客到店：下单后等待 linkman(tel) 到店
+        $waitText = '等待顾客' . trim((string) ($order['linkman'] ?? ''));
+        if (!empty($order['tel'])) { $waitText .= '(' . $order['tel'] . ')'; }
+        $waitText .= '到店';
+        $steps[] = ['time' => date('Y-m-d H:i', (int) ($order['createtime'] ?? time())), 'text' => $waitText];
+        if (!empty($order['wo_daodiantime'])) {
+            $steps[] = ['time' => date('Y-m-d H:i', (int) $order['wo_daodiantime']), 'text' => '顾客已到店'];
+        }
+        if (!empty($order['wo_endtime'])) {
+            $steps[] = ['time' => date('Y-m-d H:i', (int) $order['wo_endtime']), 'text' => '服务已完成'];
+        }
+
+        // 时间正序展示
+        usort($steps, fn ($a, $b) => strcmp($a['time'], $b['time']));
+        $current = count($steps) - 1;
+
+        return [
+            'order_id'   => $orderId,
+            'order_num'  => (string) ($order['ordernum'] ?? ''),
+            'status'     => (int) ($order['status'] ?? 0),
+            'reassign'   => in_array((int) ($order['status'] ?? 0), [0, 1], true),
+            'current'    => $current,
+            'steps'      => $steps,
+        ];
     }
 
     /**
@@ -648,16 +939,17 @@ class YuyueService
     /* ================= admin：预约订单 ================= */
 
     /**
-     * 订单列表（含会员手机/技师姓名；keyword 匹配订单号/项目名/手机号）
+     * 订单列表（富字段：联表会员头像/手机、服务人员、派单服务单；筛选 status/keyword/proname/linkman/tel/ctime）
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function adminOrderList(int $aid, string $status, string $keyword, int $page, int $pageSize): array
+    public function adminOrderList(int $aid, string $status, string $keyword, string $proname, string $linkman, string $tel, string $ctime, int $page, int $pageSize): array
     {
         $query = ScopeService::queryAs('yuyue_order', $aid, 'o')
             ->leftJoin('member m', 'm.id = o.mid')
             ->leftJoin('yuyue_worker w', 'w.id = o.worker_id')
-            ->field('o.*, m.tel as member_phone, w.realname as worker_name')
+            ->leftJoin('yuyue_worker_order wo', 'wo.id = o.worker_orderid')
+            ->field('o.*, m.nickname as member_nickname, m.headimg as member_headimg, m.tel as member_tel, w.realname as worker_name, w.tel as worker_tel, wo.status as wo_status, wo.createtime as wo_createtime, wo.starttime as wo_starttime, wo.daodiantime as wo_daodiantime, wo.endtime as wo_endtime, wo.sign_time as wo_sign_time')
             ->where('o.delete', 0);
 
         if ('' !== $status) {
@@ -673,6 +965,23 @@ class YuyueService
             });
         }
 
+        if ('' !== $proname) {
+            $query->where('o.proname', 'like', '%' . $proname . '%');
+        }
+        if ('' !== $linkman) {
+            $query->where('o.linkman', 'like', '%' . $linkman . '%');
+        }
+        if ('' !== $tel) {
+            $query->where('o.tel', 'like', '%' . $tel . '%');
+        }
+        if ('' !== $ctime) {
+            $parts = array_map('trim', explode('~', $ctime));
+            if (2 === count($parts) && '' !== $parts[0] && '' !== $parts[1]) {
+                $query->where('o.createtime', '>=', strtotime($parts[0]));
+                $query->where('o.createtime', '<', strtotime($parts[1]) + 86400);
+            }
+        }
+
         $total = (clone $query)->count();
 
         $rows = $query->order('o.id', 'desc')
@@ -681,11 +990,139 @@ class YuyueService
             ->toArray();
 
         return [
-            'list'     => array_map(fn (array $row) => $this->formatOrder($row), $rows),
+            'list'     => array_map(fn (array $row) => $this->formatAdminOrder($row), $rows),
             'total'    => $total,
             'page'     => $page,
             'pagesize' => $pageSize,
         ];
+    }
+
+    /**
+     * 订单行格式化（后台富字段：商品信息/金额/客户/服务人员/服务方式/服务状态/来源/头像昵称/支付方式/订单状态）
+     *
+     * @param array<string, mixed> $row
+     * @return array<string, mixed>
+     */
+    protected function formatAdminOrder(array $row): array
+    {
+        $status       = (int) ($row['status'] ?? 0);
+        $fwtype       = (int) ($row['fwtype'] ?? 1);
+        $balancePrice = (float) ($row['balance_price'] ?? 0);
+
+        $fwtypeText = match ($fwtype) {
+            3       => '到商家服务',
+            2       => '上门服务',
+            default => '到店服务',
+        };
+
+        $woStatus = (null !== ($row['wo_status'] ?? null) && '' !== (string) $row['wo_status']) ? (int) $row['wo_status'] : null;
+        if (null === $woStatus || (int) ($row['worker_id'] ?? 0) <= 0) {
+            $fwstatusText = '暂未接单';
+        } else {
+            $fwstatusText = match ($woStatus) {
+                0       => '待接单',
+                1       => '已接单',
+                2       => !empty($row['wo_endtime']) ? '待确认' : '已到达',
+                3       => '已完成',
+                default => '暂未接单',
+            };
+        }
+
+        $orderStatusText = match ($status) {
+            0       => '待支付',
+            1       => !empty($row['worker_id']) ? '已派单' : '已支付',
+            2       => '已完成',
+            4       => '已关闭',
+            5       => '已退款',
+            default => '未知',
+        };
+
+        return [
+            'id'               => (int) ($row['id'] ?? 0),
+            'ordernum'         => (string) ($row['ordernum'] ?? ''),
+            'proname'          => (string) ($row['proname'] ?? ''),
+            'propic'           => (string) ($row['propic'] ?? ''),
+            'ggname'           => (string) ($row['ggname'] ?? ''),
+            'num'              => (int) ($row['num'] ?? 1),
+            'product_price'    => $this->fmtMoney((float) ($row['product_price'] ?? 0)),
+            'totalprice'       => $this->fmtMoney((float) ($row['totalprice'] ?? 0)),
+            'pay_amount'       => $this->fmtMoney((float) ($row['pay_amount'] ?? 0)),
+            'coupon_money'     => $this->fmtMoney((float) ($row['coupon_money'] ?? 0)),
+            'balance_price'    => $this->fmtMoney($balancePrice),
+            'balance_unpaid'   => $balancePrice > 0 && 0 === (int) ($row['balance_pay_status'] ?? 0),
+            'yy_time'          => (string) ($row['yy_time'] ?? ''),
+            'book_date'        => (string) ($row['book_date'] ?? ''),
+            'book_time'        => (string) ($row['book_time'] ?? ''),
+            'linkman'          => (string) ($row['linkman'] ?? ''),
+            'tel'              => (string) ($row['tel'] ?? ''),
+            'area'             => (string) ($row['area'] ?? ''),
+            'address'          => (string) ($row['address'] ?? ''),
+            'worker_id'       => (int) ($row['worker_id'] ?? 0),
+            'worker_name'      => (string) ($row['worker_name'] ?? ''),
+            'worker_tel'       => (string) ($row['worker_tel'] ?? ''),
+            'fwtype'           => $fwtype,
+            'fwtype_text'      => $fwtypeText,
+            'fwstatus'         => null === $woStatus ? -1 : $woStatus,
+            'fwstatus_text'   => $fwstatusText,
+            'platform'         => (string) ($row['platform'] ?? ''),
+            'platform_text'    => $this->platformName((string) ($row['platform'] ?? '')),
+            'member_nickname'  => (string) ($row['member_nickname'] ?? ''),
+            'member_headimg'   => (string) ($row['member_headimg'] ?? ''),
+            'member_tel'       => (string) ($row['member_tel'] ?? ''),
+            'paytype'          => (string) ($row['paytype'] ?? ''),
+            'paytype_text'     => $this->paytypeName((string) ($row['paytype'] ?? ''), (float) ($row['pay_amount'] ?? 0)),
+            'status'           => $status,
+            'status_text'       => $orderStatusText,
+            'can_finish'       => in_array($status, [self::STATUS_UNPAID, self::STATUS_PAID], true),
+            'createtime'       => (int) ($row['createtime'] ?? 0),
+            'create_time_text' => !empty($row['createtime']) ? date('Y-m-d H:i', (int) $row['createtime']) : '',
+            'wo'               => [
+                'createtime'  => (int) ($row['wo_createtime'] ?? 0),
+                'starttime'   => (int) ($row['wo_starttime'] ?? 0),
+                'daodiantime' => (int) ($row['wo_daodiantime'] ?? 0),
+                'endtime'     => (int) ($row['wo_endtime'] ?? 0),
+                'sign_time'   => (int) ($row['wo_sign_time'] ?? 0),
+            ],
+        ];
+    }
+
+    /** 平台来源名 */
+    protected function platformName(string $platform): string
+    {
+        return match ($platform) {
+            'wx'      => '微信小程序',
+            'mp'      => '微信公众号',
+            'alipay'  => '支付宝小程序',
+            'baidu'   => '百度小程序',
+            'toutiao' => '抖音小程序',
+            'qq'      => 'QQ小程序',
+            'h5'      => '手机H5',
+            'app'     => '手机APP',
+            default   => '' !== $platform ? $platform : '其他',
+        };
+    }
+
+    /** 支付方式名（实付0 视为无须付款） */
+    protected function paytypeName(string $paytype, float $payAmount): string
+    {
+        if ($payAmount <= 0.001) {
+            return '无须付款';
+        }
+
+        return match ($paytype) {
+            'wechat', 'wxpay', 'weixin' => '微信支付',
+            'alipay'                     => '支付宝',
+            'balance', 'yue', 'usemoney' => '余额支付',
+            'offline'                    => '线下支付',
+            'backend', 'admin'           => '后台支付',
+            default                      => '' !== $paytype ? $paytype : '在线支付',
+        };
+    }
+
+    /** 金额格式化（保留2位） */
+    protected function fmtMoney(float $v): float
+    {
+        return round($v, 2);
     }
 
     /**
@@ -713,6 +1150,95 @@ class YuyueService
             ->where('id', $id)
             ->where('status', self::STATUS_PAID)
             ->update(['status' => self::STATUS_FINISHED]);
+    }
+
+    /**
+     * 查看进度（按派单服务单时间线倒序，对齐点大 getJindu 上门口径）
+     *
+     * @return array{list: array<int, array{time: string, context: string}>, has_worker_order: bool}
+     */
+    public function adminOrderProgress(int $aid, int $id): array
+    {
+        $order = $this->findOrder($aid, 0, $id);
+        $woId  = (int) ($order['worker_orderid'] ?? 0);
+        $list  = [];
+
+        if ($woId > 0) {
+            $wo = Db::name('yuyue_worker_order')->where('id', $woId)->where('aid', $aid)->find();
+            if (!empty($wo)) {
+                $worker = !empty($order['worker_id'])
+                    ? Db::name('yuyue_worker')->where('id', (int) $order['worker_id'])->find()
+                    : null;
+                $wname = (string) ($worker['realname'] ?? '');
+                $wtel  = (string) ($worker['tel'] ?? '');
+
+                if (!empty($wo['createtime'])) {
+                    $list[] = ['time' => date('Y-m-d H:i', (int) $wo['createtime']), 'context' => '已发布服务单'];
+                }
+                if (!empty($wo['starttime'])) {
+                    $list[] = ['time' => date('Y-m-d H:i', (int) $wo['starttime']), 'context' => '服务人员' . $wname . '(' . $wtel . ')正在途中'];
+                }
+                if (!empty($wo['daodiantime'])) {
+                    $list[] = ['time' => date('Y-m-d H:i', (int) $wo['daodiantime']), 'context' => '服务人员已到达现场'];
+                }
+                if (!empty($wo['endtime'])) {
+                    $list[] = ['time' => date('Y-m-d H:i', (int) $wo['endtime']), 'context' => '服务完成'];
+                }
+            }
+        }
+
+        return [
+            'list'             => array_reverse($list),
+            'has_worker_order' => $woId > 0,
+        ];
+    }
+
+    /**
+     * 订单详情（查看详情弹窗：订单 + 会员 + 服务人员）
+     *
+     * @return array{order: array<string, mixed>, member: array<string, mixed>, worker: array<string, mixed>}
+     */
+    public function adminOrderDetail(int $aid, int $id): array
+    {
+        $order = $this->findOrder($aid, 0, $id);
+
+        $member = Db::name('member')->where('id', (int) ($order['mid'] ?? 0))->find();
+        $worker = !empty($order['worker_id'])
+            ? Db::name('yuyue_worker')->where('id', (int) $order['worker_id'])->find()
+            : null;
+
+        return [
+            'order'  => $order,
+            'member' => $member ?: ['nickname' => '', 'headimg' => '', 'tel' => ''],
+            'worker' => $worker ?: ['realname' => '', 'tel' => ''],
+        ];
+    }
+
+    /**
+     * 服务完成（活动订单置已完成，幂等）
+     */
+    public function adminOrderFinish(int $aid, int $id): void
+    {
+        $order = $this->findOrder($aid, 0, $id);
+
+        if (self::STATUS_FINISHED === (int) $order['status']) {
+            throw new BusinessException('订单已是完成状态');
+        }
+
+        Db::name('yuyue_order')->where('id', $id)->where('aid', $aid)->update([
+            'status'       => self::STATUS_FINISHED,
+            'collect_time' => time(),
+        ]);
+    }
+
+    /**
+     * 删除订单（软删 delete=1）
+     */
+    public function adminOrderDelete(int $aid, int $id): void
+    {
+        $this->findOrder($aid, 0, $id);
+
+        Db::name('yuyue_order')->where('id', $id)->where('aid', $aid)->update(['delete' => 1]);
     }
 
     /* ================= api 会员侧 ================= */
@@ -1153,6 +1679,7 @@ class YuyueService
             ->where('status', self::STATUS_PAID)
             ->where('paytime', '>', 0)
             ->where('paytime', '<', time() - $minutes * 60)
+            ->where('ordernum', 'not like', 'DEMO-YY-%') // 演示订单不参与超时自动退款，保持各状态供查看
             ->order('id', 'asc')
             ->limit(500)
             ->select()
@@ -1326,6 +1853,7 @@ class YuyueService
     {
         return [
             'id'          => (int) ($row['id'] ?? 0),
+            'pid'         => (int) ($row['pid'] ?? 0),
             'name'        => (string) ($row['name'] ?? ''),
             'pic'         => (string) ($row['pic'] ?? ''),
             'sort'        => (int) ($row['sort'] ?? 1),

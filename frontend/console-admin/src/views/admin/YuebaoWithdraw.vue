@@ -1,67 +1,68 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { auditYuebaoWithdraw, getYuebaoWithdrawList, payYuebaoWithdraw } from '../../api/yuebao'
+import {
+  auditYuebaoWithdraw,
+  deleteYuebaoWithdraw,
+  exportYuebaoWithdraw,
+  getYuebaoWithdrawList,
+  payYuebaoWithdraw,
+} from '../../api/yuebao'
 import type { YuebaoWithdrawItem, YuebaoWithdrawStat } from '../../api/yuebao'
 import { formatTime } from '../../utils/time'
 
-// 状态机：0审核中 → 1已审核（待打款） → 3已打款；0 → 2已驳回（退回余额宝）
-const STATUS_TAG: Record<number, 'warning' | 'primary' | 'danger' | 'success' | 'info'> = {
-  0: 'warning',
-  1: 'primary',
-  2: 'danger',
-  3: 'success',
-}
-
+/**
+ * 余额宝提现（member_yuebao_withdrawlog）对齐 canzhao yuebao/withdrawlog.html
+ * 工具栏[删除,导出EXCEL]；行操作按 status 显隐（无 can_* 布尔）
+ */
 const loading = ref(false)
+const exporting = ref(false)
 const tableData = ref<YuebaoWithdrawItem[]>([])
+const selectedRows = ref<YuebaoWithdrawItem[]>([])
 const total = ref(0)
 const stat = ref<YuebaoWithdrawStat>({ pending: 0, approved: 0, rejected: 0, paid: 0, pending_amount: 0 })
+
+const STATUS_OPTIONS = [
+  { label: '全部', value: '' },
+  { label: '审核中', value: '0' },
+  { label: '已审核', value: '1' },
+  { label: '已驳回', value: '2' },
+  { label: '已打款', value: '3' },
+]
 
 const query = reactive({
   page: 1,
   pagesize: 10,
-  status: '',
-  nickname: '',
   mid: '',
-  paytype: '',
-  timeRange: null as [string, string] | null,
+  nickname: '',
+  status: '',
 })
+
+function buildParams() {
+  return {
+    page: query.page,
+    pagesize: query.pagesize,
+    mid: query.mid ? Number(query.mid) : undefined,
+    nickname: query.nickname || undefined,
+    status: query.status || undefined,
+  }
+}
 
 async function fetchList() {
   loading.value = true
   try {
-    const data = await getYuebaoWithdrawList({
-      page: query.page,
-      pagesize: query.pagesize,
-      status: query.status || undefined,
-      nickname: query.nickname || undefined,
-      mid: query.mid ? Number(query.mid) : undefined,
-      paytype: query.paytype || undefined,
-      start_date: query.timeRange?.[0] || undefined,
-      end_date: query.timeRange?.[1] || undefined,
-    })
+    const data = await getYuebaoWithdrawList(buildParams())
     tableData.value = data.list || []
     total.value = data.total || 0
     stat.value = data.stat || { pending: 0, approved: 0, rejected: 0, paid: 0, pending_amount: 0 }
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     loading.value = false
   }
 }
 
 function handleSearch() {
-  query.page = 1
-  fetchList()
-}
-
-function handleReset() {
-  query.status = ''
-  query.nickname = ''
-  query.mid = ''
-  query.paytype = ''
-  query.timeRange = null
   query.page = 1
   fetchList()
 }
@@ -77,50 +78,111 @@ function handleSizeChange(size: number) {
   fetchList()
 }
 
-// ============ 审核弹窗 ============
-const auditVisible = ref(false)
-const auditSubmitting = ref(false)
-const auditRow = ref<YuebaoWithdrawItem | null>(null)
-const auditForm = reactive({ pass: 1, reason: '' })
-
-function openAudit(row: YuebaoWithdrawItem) {
-  auditRow.value = row
-  auditForm.pass = 1
-  auditForm.reason = ''
-  auditVisible.value = true
+function handleSelectionChange(rows: YuebaoWithdrawItem[]) {
+  selectedRows.value = rows
 }
 
-async function submitAudit() {
-  if (!auditRow.value) return
-  if (auditForm.pass === 2 && !auditForm.reason.trim()) {
-    ElMessage.warning('驳回时请填写原因')
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    const blob = await exportYuebaoWithdraw(buildParams())
+    downloadBlob(blob, `余额宝提现_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.xlsx`)
+  } catch {
+    // 拦截器统一提示
+  } finally {
+    exporting.value = false
+  }
+}
+
+// 收款账号（照 canzhao）
+function accountText(row: YuebaoWithdrawItem): string {
+  if (row.paytype === '支付宝') return [row.aliaccountname, row.aliaccount].filter(Boolean).join(' ') || '-'
+  if (row.paytype === '银行卡') return [row.bankname, row.bankcarduser, row.bankcardnum].filter(Boolean).join(' - ') || '-'
+  return row.paytype || '-'
+}
+
+// 审核通过（status=0）
+async function handleAudit(row: YuebaoWithdrawItem) {
+  try {
+    await ElMessageBox.confirm('确定要审核通过吗?', '操作确认', {
+      type: 'warning',
+      confirmButtonText: '确 定',
+      cancelButtonText: '取 消',
+    })
+  } catch {
     return
   }
-  auditSubmitting.value = true
   try {
-    await auditYuebaoWithdraw({
-      id: auditRow.value.id,
-      pass: auditForm.pass,
-      reason: auditForm.reason,
-    })
-    ElMessage.success(auditForm.pass === 1 ? '已通过，待打款' : '已驳回，金额已退回余额宝')
-    auditVisible.value = false
+    await auditYuebaoWithdraw({ id: row.id, pass: 1 })
+    ElMessage.success('已通过，待打款')
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    auditSubmitting.value = false
+    // 拦截器统一提示
   }
 }
 
-// ============ 打款 ============
-async function handlePay(row: YuebaoWithdrawItem) {
+// 驳回（status=0）：prompt 填原因
+async function handleReject(row: YuebaoWithdrawItem) {
+  let reason = ''
   try {
-    await ElMessageBox.confirm(
-      `确认向「${row.nickname || '会员' + row.mid}」打款 ￥${Number(row.txmoney).toFixed(2)}（${row.paytype || '-'}）？`,
-      '提现打款',
-      { type: 'warning', confirmButtonText: '确认打款', cancelButtonText: '取消' },
-    )
+    const res = await ElMessageBox.prompt('请填写驳回原因', '驳回余额宝提现', {
+      confirmButtonText: '确 定',
+      cancelButtonText: '取 消',
+      inputPlaceholder: '请输入驳回原因',
+      inputValidator: (v) => (v && v.trim() ? true : '驳回原因不能为空'),
+    })
+    reason = res.value
+  } catch {
+    return
+  }
+  try {
+    await auditYuebaoWithdraw({ id: row.id, pass: 2, reason })
+    ElMessage.success('已驳回，金额已退回余额宝')
+    fetchList()
+  } catch {
+    // 拦截器统一提示
+  }
+}
+
+// 改为已打款（status=1）
+async function handleMarkPaid(row: YuebaoWithdrawItem) {
+  try {
+    await ElMessageBox.confirm('确定您已经通过其他方式打款给用户了吗？此操作仅修改状态，并不会进行打款。', '操作确认', {
+      type: 'warning',
+      confirmButtonText: '确 定',
+      cancelButtonText: '取 消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await payYuebaoWithdraw(row.id)
+    ElMessage.success('已标记为打款')
+    fetchList()
+  } catch {
+    // 拦截器统一提示
+  }
+}
+
+// 微信打款（status=1 且 微信钱包）
+async function handleWxPay(row: YuebaoWithdrawItem) {
+  try {
+    await ElMessageBox.confirm('确定要微信打款吗?', '操作确认', {
+      type: 'warning',
+      confirmButtonText: '确 定',
+      cancelButtonText: '取 消',
+    })
   } catch {
     return
   }
@@ -129,21 +191,31 @@ async function handlePay(row: YuebaoWithdrawItem) {
     ElMessage.success('打款成功')
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   }
 }
 
-// 收款账户展示（按支付方式）
-function accountText(row: YuebaoWithdrawItem): string {
-  if (row.paytype === '支付宝') return `${row.aliaccountname || ''} ${row.aliaccount || ''}`.trim() || '-'
-  if (row.paytype === '银行卡') return [row.bankname, row.bankcarduser, row.bankcardnum].filter(Boolean).join(' - ') || '-'
-  return row.paytype || '-'
+async function doDelete(ids: number[]) {
+  await ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '操作确认', {
+    type: 'warning',
+    confirmButtonText: '确 定',
+    cancelButtonText: '取 消',
+  })
+  await deleteYuebaoWithdraw({ ids })
+  ElMessage.success('删除成功')
+  fetchList()
 }
 
-function shortDate(ts: number): string {
-  if (!ts) return '-'
-  const full = formatTime(ts)
-  return full.length >= 10 ? full.slice(2, 10) : full
+function handleBatchDelete() {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选数据')
+    return
+  }
+  doDelete(selectedRows.value.map((r) => r.id)).catch(() => {})
+}
+
+function handleRowDelete(row: YuebaoWithdrawItem) {
+  doDelete([row.id]).catch(() => {})
 }
 
 onMounted(() => {
@@ -153,133 +225,86 @@ onMounted(() => {
 
 <template>
   <div>
-    <!-- 顶部统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">待审核</div>
-          <div class="stat-value warning">{{ stat.pending }}</div>
-          <div class="stat-sub">金额 ￥{{ Number(stat.pending_amount).toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">待打款</div>
-          <div class="stat-value primary">{{ stat.approved }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">已打款</div>
-          <div class="stat-value success">{{ stat.paid }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="6">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">已驳回</div>
-          <div class="stat-value danger">{{ stat.rejected }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 搜索工具栏 -->
+    <!-- 工具栏：批量按钮 + 搜索 同一行 -->
     <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px">
-            <el-option label="待审核" value="0" />
-            <el-option label="待打款" value="1" />
-            <el-option label="已驳回" value="2" />
-            <el-option label="已打款" value="3" />
+      <div class="toolbar-line">
+        <div class="toolbar-actions">
+          <el-button @click="handleBatchDelete">删除</el-button>
+          <el-button :loading="exporting" @click="handleExport">导出EXCEL</el-button>
+        </div>
+        <div class="toolbar-search">
+          <el-input v-model="query.mid" placeholder="会员ID" clearable class="tw-mid" @keyup.enter="handleSearch" />
+          <el-input v-model="query.nickname" placeholder="昵称" clearable class="tw-nick" @keyup.enter="handleSearch" />
+          <el-select v-model="query.status" placeholder="状态" class="tw-status">
+            <el-option v-for="o in STATUS_OPTIONS" :key="o.value" :label="o.label" :value="o.value" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="方式">
-          <el-select v-model="query.paytype" placeholder="全部" clearable style="width: 110px">
-            <el-option label="微信" value="微信" />
-            <el-option label="支付宝" value="支付宝" />
-            <el-option label="银行卡" value="银行卡" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="昵称">
-          <el-input v-model="query.nickname" placeholder="会员昵称" clearable style="width: 130px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="会员ID">
-          <el-input v-model="query.mid" placeholder="ID" clearable style="width: 90px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="时间">
-          <el-date-picker
-            v-model="query.timeRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            value-format="YYYY-MM-DD"
-            style="width: 220px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
+          <el-button type="success" class="search-icon-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z"/></svg>
+          </el-button>
+        </div>
+      </div>
     </el-card>
 
-    <!-- 列表 -->
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe border size="small">
-        <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-        <el-table-column label="会员" min-width="110" show-overflow-tooltip>
-          <template #default="{ row }">
-            {{ row.nickname || `会员${row.mid}` }}
-            <span v-if="row.tel" class="sub-text">{{ row.tel }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="申请金额" width="86" class-name="compact-col">
-          <template #default="{ row }">￥{{ Number(row.txmoney).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="实付金额" width="86" class-name="compact-col">
-          <template #default="{ row }">￥{{ Number(row.money).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="paytype" label="方式" width="70" class-name="compact-col">
-          <template #default="{ row }">{{ row.paytype || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="收款账户" min-width="150" show-overflow-tooltip>
-          <template #default="{ row }">{{ accountText(row) }}</template>
-        </el-table-column>
-        <el-table-column label="申请时间" width="88" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ shortDate(row.createtime) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="84" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.status === 2 && row.reason" :content="`驳回原因：${row.reason}`" placement="top">
-              <el-tag :type="STATUS_TAG[row.status] || 'info'" size="small">{{ row.status_text }}</el-tag>
-            </el-tooltip>
-            <el-tag v-else :type="STATUS_TAG[row.status] || 'info'" size="small">{{ row.status_text }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="110" fixed="right" class-name="compact-col">
-          <template #default="{ row }">
-            <div class="op-wrap">
-              <el-button v-if="row.status === 0" link type="warning" @click="openAudit(row)">审核</el-button>
-              <el-button v-if="row.status === 1" link type="primary" @click="handlePay(row)">打款</el-button>
-              <el-tooltip
-                v-if="row.status === 3 && row.paytime"
-                :content="`打款时间：${formatTime(row.paytime)}${row.paynum ? ' 单号：' + row.paynum : ''}`"
-                placement="top"
-              >
-                <span class="sub-text">已打款</span>
+    <!-- 表格 -->
+    <el-card shadow="never" class="table-card">
+      <div class="table-stat">
+        <span>待审核 <b>{{ stat.pending }}</b></span>
+        <span>待打款 <b>{{ stat.approved }}</b></span>
+        <span>已打款 <b>{{ stat.paid }}</b></span>
+        <span>已驳回 <b>{{ stat.rejected }}</b></span>
+        <span>待打款金额 <b>￥{{ Number(stat.pending_amount).toFixed(2) }}</b></span>
+      </div>
+      <div class="table-scroll">
+        <el-table v-loading="loading" :data="tableData" border size="small" @selection-change="handleSelectionChange">
+          <el-table-column type="selection" width="42" />
+          <el-table-column prop="mid" label="会员ID" width="80" />
+          <el-table-column label="会员信息" min-width="150">
+            <template #default="{ row }">
+              <span>{{ row.nickname || ('会员' + row.mid) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="tel" label="手机号" width="120">
+            <template #default="{ row }">{{ row.tel || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="提现金额" width="110" sortable="custom">
+            <template #default="{ row }">￥{{ Number(row.txmoney).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="打款金额" width="110" sortable="custom">
+            <template #default="{ row }">￥{{ Number(row.money).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column prop="paytype" label="提现方式" width="100">
+            <template #default="{ row }">{{ row.paytype || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="收款账号" min-width="150" show-overflow-tooltip>
+            <template #default="{ row }">{{ accountText(row) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="110">
+            <template #default="{ row }">
+              <el-tooltip v-if="row.status === 2 && row.reason" :content="`驳回原因：${row.reason}`" placement="top">
+                <span>{{ row.status_text || '-' }}</span>
               </el-tooltip>
-              <span v-if="row.status === 2" class="sub-text">已退回</span>
-            </div>
-          </template>
-        </el-table-column>
-      </el-table>
-
+              <span v-else>{{ row.status_text || '-' }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="提现时间" width="150" sortable="custom">
+            <template #default="{ row }">{{ row.createtime ? formatTime(row.createtime) : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="打款时间" width="150" sortable="custom">
+            <template #default="{ row }">{{ row.paytime ? formatTime(row.paytime) : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="160">
+            <template #default="{ row }">
+              <div class="row-ops">
+                <el-button v-if="row.status === 0" link type="primary" @click="handleAudit(row)">审核</el-button>
+                <el-button v-if="row.status === 0" link type="warning" @click="handleReject(row)">驳回</el-button>
+                <el-button v-if="row.status === 1" link type="primary" @click="handleMarkPaid(row)">改为已打款</el-button>
+                <el-button v-if="row.status === 1 && row.paytype === '微信钱包'" link type="primary" @click="handleWxPay(row)">微信打款</el-button>
+                <el-button link type="danger" @click="handleRowDelete(row)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
       <el-pagination
         class="pagination"
         background
@@ -292,139 +317,100 @@ onMounted(() => {
         @size-change="handleSizeChange"
       />
     </el-card>
-
-    <!-- 审核弹窗 -->
-    <el-dialog v-model="auditVisible" title="余额宝提现审核" width="460px">
-      <template v-if="auditRow">
-        <div class="audit-info-card">
-          <div class="audit-row">
-            <span class="audit-label">会员</span>
-            <span>{{ auditRow.nickname || `会员${auditRow.mid}` }}（{{ auditRow.tel || '-' }}）</span>
-          </div>
-          <div class="audit-row">
-            <span class="audit-label">申请金额</span>
-            <span class="amount-strong">￥{{ Number(auditRow.txmoney).toFixed(2) }}</span>
-          </div>
-          <div class="audit-row">
-            <span class="audit-label">收款方式</span>
-            <span>{{ accountText(auditRow) }}</span>
-          </div>
-        </div>
-        <el-radio-group v-model="auditForm.pass" class="audit-radio">
-          <el-radio :value="1">通过（待打款）</el-radio>
-          <el-radio :value="2">驳回（退回余额宝）</el-radio>
-        </el-radio-group>
-        <el-input
-          v-model="auditForm.reason"
-          type="textarea"
-          :rows="3"
-          :placeholder="auditForm.pass === 2 ? '请填写驳回原因（必填）' : '备注（选填）'"
-          class="audit-remark"
-        />
-      </template>
-      <template #footer>
-        <el-button @click="auditVisible = false">取消</el-button>
-        <el-button type="primary" :loading="auditSubmitting" @click="submitAudit">提交审核</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.stat-row {
-  margin-bottom: 12px;
+.toolbar-card :deep(.el-card__body) {
+  padding: 8px 10px;
 }
-
-.stat-card .stat-label {
-  color: #909399;
-  font-size: 13px;
-}
-
-.stat-card .stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  margin-top: 4px;
-}
-
-.stat-card .stat-sub {
-  color: #909399;
-  font-size: 12px;
-  margin-top: 2px;
-}
-
-.stat-value.primary {
-  color: #409eff;
-}
-
-.stat-value.danger {
-  color: #f56c6c;
-}
-
-.stat-value.success {
-  color: #67c23a;
-}
-
-.stat-value.warning {
-  color: #e6a23c;
-}
-
-.toolbar-card {
-  margin-bottom: 12px;
-}
-
-.op-wrap {
+.toolbar-line {
   display: flex;
   align-items: center;
-  gap: 4px;
+  gap: 8px;
   flex-wrap: nowrap;
 }
-
-.sub-text {
-  color: #909399;
-  font-size: 12px;
-}
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-.audit-info-card {
-  background: #f8fafc;
-  border-radius: 8px;
-  padding: 12px 16px;
-  font-size: 13px;
-}
-
-.audit-row {
+.toolbar-actions {
   display: flex;
-  gap: 8px;
-  padding: 4px 0;
-}
-
-.audit-label {
-  color: #909399;
-  width: 64px;
+  align-items: center;
+  gap: 6px;
   flex-shrink: 0;
 }
-
-.amount-strong {
-  color: #f56c6c;
-  font-weight: 700;
+.toolbar-actions .el-button {
+  margin-left: 0;
 }
-
-.audit-radio {
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  flex-wrap: nowrap;
+  overflow: hidden;
+}
+.toolbar-search :deep(.el-input__inner) {
+  text-align: left;
+}
+.tw-mid { width: 90px; flex-shrink: 0; }
+.tw-nick { width: 130px; flex-shrink: 0; }
+.tw-status { width: 110px; flex-shrink: 0; }
+.search-icon-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.search-icon-btn svg {
   display: block;
-  margin: 14px 0 8px;
 }
 
-.audit-remark {
-  margin-top: 4px;
+.table-card :deep(.el-card__body) {
+  padding: 5px;
 }
-
-/* 紧凑列：收紧单元格左右内边距 */
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
+.table-stat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  color: #606266;
+}
+.table-stat b {
+  color: #303133;
+  font-weight: 600;
+}
+.table-scroll {
+  width: 100%;
+  overflow-x: auto;
+}
+.table-scroll :deep(.el-table) {
+  --el-table-header-bg-color: #e6e6e6;
+  --el-table-header-text-color: #303133;
+}
+.table-scroll :deep(.el-table th .cell),
+.table-scroll :deep(.el-table td .cell) {
+  text-align: left;
+}
+.table-scroll :deep(.el-table td .cell) {
+  padding: 3px 6px;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px 6px;
+  white-space: nowrap;
+}
+.row-ops :deep(.el-button) {
+  margin: 0;
+  padding: 0;
+}
+.pagination {
+  margin-top: 8px;
+  justify-content: flex-end;
 }
 </style>

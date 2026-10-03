@@ -6,6 +6,7 @@ namespace app\admin\controller;
 
 use app\BaseController;
 use app\common\service\ScopeService;
+use app\common\service\ExcelHelper;
 use app\common\service\SeckillService;
 
 /**
@@ -247,5 +248,137 @@ class Seckill extends BaseController
         $this->seckillService->orderClose($aid, $id);
 
         return $this->success([], '订单已关闭');
+    }
+    /* ================= 订单扩展操作（对齐 canzhao SeckillOrder） ================= */
+
+    public function orderDetail()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        return $this->success($this->seckillService->orderDetail($aid, (int) $this->request->get('id', 0)));
+    }
+
+    public function orderDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) { $ids = [(int) $this->request->post('id', 0)]; }
+        $this->seckillService->orderDelete($aid, $ids);
+        return $this->success([], '删除成功');
+    }
+
+    public function orderIspay()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $this->seckillService->orderIspay($aid, (int) $this->request->post('id', 0));
+        return $this->success([], '操作成功');
+    }
+
+    public function orderHexiao()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $this->seckillService->orderHexiao($aid, (int) $this->request->post('id', 0));
+        return $this->success([], '核销成功');
+    }
+
+    /**
+     * 手动发货 {id, express_com, express_no}
+     */
+    public function orderSendExpress()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $this->seckillService->orderSendExpress(
+            $aid,
+            (int) $this->request->post('id', 0),
+            (string) $this->request->post('express_com', ''),
+            (string) $this->request->post('express_no', '')
+        );
+        return $this->success([], '发货成功');
+    }
+
+    /**
+     * 快递公司下拉（手动发货）
+     */
+    public function orderExpressOptions()
+    {
+        return $this->success($this->seckillService->expressOptions());
+    }
+
+    /**
+     * 查物流（快递鸟 1002 轨迹）
+     * GET /admin/seckill/order/trace?id=
+     */
+    public function orderTrace()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        return $this->success($this->seckillService->orderTrace($aid, (int) $this->request->get('id', 0)));
+    }
+
+    /**
+     * 送货单（整页打印数据）
+     * GET /admin/seckill/order/deliveryNote?id=
+     */
+    public function orderDeliveryNote()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        return $this->success($this->seckillService->orderDeliveryNote($aid, (int) $this->request->get('id', 0)));
+    }
+
+    public function orderExport()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $filters = [
+            'status'     => trim((string) $this->request->get('status', '')),
+            'ordernum'   => trim((string) $this->request->get('ordernum', '')),
+            'proname'    => trim((string) $this->request->get('proname', '')),
+            'linkman'    => trim((string) $this->request->get('linkman', '')),
+            'tel'        => trim((string) $this->request->get('tel', '')),
+        ];
+        $rows = $this->seckillService->orderExportRows($aid, $filters);
+        return ExcelHelper::download('秒杀订单_' . date('YmdHis'), [
+            '订单号', '商品名称', '规格', '数量', '秒杀价', '实付款', '支付方式', '联系人', '电话', '收货地址', '备注', '下单时间', '状态',
+        ], $rows);
+    }
+
+    /* ================= 秒杀评价（对齐 canzhao SeckillComment） ================= */
+
+    public function commentList()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $page = max(1, (int) $this->request->get('page', 1));
+        $pagesize = (int) $this->request->get('pagesize', 10);
+        $pagesize = $pagesize > 0 ? min($pagesize, 100) : 10;
+        $filters = [
+            'status'     => trim((string) $this->request->get('status', '')),
+            'content'    => trim((string) $this->request->get('content', '')),
+            'proid'      => (int) $this->request->get('proid', 0),
+            'start_date' => trim((string) $this->request->get('start_date', '')),
+            'end_date'   => trim((string) $this->request->get('end_date', '')),
+        ];
+        return $this->success($this->seckillService->commentList($aid, $page, $pagesize, $filters));
+    }
+
+    public function commentSetStatus()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) { $ids = [(int) $this->request->post('id', 0)]; }
+        $this->seckillService->commentSetStatus($aid, $ids, (int) $this->request->post('status', 1));
+        return $this->success([], '操作成功');
+    }
+
+    public function commentReply()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $this->seckillService->commentReply($aid, (int) $this->request->post('id', 0), (string) $this->request->post('content', ''));
+        return $this->success([], '回复成功');
+    }
+
+    public function commentDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) { $ids = [(int) $this->request->post('id', 0)]; }
+        $this->seckillService->commentDelete($aid, $ids);
+        return $this->success([], '删除成功');
     }
 }

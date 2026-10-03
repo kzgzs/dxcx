@@ -1,7 +1,11 @@
 <script setup lang="ts">
+/**
+ * 扩展·预约服务 - 服务商品
+ * 对齐截图：列表(搜索/批量/上架下架)；平铺增改(服务信息三部分+服务详情，右上X)；
+ * 4 个条件组（服务方式含限制区域省市弹窗 / 结算方式 / 可预约日期 / 可预约时间）切换-保存-回填打通。
+ */
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
 import {
   getYuyueProductList,
   getYuyueProductDetail,
@@ -9,744 +13,993 @@ import {
   editYuyueProduct,
   deleteYuyueProduct,
   setYuyueProductStatus,
-  checkYuyueProduct,
   copyYuyueProduct,
-  getYuyueCategoryList,
-  type YuyueProductListItem,
-  type YuyueProductSaveParams,
+  getYuyueFuwuList,
+  getYuyueWorkerList,
 } from '../../api/yuyue'
-import type { YuyueCategoryItem } from '../../api/types'
+import { getYuyueCategoryList } from '../../api/yuyue'
+import type { YuyueProductListItem } from '../../api/yuyue'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
-import SimpleRichEditor from '../../components/SimpleRichEditor.vue'
 import LinkAddressModal from '../../components/LinkAddressModal.vue'
+import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
+import type { DesignerModule } from '../../api/designer'
+import { defaultModule } from './designerModules'
+import { areaProvinces } from '../../utils/areaData'
 
-// bid 由菜单工厂注入：有值=商户视图(showtype=2，无「添加」，显示所属商户/审核状态/行内审核)；无值=平台自营视图
-const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
-const isMerchantView = computed(() => !!props.bid)
-
-// ============ 列表 ============
+/* ---------------- 列表 ---------------- */
 const loading = ref(false)
-const tableData = ref<YuyueProductListItem[]>([])
+const rows = ref<YuyueProductListItem[]>([])
 const total = ref(0)
-const selectedRows = ref<YuyueProductListItem[]>([])
+const page = ref(1)
+const pageSize = ref(10)
+const query = reactive({ name: '', status: '' as number | '' })
+const checkedIds = ref<Set<number>>(new Set())
 
-const query = reactive({
-  page: 1,
-  pagesize: 10,
-  name: '',
-  status: '' as number | '',
-  orderField: '',
-  orderType: 'desc',
-})
-
-// 服务分类（仅编辑表单使用，列表搜索无分类下拉）
-const categoryOptions = ref<YuyueCategoryItem[]>([])
-async function fetchCategories() {
-  try {
-    const data = await getYuyueCategoryList()
-    categoryOptions.value = data.list || []
-  } catch {
-    // 拦截器统一提示
-  }
-}
-
-async function fetchList() {
+async function loadList() {
   loading.value = true
   try {
-    const data = await getYuyueProductList({
-      page: query.page,
-      pagesize: query.pagesize,
+    const res = await getYuyueProductList({
+      page: page.value,
+      pagesize: pageSize.value,
       name: query.name || undefined,
-      status: query.status === '' ? undefined : query.status,
-      orderField: query.orderField || undefined,
-      orderType: query.orderType || undefined,
-      bid: props.bid || undefined,
+      status: query.status,
     })
-    tableData.value = data.list || []
-    total.value = data.total || 0
-  } catch {
-    // 拦截器统一提示
+    rows.value = res.list ?? []
+    total.value = res.total ?? 0
   } finally {
     loading.value = false
   }
 }
 
-function handleSearch() {
-  query.page = 1
-  fetchList()
-}
-function handlePageChange(p: number) {
-  query.page = p
-  fetchList()
-}
-function handleSizeChange(s: number) {
-  query.pagesize = s
-  query.page = 1
-  fetchList()
-}
-function handleSelectionChange(rows: YuyueProductListItem[]) {
-  selectedRows.value = rows
-}
-function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
-  query.orderField = order ? prop : ''
-  query.orderType = order === 'ascending' ? 'asc' : 'desc'
-  query.page = 1
-  fetchList()
-}
-function selectedIds(): number[] {
-  return selectedRows.value.map((r) => r.id)
+function onCheckChange(row: YuyueProductListItem, checked: boolean) {
+  if (checked) checkedIds.value.add(row.id)
+  else checkedIds.value.delete(row.id)
 }
 
-// ============ 批量 ============
-function handleBatchDelete() {
-  const ids = selectedIds()
-  if (ids.length === 0) {
-    ElMessage.warning('请先勾选服务')
+function onSearch() {
+  page.value = 1
+  loadList()
+}
+
+async function batchDelete() {
+  const ids = Array.from(checkedIds.value)
+  if (!ids.length) {
+    ElMessage.warning('请先勾选')
     return
   }
-  ElMessageBox.confirm(`确定要删除选中的 ${ids.length} 个服务吗？删除后不可恢复。`, '批量删除', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await deleteYuyueProduct(ids)
-        ElMessage.success('删除成功')
-        fetchList()
-      } catch {
-        // 拦截器统一提示
-      }
-    })
-    .catch(() => {})
+  await ElMessageBox.confirm(`确定删除选中的 ${ids.length} 个商品？`, '提示', { type: 'warning' })
+  await deleteYuyueProduct(ids)
+  checkedIds.value.clear()
+  ElMessage.success('删除成功')
+  loadList()
 }
 
-function handleBatchStatus(status: number) {
-  const ids = selectedIds()
-  if (ids.length === 0) {
-    ElMessage.warning('请先勾选服务')
+async function batchStatus(status: number) {
+  const ids = Array.from(checkedIds.value)
+  if (!ids.length) {
+    ElMessage.warning('请先勾选')
     return
   }
-  const tip = status === 1 ? '上架' : '下架'
-  ElMessageBox.confirm(`确定要${tip}选中的 ${ids.length} 个服务吗？`, `批量${tip}`, {
-    confirmButtonText: tip,
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await setYuyueProductStatus(ids, status)
-        ElMessage.success(`已${tip}`)
-        fetchList()
-      } catch {
-        // 拦截器统一提示
-      }
-    })
-    .catch(() => {})
+  await setYuyueProductStatus(ids, status)
+  checkedIds.value.clear()
+  ElMessage.success(status === 1 ? '已上架' : '已下架')
+  loadList()
 }
 
-// ============ 行操作 ============
-function handleRowStatus(row: YuyueProductListItem) {
-  const target = row.status === 1 ? 0 : 1
-  const tip = target === 1 ? '上架' : '下架'
-  ElMessageBox.confirm(`确定要${tip}服务「${row.name}」吗？`, `${tip}确认`, {
-    confirmButtonText: tip,
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await setYuyueProductStatus(row.id, target)
-        row.status = target
-        ElMessage.success(`已${tip}`)
-      } catch {
-        // 拦截器统一提示
-      }
-    })
-    .catch(() => {})
+async function removeRow(row: YuyueProductListItem) {
+  await ElMessageBox.confirm(`确定删除商品「${row.name}」？`, '提示', { type: 'warning' })
+  await deleteYuyueProduct(row.id)
+  ElMessage.success('删除成功')
+  loadList()
 }
 
-function handleDelete(row: YuyueProductListItem) {
-  ElMessageBox.confirm(`确定要删除服务「${row.name}」吗？删除后不可恢复。`, '删除确认', {
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await deleteYuyueProduct(row.id)
-        ElMessage.success('删除成功')
-        fetchList()
-      } catch {
-        // 拦截器统一提示
-      }
-    })
-    .catch(() => {})
+async function toggleStatus(row: YuyueProductListItem) {
+  await setYuyueProductStatus([row.id], row.status === 1 ? 0 : 1)
+  ElMessage.success(row.status === 1 ? '已下架' : '已上架')
+  loadList()
 }
 
-async function handleCopy(row: YuyueProductListItem) {
-  try {
-    await copyYuyueProduct(row.id)
-    ElMessage.success('复制成功')
-    fetchList()
-  } catch {
-    // 拦截器统一提示
-  }
+async function copyRow(row: YuyueProductListItem) {
+  await copyYuyueProduct(row.id)
+  ElMessage.success('已复制')
+  loadList()
 }
 
-// ============ 查看链接（H5 链接 + 二维码） ============
+/* ---------------- 查看链接弹窗 ---------------- */
 const linkVisible = ref(false)
-const linkTarget = reactive({ name: '', path: '' })
-function handleShowLink(row: YuyueProductListItem) {
-  linkTarget.name = row.name
-  linkTarget.path = `/yuyue/yuyue/product?id=${row.id}`
+const linkPath = ref('')
+function openLink(row: YuyueProductListItem) {
+  linkPath.value = `/yuyue/yuyue/product?id=${row.id}`
   linkVisible.value = true
 }
 
-// ============ 审核（仅商户视图行内） ============
-function handleCheckPass(row: YuyueProductListItem) {
-  ElMessageBox.confirm(`确定要审核通过服务「${row.name}」吗？`, '审核通过', {
-    confirmButtonText: '通过',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await checkYuyueProduct(row.id, 1)
-        row.ischecked = 1
-        ElMessage.success('已通过')
-      } catch {
-        // 拦截器统一提示
-      }
-    })
-    .catch(() => {})
-}
-
-function handleCheckReject(row: YuyueProductListItem) {
-  ElMessageBox.prompt('请输入驳回原因', '驳回', {
-    inputPlaceholder: '驳回原因',
-    inputValidator: (v) => !!v && v.trim() !== '' || '请输入驳回原因',
-  })
-    .then(async ({ value }) => {
-      try {
-        await checkYuyueProduct(row.id, 2, value)
-        row.ischecked = 2
-        row.check_reason = value
-        ElMessage.success('已驳回')
-      } catch {
-        // 拦截器统一提示
-      }
-    })
-    .catch(() => {})
-}
-
-// ============ 视图切换：列表 / 整页编辑 ============
-const viewMode = ref<'list' | 'edit'>('list')
-const isEdit = ref(false)
+/* ---------------- 增改平铺面板 ---------------- */
+const editing = ref(false)
+const editId = ref(0)
 const activeTab = ref<'info' | 'detail'>('info')
-const submitting = ref(false)
-const formRef = ref<FormInstance>()
 
-const form = reactive({
-  id: 0,
+const form = reactive<any>({
   name: '',
-  cid: '' as number | '',
   pic: '',
   pics: [] as string[],
+  danwei: '',
+  fwid: [] as string[],
   sellpoint: '',
-  sell_price: 0,
+  cid: '',
+  // 条件组1 服务方式
+  fwtype: [] as string[],
+  isareaxz: 0,
+  areadata: '',
+  fwpeople: 0,
+  fwpeoid: [] as string[],
+  // 规格
+  guigedata: [] as any[],
+  level_discount: 0,
+  balance: 0,
+  // 条件组2 结算方式
+  jiesuantype: 0,
+  tcmoney: 0,
+  tichengtype: 0,
+  tc_bfb: 0,
+  // 条件组3 可预约日期
+  rqtype: 1,
+  yyzhouqi: [] as string[],
+  yybegintime: '',
+  yyendtime: '',
+  yytimeday: [] as string[],
+  // 条件组4 可预约时间
+  datetype: 1,
+  zaohour: 7,
+  wanhour: 18,
+  timejg: 30,
+  timepoint: [] as string[],
+  yynum: 1,
+  pdprehour: 4,
+  // 设置表单
+  formdata: [] as any[],
   sales: 0,
   sort: 0,
+  gettj: ['-1'],
   status: 1,
-  detail: '',
+  start_time: '',
+  end_time: '',
+  is_open: 1,
+  noopentip: '',
+  sell_price: 0,
+  detailModules: [] as DesignerModule[],
 })
 
-const rules: FormRules = {
-  name: [{ required: true, message: '请输入服务名称', trigger: 'blur' }],
-  sell_price: [{ required: true, message: '请输入服务价格', trigger: 'blur' }],
+/* 服务详情 DIY 模块：新增默认一个富文本模块（对齐 Goods.defaultDetailModules） */
+function defaultDetailModules(): DesignerModule[] {
+  return [defaultModule('richtext')]
 }
 
+/**
+ * 把后端 detail 列还原为 DIY 模块数组（点大口径：detail 存模块数组 JSON）。
+ * 兼容旧版富文本 HTML（非 JSON）：包裹成一个富文本模块，不丢内容。
+ */
+function parseDetailModules(raw: unknown): DesignerModule[] {
+  const str = typeof raw === 'string' ? raw.trim() : ''
+  if (str) {
+    try {
+      const parsed = JSON.parse(str)
+      if (Array.isArray(parsed)) return parsed as DesignerModule[]
+    } catch {
+      // 旧 HTML，落到下方包裹逻辑
+    }
+    const m = defaultModule('richtext')
+    ;(m as Record<string, unknown>).content = str
+    return [m]
+  }
+  return defaultDetailModules()
+}
+
+/* 下拉选项 */
+const categoryOptions = ref<{ id: number; name: string }[]>([])
+const fuwuOptions = ref<{ id: number; name: string }[]>([])
+const workerOptions = ref<{ id: number; realname: string }[]>([])
+
+async function loadOptions() {
+  try {
+    const cat = await getYuyueCategoryList()
+    const flat: { id: number; name: string }[] = []
+    for (const c of cat.list ?? []) {
+      flat.push({ id: c.id, name: c.name })
+      for (const child of c.children ?? []) flat.push({ id: child.id, name: child.name })
+    }
+    categoryOptions.value = flat
+  } catch { /* 忽略 */ }
+  try {
+    const f = await getYuyueFuwuList({ page: 1, pagesize: 100 })
+    fuwuOptions.value = (f.list ?? []).map((x: any) => ({ id: x.id, name: x.name }))
+  } catch { /* 忽略 */ }
+  try {
+    const w = await getYuyueWorkerList({ page: 1, pagesize: 200 })
+    workerOptions.value = (w.list ?? []).map((x: any) => ({ id: x.id, realname: x.name ?? x.realname ?? '' }))
+  } catch { /* 忽略 */ }
+}
+
+/* 条件组显隐 */
+const isShangmen = computed(() => form.fwtype.map(String).includes('2'))
+const showAreaLimit = computed(() => isShangmen.value && form.isareaxz === 1)
+const showDanji = computed(() => form.jiesuantype === 0)
+const showBilü = computed(() => form.jiesuantype === 1)
+const showRiqīCycle = computed(() => form.rqtype === 1)
+const showRiqīRange = computed(() => form.rqtype === 2)
+const showRiqīFixed = computed(() => form.rqtype === 3)
+const showTimeSection = computed(() => form.datetype === 1)
+const showTimePoint = computed(() => form.datetype === 2)
+
+const ZHOUQI = [
+  { label: '周一', value: '1' },
+  { label: '周二', value: '2' },
+  { label: '周三', value: '3' },
+  { label: '周四', value: '4' },
+  { label: '周五', value: '5' },
+  { label: '周六', value: '6' },
+  { label: '周日', value: '0' },
+]
+const FIXED_DAYS = [
+  { label: '当天', value: '1' },
+  { label: '第一天', value: '2' },
+  { label: '第二天', value: '3' },
+  { label: '第三天', value: '4' },
+  { label: '第四天', value: '5' },
+  { label: '第五天', value: '6' },
+  { label: '第六天', value: '7' },
+  { label: '第七天', value: '8' },
+]
+
+/* 时间段滑块 */
+const timeRange = computed({
+  get: () => [form.zaohour, form.wanhour],
+  set: (v: number[]) => {
+    form.zaohour = v[0]
+    form.wanhour = v[1]
+  },
+})
+function rangeText() {
+  const endDay = form.wanhour > 24 ? '次日' : '当日'
+  const endHour = form.wanhour > 24 ? form.wanhour - 24 : form.wanhour
+  return `当日：${form.zaohour}时 ~ ${endDay}：${endHour}时`
+}
+
+/* 时间点 */
+const newTimePoint = ref('')
+function addTimePoint() {
+  if (!newTimePoint.value) return
+  if (!form.timepoint.includes(newTimePoint.value)) form.timepoint.push(newTimePoint.value)
+  newTimePoint.value = ''
+}
+function removeTimePoint(t: string) {
+  form.timepoint = form.timepoint.filter((x: string) => x !== t)
+}
+
+/* 固定周期 */
+const newFixedDay = ref('1')
+function addFixedDay() {
+  if (!form.yytimeday.includes(newFixedDay.value)) form.yytimeday.push(newFixedDay.value)
+}
+function removeFixedDay(v: string) {
+  form.yytimeday = form.yytimeday.filter((x: string) => x !== v)
+}
+function fixedDayLabel(v: string) {
+  return FIXED_DAYS.find((x) => x.value === v)?.label ?? v
+}
+
+/* ---------------- 限制区域省市弹窗 ---------------- */
+const areaModalVisible = ref(false)
+// 选中结构：{ [province]: 'all' | string[] }
+const areaSelection = ref<Record<string, string[]>>({})
+function openAreaModal() {
+  // 由 areadata 反解为 areaSelection
+  const sel: Record<string, string[]> = {}
+  ;(form.areadata as string).split(';').filter(Boolean).forEach((seg: string) => {
+    const m = seg.match(/^(.+?)\[(.*)\]$/)
+    if (!m) return
+    const prov = m[1]
+    const cities = m[2]
+    sel[prov] = cities === '全部地区' ? [] : cities.split(',').filter(Boolean)
+  })
+  areaSelection.value = sel
+  areaModalVisible.value = true
+}
+
+function toggleProvince(provName: string, cityCount: number) {
+  const sel = { ...areaSelection.value }
+  if (sel[provName]) {
+    // 取消整省
+    delete sel[provName]
+  } else {
+    // 选省 = 全选该省（全部地区）
+    sel[provName] = []
+    void cityCount
+  }
+  areaSelection.value = sel
+}
+function toggleCity(provName: string, cityName: string) {
+  const sel = { ...areaSelection.value }
+  const exist = sel[provName] ?? null
+  if (!exist) {
+    sel[provName] = [cityName]
+  } else {
+    // 已是全部地区([]) → 转为包含模型，从空开始累计选中市（=仅选个别市）
+    let cities: string[] = exist.length === 0 ? [] : [...exist]
+    if (cities.includes(cityName)) cities = cities.filter((c) => c !== cityName)
+    else cities.push(cityName)
+    sel[provName] = cities
+  }
+  areaSelection.value = sel
+}
+function isProvinceChecked(provName: string) {
+  return !!areaSelection.value[provName]
+}
+function isCityChecked(provName: string, cityName: string) {
+  const v = areaSelection.value[provName]
+  if (!v) return false
+  if (v.length === 0) return true // 全部地区
+  return v.includes(cityName)
+}
+function confirmArea() {
+  let out = ''
+  for (const [prov, cities] of Object.entries(areaSelection.value)) {
+    out += cities.length === 0 ? `${prov}[全部地区];` : `${prov}[${cities.join(',')}];`
+  }
+  form.areadata = out
+  areaModalVisible.value = false
+}
+
+/* ---------------- 设置表单字段 ---------------- */
+const newFormField = reactive({ type: '单行输入', name: '', content: '', req: false })
+function addFormField() {
+  if (!newFormField.name.trim()) {
+    ElMessage.warning('请输入字段名称')
+    return
+  }
+  form.formdata.push({ ...newFormField, name: newFormField.name.trim() })
+  newFormField.name = ''
+  newFormField.content = ''
+  newFormField.req = false
+}
+function removeFormField(idx: number) {
+  form.formdata.splice(idx, 1)
+}
+
+/* ---------------- 打开增改 / 回填 / 提交 ---------------- */
 function resetForm() {
   Object.assign(form, {
-    id: 0,
-    name: '',
-    cid: '',
-    pic: '',
-    pics: [],
-    sellpoint: '',
-    sell_price: 0,
-    sales: 0,
-    sort: 0,
-    status: 1,
-    detail: '',
+    name: '', pic: '', pics: [], danwei: '', fwid: [], sellpoint: '', cid: '',
+    fwtype: [], isareaxz: 0, areadata: '', fwpeople: 0, fwpeoid: [],
+    guigedata: [], level_discount: 0, balance: 0,
+    jiesuantype: 0, tcmoney: 0, tichengtype: 0, tc_bfb: 0,
+    rqtype: 1, yyzhouqi: [], yybegintime: '', yyendtime: '', yytimeday: [],
+    datetype: 1, zaohour: 7, wanhour: 18, timejg: 30, timepoint: [],
+    yynum: 1, pdprehour: 4, formdata: [],
+    sales: 0, sort: 0, gettj: ['-1'], status: 1,
+    start_time: '', end_time: '', is_open: 1, noopentip: '',
+    sell_price: 0, detailModules: defaultDetailModules(),
   })
 }
 
 function openAdd() {
-  isEdit.value = false
-  resetForm()
+  editId.value = 0
   activeTab.value = 'info'
-  viewMode.value = 'edit'
+  resetForm()
+  editing.value = true
 }
 
 async function openEdit(row: YuyueProductListItem) {
-  isEdit.value = true
-  try {
-    const d = await getYuyueProductDetail(row.id)
-    resetForm()
-    Object.assign(form, {
-      id: d.id,
-      name: d.name || '',
-      cid: d.cid ? Number(d.cid) : '',
-      pic: d.pic || '',
-      pics: Array.isArray(d.pics) ? d.pics : [],
-      sellpoint: d.sellpoint || '',
-      sell_price: Number(d.sell_price) || 0,
-      sales: Number(d.sales) || 0,
-      sort: Number(d.sort) || 0,
-      status: Number(d.status) === 1 ? 1 : 0,
-      detail: d.detail || '',
-    })
-    activeTab.value = 'info'
-    viewMode.value = 'edit'
-  } catch {
-    // 拦截器统一提示
-  }
-}
-
-function backToList() {
-  viewMode.value = 'list'
-  fetchList()
-}
-
-async function handleSubmit() {
-  if (!formRef.value) return
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    submitting.value = true
-    try {
-      const params: YuyueProductSaveParams = {
-        name: form.name,
-        cid: form.cid === '' ? 0 : Number(form.cid),
-        pic: form.pic,
-        pics: form.pics,
-        sellpoint: form.sellpoint,
-        sell_price: Number(form.sell_price) || 0,
-        sales: Number(form.sales) || 0,
-        sort: Number(form.sort) || 0,
-        status: form.status,
-        detail: form.detail,
-      }
-      if (isEdit.value) {
-        await editYuyueProduct({ ...params, id: form.id })
-        ElMessage.success('保存成功')
-      } else {
-        await addYuyueProduct(params)
-        ElMessage.success('添加成功')
-      }
-      viewMode.value = 'list'
-      fetchList()
-    } catch {
-      // 拦截器统一提示
-    } finally {
-      submitting.value = false
-    }
+  editId.value = row.id
+  activeTab.value = 'info'
+  resetForm()
+  const d: any = await getYuyueProductDetail(row.id)
+  Object.assign(form, {
+    name: d.name ?? '',
+    pic: d.pic ?? '',
+    pics: d.pics ?? [],
+    danwei: d.danwei ?? '',
+    fwid: (d.fwid ?? []).map(String),
+    sellpoint: d.sellpoint ?? '',
+    cid: d.cid ?? '',
+    fwtype: (d.fwtype ?? []).map(String),
+    isareaxz: d.isareaxz ?? 0,
+    areadata: d.areadata ?? '',
+    fwpeople: d.fwpeople ?? 0,
+    fwpeoid: (d.fwpeoid ?? []).map(String),
+    guigedata: d.guigedata ?? [],
+    level_discount: d.level_discount ?? 0,
+    balance: d.balance ?? 0,
+    jiesuantype: d.jiesuantype ?? 0,
+    tcmoney: d.tcmoney ?? 0,
+    tichengtype: d.tichengtype ?? 0,
+    tc_bfb: d.tc_bfb ?? 0,
+    rqtype: d.rqtype ?? 1,
+    yyzhouqi: (d.yyzhouqi ?? []).map(String),
+    yybegintime: d.yybegintime ?? '',
+    yyendtime: d.yyendtime ?? '',
+    yytimeday: (d.yytimeday ?? []).map(String),
+    datetype: d.datetype ?? 1,
+    zaohour: d.zaohour ?? 7,
+    wanhour: d.wanhour ?? 18,
+    timejg: d.timejg ?? 30,
+    timepoint: d.timepoint ?? [],
+    yynum: d.yynum ?? 1,
+    pdprehour: d.pdprehour ?? 4,
+    formdata: d.formdata ?? [],
+    sales: d.sales ?? 0,
+    sort: d.sort ?? 0,
+    gettj: (d.gettj ?? []).map(String),
+    status: d.status ?? 1,
+    start_time: d.start_time ?? '',
+    end_time: d.end_time ?? '',
+    is_open: d.is_open ?? 1,
+    noopentip: d.noopentip ?? '',
+    sell_price: d.sell_price ?? 0,
+    detailModules: parseDetailModules(d.detail),
   })
+  editing.value = true
 }
 
-// ============ 图片选择 ============
-const imgPickerVisible = ref(false)
-const imgPickerMulti = ref(false)
-let imgPickerTarget: 'pic' | 'pics' = 'pic'
-function openPickPic() {
-  imgPickerMulti.value = false
-  imgPickerTarget = 'pic'
-  imgPickerVisible.value = true
-}
-function openPickPics() {
-  imgPickerMulti.value = true
-  imgPickerTarget = 'pics'
-  imgPickerVisible.value = true
-}
-function onImgPick(urls: string[]) {
-  if (imgPickerTarget === 'pic') {
-    if (urls[0]) form.pic = urls[0]
-  } else {
-    urls.forEach((u) => {
-      if (!form.pics.includes(u)) form.pics.push(u)
-    })
+function buildPayload() {
+  return {
+    id: editId.value || undefined,
+    name: form.name,
+    cid: form.cid,
+    pic: form.pic,
+    pics: form.pics,
+    sellpoint: form.sellpoint,
+    sell_price: form.sell_price,
+    sales: form.sales,
+    sort: form.sort,
+    status: form.status,
+    detail: JSON.stringify(form.detailModules || []),
+    danwei: form.danwei,
+    fwid: form.fwid,
+    fwtype: form.fwtype,
+    isareaxz: form.isareaxz,
+    areadata: form.areadata,
+    fwpeople: form.fwpeople,
+    fwpeoid: form.fwpeoid,
+    guigedata: form.guigedata,
+    level_discount: form.level_discount,
+    balance: form.balance,
+    jiesuantype: form.jiesuantype,
+    tcmoney: form.tcmoney,
+    tichengtype: form.tichengtype,
+    tc_bfb: form.tc_bfb,
+    rqtype: form.rqtype,
+    yyzhouqi: form.yyzhouqi,
+    yybegintime: form.yybegintime,
+    yyendtime: form.yyendtime,
+    yytimeday: form.yytimeday,
+    datetype: form.datetype,
+    zaohour: form.zaohour,
+    wanhour: form.wanhour,
+    timejg: form.timejg,
+    timepoint: form.timepoint,
+    yynum: form.yynum,
+    pdprehour: form.pdprehour,
+    formdata: form.formdata,
+    gettj: form.gettj,
+    start_time: form.start_time,
+    end_time: form.end_time,
+    is_open: form.is_open,
+    noopentip: form.noopentip,
   }
+}
+
+async function submit() {
+  if (!form.name.trim()) {
+    ElMessage.warning('请填写服务名称')
+    return
+  }
+  if (editId.value) {
+    await editYuyueProduct(buildPayload() as any)
+    ElMessage.success('保存成功')
+  } else {
+    await addYuyueProduct(buildPayload() as any)
+    ElMessage.success('添加成功')
+  }
+  editing.value = false
+  loadList()
+}
+
+/* 图片选择器 */
+const pickerKind = ref<'main' | 'gallery' | ''>('')
+function openPicker(kind: 'main' | 'gallery') {
+  pickerKind.value = kind
+  pickerVisible.value = true
+}
+const pickerVisible = ref(false)
+function onPickImage(urls: string[]) {
+  if (pickerKind.value === 'main') form.pic = urls[0] ?? ''
+  else if (pickerKind.value === 'gallery') form.pics = urls
+  pickerVisible.value = false
 }
 
 onMounted(() => {
-  fetchCategories()
-  fetchList()
+  loadOptions()
+  loadList()
 })
 </script>
 
 <template>
-  <div>
-    <!-- ============ 列表视图 ============ -->
-    <div v-if="viewMode === 'list'">
-      <!-- 操作 + 搜索 同一行 -->
-      <el-card shadow="never" class="toolbar">
-        <div class="toolbar-left">
-          <el-button v-if="!isMerchantView" type="success" @click="openAdd">添加</el-button>
-          <el-button @click="handleBatchDelete">删除</el-button>
-          <el-button @click="handleBatchStatus(1)">上架</el-button>
-          <el-button @click="handleBatchStatus(0)">下架</el-button>
+  <div class="page">
+    <!-- 列表态 -->
+    <template v-if="!editing">
+      <div class="page-head"><span class="page-title">服务商品</span></div>
+
+      <div class="toolbar">
+        <el-button type="primary" @click="openAdd">添加</el-button>
+        <el-button type="danger" :disabled="!checkedIds.size" @click="batchDelete">删除</el-button>
+        <el-button type="success" :disabled="!checkedIds.size" @click="batchStatus(1)">上架</el-button>
+        <el-button type="warning" :disabled="!checkedIds.size" @click="batchStatus(0)">下架</el-button>
+
+        <div class="search-bar">
+          <el-input v-model="query.name" placeholder="服务名称" class="search-input" @keyup.enter="onSearch" />
+          <el-select v-model="query.status" class="search-select" placeholder="状态">
+            <el-option label="全部" :value="''" />
+            <el-option label="已上架" :value="1" />
+            <el-option label="未上架" :value="0" />
+          </el-select>
+          <el-button type="primary" @click="onSearch">搜索</el-button>
         </div>
-        <el-form inline class="toolbar-search" @submit.prevent>
-          <el-form-item label="服务名称">
-            <el-input v-model="query.name" placeholder="服务名称" clearable style="width: 120px" @keyup.enter="handleSearch" />
-          </el-form-item>
-          <el-form-item label="状态">
-            <el-select v-model="query.status" placeholder="全部" clearable style="width: 90px">
-              <el-option label="已上架" :value="1" />
-              <el-option label="未上架" :value="0" />
-            </el-select>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="success" class="search-icon-btn" @click="handleSearch">
-              <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z"/></svg>
-            </el-button>
-          </el-form-item>
-        </el-form>
-      </el-card>
-
-      <el-card shadow="never">
-        <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange" @sort-change="handleSortChange">
-          <el-table-column type="selection" width="40" align="center" />
-          <el-table-column prop="id" label="ID" width="60" sortable="custom" align="center" />
-          <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="96" align="center" />
-          <el-table-column label="服务信息" min-width="260">
-            <template #default="{ row }">
-              <div class="goods-info">
-                <el-image v-if="row.pic" :src="row.pic" :preview-src-list="[row.pic]" fit="cover" class="goods-info-img" preview-teleported />
-                <div v-else class="goods-info-img goods-info-img-empty">无图</div>
-                <div class="goods-info-meta">
-                  <div class="goods-info-name">
-                    <span v-if="row.cname" class="goods-info-cat">[{{ row.cname }}]</span>{{ row.name }}
-                  </div>
-                  <div class="goods-info-price">￥{{ Number(row.sell_price).toFixed(2) }}</div>
-                </div>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column prop="sales" label="已售" width="80" sortable="custom" align="center">
-            <template #default="{ row }">{{ row.sales ?? 0 }}</template>
-          </el-table-column>
-          <el-table-column prop="sort" label="序号" width="70" sortable="custom" align="center" />
-          <el-table-column prop="createtime" label="创建时间" width="132" sortable="custom" align="center">
-            <template #default="{ row }">{{ row.create_time }}</template>
-          </el-table-column>
-          <el-table-column label="状态" width="90" align="center">
-            <template #default="{ row }">
-              <span :class="row.status === 1 ? 'status-on' : 'status-off'">{{ row.status === 1 ? '已上架' : '未上架' }}</span>
-            </template>
-          </el-table-column>
-          <el-table-column v-if="isMerchantView" label="审核状态" width="86" align="center">
-            <template #default="{ row }">
-              <span v-if="row.ischecked === 0" class="check-pending">待审核</span>
-              <span v-else-if="row.ischecked === 1" class="status-on">已通过</span>
-              <span v-else class="check-reject" :title="row.check_reason">已驳回</span>
-            </template>
-          </el-table-column>
-          <el-table-column label="操作" width="330">
-            <template #default="{ row }">
-              <div class="row-ops">
-                <el-button link type="primary" @click="handleShowLink(row)">查看链接</el-button>
-                <el-button link type="primary" @click="handleCopy(row)">复制</el-button>
-                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-                <el-button link :type="row.status === 1 ? 'warning' : 'success'" @click="handleRowStatus(row)">
-                  {{ row.status === 1 ? '下架' : '上架' }}
-                </el-button>
-                <template v-if="isMerchantView">
-                  <el-button v-if="row.ischecked === 0 || row.ischecked === 2" link type="success" @click="handleCheckPass(row)">通过</el-button>
-                  <el-button v-if="row.ischecked === 0 || row.ischecked === 1" link type="warning" @click="handleCheckReject(row)">驳回</el-button>
-                </template>
-              </div>
-            </template>
-          </el-table-column>
-        </el-table>
-        <el-pagination
-          class="pagination"
-          background
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="total"
-          :current-page="query.page"
-          :page-size="query.pagesize"
-          :page-sizes="[10, 20, 50, 100]"
-          @current-change="handlePageChange"
-          @size-change="handleSizeChange"
-        />
-      </el-card>
-    </div>
-
-    <!-- ============ 整页编辑：两页签 ============ -->
-    <div v-else class="goods-edit">
-      <div class="ge-head">
-        <span class="ge-head-title">{{ isEdit ? '编辑服务' : '添加服务' }}</span>
-        <span class="ge-close" title="关闭" @click="backToList">&times;</span>
       </div>
 
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="right" label-width="100px" class="ge-form">
-        <el-tabs v-model="activeTab" class="ge-tabs">
-          <!-- ===== 服务信息 ===== -->
-          <el-tab-pane label="服务信息" name="info">
-            <el-form-item label="服务名称" required prop="name">
-              <el-input v-model="form.name" maxlength="120" style="width: 400px" placeholder="请输入服务名称" />
-            </el-form-item>
-            <el-form-item label="服务分类">
-              <el-select v-model="form.cid" placeholder="请选择分类" clearable style="width: 300px">
-                <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="服务主图">
-              <el-button @click="openPickPic">选择图片</el-button>
-              <span class="ge-hint">建议尺寸 640×640</span>
-              <div class="ge-upload-box">
-                <template v-if="form.pic">
-                  <el-image :src="form.pic" fit="cover" class="main-pic" />
-                  <span class="ge-upload-del" @click="form.pic = ''">×</span>
-                </template>
-                <div v-else class="ge-upload-add" @click="openPickPic">+</div>
+      <el-table v-loading="loading" :data="rows" border size="small" class="data-table">
+        <el-table-column width="42">
+          <template #default="{ row }">
+            <el-checkbox :model-value="checkedIds.has(row.id)" @change="(v: boolean) => onCheckChange(row, v)" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column label="服务信息" min-width="260">
+          <template #default="{ row }">
+            <div class="svc-cell">
+              <img v-if="row.pic" :src="row.pic" class="svc-thumb" />
+              <div class="svc-meta">
+                <div class="svc-name"><span v-if="row.cname" class="svc-cat">[{{ row.cname }}]</span>{{ row.name }}</div>
+                <div class="svc-price">价格¥{{ row.sell_price }}</div>
               </div>
-            </el-form-item>
-            <el-form-item label="服务图集">
-              <el-button @click="openPickPics">批量上传</el-button>
-              <div class="ge-thumb-row">
-                <div v-for="(u, i) in form.pics" :key="u" class="ge-thumb-item">
-                  <el-image :src="u" fit="cover" class="pic-thumb" />
-                  <span class="ge-upload-del" @click="form.pics.splice(i, 1)">×</span>
-                </div>
-              </div>
-            </el-form-item>
-            <el-form-item label="服务卖点">
-              <el-input v-model="form.sellpoint" maxlength="60" show-word-limit style="width: 400px" placeholder="服务标题下展示的卖点" />
-            </el-form-item>
-            <el-form-item label="服务价格" required prop="sell_price">
-              <el-input-number v-model="form.sell_price" :min="0" :precision="2" :step="10" />
-              <span class="ge-hint">元</span>
-            </el-form-item>
-            <el-form-item label="虚拟销量">
-              <el-input-number v-model="form.sales" :min="0" :precision="0" :step="1" />
-            </el-form-item>
-            <el-form-item label="序号">
-              <el-input-number v-model="form.sort" :min="0" :precision="0" :step="1" />
-              <span class="ge-hint">越小越靠前</span>
-            </el-form-item>
-            <el-form-item label="状态">
-              <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
-              <span class="ge-hint">上架后前台可见</span>
-            </el-form-item>
-          </el-tab-pane>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="sales" label="已售" width="80" />
+        <el-table-column prop="sort" label="序号" width="80" />
+        <el-table-column prop="create_time" label="创建时间" width="150" />
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <el-tag v-if="row.status === 1" type="success" size="small">已上架</el-tag>
+            <el-tag v-else type="info" size="small">未上架</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="340">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="openLink(row)">查看链接</el-button>
+            <el-button link type="primary" size="small" @click="copyRow(row)">复制</el-button>
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="removeRow(row)">删除</el-button>
+            <el-button link type="warning" size="small" @click="toggleStatus(row)">{{ row.status === 1 ? '下架' : '上架' }}</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
 
-          <!-- ===== 服务详情 ===== -->
-          <el-tab-pane label="服务详情" name="detail">
-            <el-form-item label="服务详情">
-              <SimpleRichEditor v-model="form.detail" />
-            </el-form-item>
-          </el-tab-pane>
-        </el-tabs>
-        <div class="tab-footer">
-          <el-button @click="backToList">取消</el-button>
-          <el-button type="primary" :loading="submitting" @click="handleSubmit">提交</el-button>
+      <div class="pager">
+        <el-pagination
+          v-model:current-page="page"
+          v-model:page-size="pageSize"
+          :total="total"
+          layout="prev, pager, next, jumper, total, sizes"
+          @change="loadList"
+        />
+      </div>
+    </template>
+
+    <!-- 增改平铺面板 -->
+    <template v-else>
+      <div class="goods-edit">
+        <div class="ge-head">
+          <span class="ge-title">{{ editId ? '编辑服务商品' : '添加服务商品' }}</span>
+          <button class="ge-close" @click="editing = false">×</button>
         </div>
-      </el-form>
-    </div>
 
-    <!-- 选图弹窗 -->
-    <ImgIconPicker v-model:visible="imgPickerVisible" :multi="imgPickerMulti" default-tab="upload" @pick="onImgPick" />
-    <!-- 查看链接（H5 链接 + 二维码） -->
-    <LinkAddressModal v-model:visible="linkVisible" :name="linkTarget.name" :path="linkTarget.path" />
+        <div class="tab-bar">
+          <span :class="['tab', { active: activeTab === 'info' }]" @click="activeTab = 'info'">服务信息</span>
+          <span :class="['tab', { active: activeTab === 'detail' }]" @click="activeTab = 'detail'">服务详情</span>
+        </div>
+
+        <!-- 服务信息 -->
+        <div v-if="activeTab === 'info'" class="ge-body">
+          <div class="form-row">
+            <label class="form-label">服务名称</label>
+            <el-input v-model="form.name" class="form-control" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">服务主图</label>
+            <div>
+              <el-button size="small" @click="openPicker('main')">上传图片</el-button>
+              <span class="hint">建议尺寸640x640像素</span>
+              <div v-if="form.pic" class="img-preview"><img :src="form.pic" /></div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">服务图片</label>
+            <div>
+              <el-button size="small" @click="openPicker('gallery')">批量上传</el-button>
+              <span class="hint">建议尺寸640x640像素</span>
+              <div class="img-row">
+                <img v-for="p in form.pics" :key="p" :src="p" class="img-item" />
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">单位</label>
+            <el-input v-model="form.danwei" class="form-control" placeholder="如：次/小时" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">商品服务</label>
+            <el-checkbox-group v-model="form.fwid">
+              <el-checkbox v-for="o in fuwuOptions" :key="o.id" :value="String(o.id)">{{ o.name }}</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">服务介绍</label>
+            <el-input v-model="form.sellpoint" class="form-control" placeholder="在服务详情页标题下面展示卖点信息，建议60字以内" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">服务类目</label>
+            <el-select v-model="form.cid" multiple class="form-control" placeholder="-请选择-" :multiple-limit="5">
+              <el-option v-for="o in categoryOptions" :key="o.id" :label="o.name" :value="String(o.id)" />
+            </el-select>
+            <span class="hint">最多可选5个分类</span>
+          </div>
+
+          <!-- 条件组1 服务方式 -->
+          <div class="form-row">
+            <label class="form-label">服务方式</label>
+            <el-checkbox-group v-model="form.fwtype">
+              <el-checkbox value="2">上门服务</el-checkbox>
+              <el-checkbox value="1">到店服务</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <template v-if="isShangmen">
+            <div class="form-row">
+              <label class="form-label">区域限制</label>
+              <el-radio-group v-model="form.isareaxz">
+                <el-radio :value="1">开启</el-radio>
+                <el-radio :value="0">关闭</el-radio>
+              </el-radio-group>
+              <span class="hint">选中区域为可下单区域，仅上门服务方式可以</span>
+            </div>
+
+            <div v-if="showAreaLimit" class="form-row">
+              <label class="form-label">限制区域</label>
+              <span class="area-text">{{ form.areadata }}</span>
+              <el-button size="small" @click="openAreaModal">编辑</el-button>
+            </div>
+          </template>
+
+          <div class="form-row">
+            <label class="form-label">派单方式</label>
+            <el-radio-group v-model="form.fwpeople">
+              <el-radio :value="0">后台派单</el-radio>
+              <el-radio :value="1">用户选择</el-radio>
+            </el-radio-group>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">服务人员</label>
+            <el-select v-model="form.fwpeoid" multiple class="form-control" placeholder="-请选择-">
+              <el-option v-for="w in workerOptions" :key="w.id" :label="w.realname" :value="String(w.id)" />
+            </el-select>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">会员等级折扣</label>
+            <el-radio-group v-model="form.level_discount">
+              <el-radio :value="0">跟随系统</el-radio>
+              <el-radio :value="1">参与</el-radio>
+              <el-radio :value="2">不参与</el-radio>
+            </el-radio-group>
+            <span class="hint">跟随系统：预约服务-系统设置-会员等级折扣</span>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">尾款</label>
+            <el-input-number v-model="form.balance" :min="0" :max="100" class="form-control" />
+            <span class="hint">%</span>
+          </div>
+
+          <!-- 条件组2 结算方式 -->
+          <div class="form-row">
+            <label class="form-label">结算方式</label>
+            <el-radio-group v-model="form.jiesuantype">
+              <el-radio :value="0">按单计算提成</el-radio>
+              <el-radio :value="1">按提成比例计费提成</el-radio>
+            </el-radio-group>
+          </div>
+          <div v-if="showDanji" class="form-row">
+            <label class="form-label">提成金额</label>
+            <el-input-number v-model="form.tcmoney" :min="0" class="form-control" />
+            <span class="hint">元每单</span>
+            <span class="hint">师傅完成一单拿到的金额</span>
+          </div>
+          <div v-if="showBilü" class="form-row">
+            <label class="form-label">提成比例</label>
+            <el-radio-group v-model="form.tichengtype">
+              <el-radio :value="0">按商品价格</el-radio>
+              <el-radio :value="1">按实际支付</el-radio>
+            </el-radio-group>
+            <el-input-number v-model="form.tc_bfb" :min="0" :max="100" class="form-control" />
+            <span class="hint">%</span>
+            <span class="hint">师傅可拿订单金额的比例</span>
+          </div>
+
+          <!-- 条件组3 可预约日期 -->
+          <div class="form-row">
+            <label class="form-label">可预约日期</label>
+            <el-radio-group v-model="form.rqtype">
+              <el-radio :value="1">按周期</el-radio>
+              <el-radio :value="2">按时间</el-radio>
+              <el-radio :value="3">按固定周期</el-radio>
+            </el-radio-group>
+          </div>
+          <div v-if="showRiqīCycle" class="form-row">
+            <label class="form-label">预约周期</label>
+            <el-checkbox-group v-model="form.yyzhouqi">
+              <el-checkbox v-for="z in ZHOUQI" :key="z.value" :value="z.value">{{ z.label }}</el-checkbox>
+            </el-checkbox-group>
+          </div>
+          <div v-if="showRiqīRange" class="form-row">
+            <label class="form-label">选择日期</label>
+            <el-date-picker v-model="form.yybegintime" type="date" value-format="YYYY-MM-DD" class="form-control" />
+            <span class="hint">到</span>
+            <el-date-picker v-model="form.yyendtime" type="date" value-format="YYYY-MM-DD" class="form-control" />
+          </div>
+          <div v-if="showRiqīFixed" class="form-row">
+            <label class="form-label">选择日期</label>
+            <el-select v-model="newFixedDay" class="form-control">
+              <el-option v-for="d in FIXED_DAYS" :key="d.value" :label="d.label" :value="d.value" />
+            </el-select>
+            <el-button size="small" @click="addFixedDay">+</el-button>
+            <div class="tag-row">
+              <span v-for="v in form.yytimeday" :key="v" class="tag-chip">
+                {{ fixedDayLabel(v) }}<i @click="removeFixedDay(v)">×</i>
+              </span>
+            </div>
+          </div>
+
+          <!-- 条件组4 可预约时间 -->
+          <div class="form-row">
+            <label class="form-label">可预约时间</label>
+            <el-radio-group v-model="form.datetype">
+              <el-radio :value="1">时间段</el-radio>
+              <el-radio :value="2">时间点</el-radio>
+            </el-radio-group>
+          </div>
+          <div v-if="showTimeSection" class="form-row">
+            <label class="form-label">设置时间段</label>
+            <div class="slider-wrap">
+              <el-slider v-model="timeRange" range :min="0" :max="24" :step="1" />
+              <span class="hint">{{ rangeText() }}</span>
+            </div>
+          </div>
+          <div v-if="showTimeSection" class="form-row">
+            <label class="form-label">时间间隔</label>
+            <el-input-number v-model="form.timejg" :min="1" class="form-control" />
+            <span class="hint">分钟</span>
+          </div>
+          <div v-if="showTimePoint" class="form-row">
+            <label class="form-label">选择时间点</label>
+            <el-time-picker v-model="newTimePoint" value-format="HH:mm" format="HH:mm" class="form-control" />
+            <el-button size="small" @click="addTimePoint">+</el-button>
+            <div class="tag-row">
+              <span v-for="t in form.timepoint" :key="t" class="tag-chip">{{ t }}<i @click="removeTimePoint(t)">×</i></span>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">预约人数</label>
+            <el-input-number v-model="form.yynum" :min="1" class="form-control" />
+            <span class="hint">同一时间预约人数限制，默认为1</span>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">可选条件</label>
+            <span class="hint">下单时间大于可选时间</span>
+            <el-input-number v-model="form.pdprehour" :min="0" class="form-control" />
+            <span class="hint">小时</span>
+          </div>
+
+          <!-- 设置表单 -->
+          <div class="form-row">
+            <label class="form-label">设置表单</label>
+            <div class="form-grid-btns">
+              <el-button size="small">单行输入</el-button>
+              <el-button size="small">多行输入</el-button>
+              <el-button size="small">单项选择</el-button>
+              <el-button size="small">多项选择</el-button>
+              <el-button size="small">普通选择</el-button>
+              <el-button size="small">时间选择</el-button>
+              <el-button size="small">日期选择</el-button>
+              <el-button size="small">上传图片</el-button>
+            </div>
+          </div>
+          <div class="form-row">
+            <label class="form-label"></label>
+            <div class="field-add">
+              <el-select v-model="newFormField.type" class="mini-select">
+                <el-option label="单行输入" value="单行输入" />
+                <el-option label="多行输入" value="多行输入" />
+              </el-select>
+              <el-input v-model="newFormField.name" placeholder="字段名称" class="mini-input" />
+              <el-input v-model="newFormField.content" placeholder="选填，请输入备注信息" class="mini-input" />
+              <el-select v-model="newFormField.req" class="mini-select">
+                <el-option label="文本" :value="false" />
+              </el-select>
+              <el-switch v-model="newFormField.req" />
+              <el-button size="small" type="primary" @click="addFormField">添加</el-button>
+            </div>
+          </div>
+          <div v-if="form.formdata.length" class="form-row">
+            <label class="form-label"></label>
+            <el-table :data="form.formdata" border size="small" class="mini-table">
+              <el-table-column prop="type" label="字段类型" width="120" />
+              <el-table-column prop="name" label="字段名称" />
+              <el-table-column prop="content" label="字段内容" />
+              <el-table-column label="是否必填" width="90">
+                <template #default="{ row }">{{ row.req ? '是' : '否' }}</template>
+              </el-table-column>
+              <el-table-column label="操作" width="80">
+                <template #default="{ $index }">
+                  <el-button link type="danger" size="small" @click="removeFormField($index)">×</el-button>
+                </template>
+              </el-table-column>
+            </el-table>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">销量</label>
+            <el-input-number v-model="form.sales" :min="0" class="form-control" />
+          </div>
+          <div class="form-row">
+            <label class="form-label">序号</label>
+            <el-input-number v-model="form.sort" :min="0" class="form-control" />
+            <span class="hint">用于排序,越大越靠前</span>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">购买条件</label>
+            <el-checkbox-group v-model="form.gettj">
+              <el-checkbox value="-1">所有人</el-checkbox>
+              <el-checkbox value="0">关注用户</el-checkbox>
+            </el-checkbox-group>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">状态</label>
+            <el-radio-group v-model="form.status">
+              <el-radio :value="1">已上架</el-radio>
+              <el-radio :value="0">未上架</el-radio>
+              <el-radio :value="2">设置上架时间</el-radio>
+            </el-radio-group>
+          </div>
+          <div v-if="form.status === 2" class="form-row">
+            <label class="form-label">上架时间</label>
+            <el-date-picker v-model="form.start_time" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" class="form-control" />
+            <span class="hint">到</span>
+            <el-date-picker v-model="form.end_time" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" class="form-control" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">显示状态</label>
+            <el-radio-group v-model="form.is_open">
+              <el-radio :value="1">营业中</el-radio>
+              <el-radio :value="0">停业中</el-radio>
+            </el-radio-group>
+            <el-input v-model="form.noopentip" class="form-control" placeholder="停业提示(默认休息中，100个字符以内)" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label"></label>
+            <el-button type="primary" @click="activeTab = 'detail'">下一步:编辑服务详情</el-button>
+            <el-button type="warning" @click="submit">提交</el-button>
+          </div>
+        </div>
+
+        <!-- 服务详情（DIY 装修器：左手机预览 + 右组件库/属性，对齐截图） -->
+        <div v-else class="ge-body">
+          <GoodsDetailEditor v-model="form.detailModules" title="服务详情" />
+          <div class="form-row" style="margin-top:14px">
+            <label class="form-label"></label>
+            <el-button type="primary" @click="activeTab = 'info'">上一步:编辑服务信息</el-button>
+            <el-button type="warning" @click="submit">提交</el-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <ImgIconPicker v-model:visible="pickerVisible" :multi="pickerKind === 'gallery'" @pick="onPickImage" />
+
+    <LinkAddressModal
+      v-model:visible="linkVisible"
+      name="服务商品"
+      :path="linkPath"
+    />
+
+    <!-- 限制区域省市弹窗 -->
+    <el-dialog v-model="areaModalVisible" title="选择可下单区域（省/市）" width="520px" append-to-body>
+      <div class="area-tree">
+        <div v-for="p in areaProvinces" :key="p.name" class="area-prov">
+          <el-checkbox
+            :model-value="isProvinceChecked(p.name)"
+            @change="() => toggleProvince(p.name, p.cityList.length)"
+          >{{ p.name }}</el-checkbox>
+          <el-checkbox
+            v-for="c in p.cityList"
+            :key="c.name"
+            :model-value="isCityChecked(p.name, c.name)"
+            @change="() => toggleCity(p.name, c.name)"
+            class="area-city"
+          >{{ c.name }}</el-checkbox>
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="areaModalVisible = false">取消</el-button>
+        <el-button type="primary" @click="confirmArea">确定</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.toolbar { margin-bottom: 12px; }
-.toolbar :deep(.el-card__body) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
-.toolbar-left { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
-.toolbar-left .el-button { margin: 0; }
-.toolbar-search { display: flex; align-items: center; flex: 1 1 auto; justify-content: flex-end; flex-wrap: nowrap; min-width: 0; margin: 0; }
-.toolbar-search :deep(.el-form-item) { margin-bottom: 0; margin-right: 8px; }
-.toolbar-search :deep(.el-form-item:last-child) { margin-right: 0; }
-.toolbar-search :deep(.el-form-item__label) { padding-right: 6px; }
-.search-icon-btn { padding: 8px 14px; }
-.search-icon-btn svg { display: block; }
-.goods-info {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.goods-info-img {
-  width: 70px;
-  height: 70px;
-  border-radius: 4px;
-  border: 1px solid #ebeef5;
-  flex-shrink: 0;
-}
-.goods-info-img-empty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c0c4cc;
-  font-size: 12px;
-  background: #fafafa;
-}
-.goods-info-meta {
-  min-width: 0;
-  flex: 1;
-}
-.goods-info-name {
-  color: #303133;
-  font-size: 13px;
-  line-height: 1.5;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-.goods-info-cat {
-  color: #f56c6c;
-  margin-right: 4px;
-}
-.goods-info-price {
-  color: #ff6600;
-  font-weight: 600;
-  font-size: 14px;
-  margin-top: 6px;
-}
-.status-on {
-  color: #21ba45;
-}
-.status-off {
-  color: #f56c6c;
-}
-.check-pending {
-  color: #409eff;
-}
-.check-reject {
-  color: #f56c6c;
-  cursor: pointer;
-}
-.row-ops {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  line-height: 1.5;
-}
-.row-ops .el-button { margin: 0; height: auto; min-height: 0; padding: 0; font-size: 12px; }
-.row-ops :deep(.el-button) {
-  height: auto;
-  padding: 1px 0;
-  margin: 0;
-  font-size: 12px;
-}
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
+.page { padding: 3px; }
+.page-head { margin-bottom: 3px; }
+.page-title { font-weight: 600; font-size: 15px; }
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; flex-wrap: wrap; }
+.search-bar { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.search-input { width: 160px; }
+.search-select { width: 110px; }
+.data-table :deep(th) { background: #e6e6e6; }
+.svc-cell { display: flex; gap: 8px; align-items: center; }
+.svc-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 3px; }
+.svc-cat { color: #f56c6c; margin-right: 2px; }
+.svc-price { color: #666; font-size: 12px; margin-top: 2px; }
+.pager { margin-top: 8px; }
 
-/* ===== 整页编辑 ===== */
-.goods-edit {
-  background: #fff;
-  border-radius: 6px;
-  padding: 16px 20px;
-}
-.ge-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
-}
-.ge-head-title {
-  font-size: 16px;
-  font-weight: 600;
-  color: #303133;
-}
-.ge-close {
-  font-size: 22px;
-  line-height: 1;
-  color: #909399;
-  cursor: pointer;
-  padding: 2px 10px;
-  border: none;
-  background: transparent;
-}
-.ge-close:hover {
-  color: #f56c6c;
-}
-.ge-form :deep(.el-form-item) {
-  margin-bottom: 16px;
-}
-.ge-hint {
-  color: #909399;
-  font-size: 12px;
-  margin-left: 8px;
-}
-.ge-upload-box {
-  display: inline-flex;
-  align-items: center;
-  margin-left: 10px;
-  vertical-align: middle;
-}
-.main-pic {
-  width: 72px;
-  height: 72px;
-  border-radius: 6px;
-  border: 1px solid #ebeef5;
-}
-.ge-upload-add {
-  width: 72px;
-  height: 72px;
-  border: 1px dashed #d9d9d9;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #c0c4cc;
-  font-size: 24px;
-  cursor: pointer;
-}
-.ge-upload-del {
-  position: relative;
-  margin-left: -8px;
-  top: -30px;
-  left: 6px;
-  width: 18px;
-  height: 18px;
-  line-height: 16px;
-  text-align: center;
-  background: rgba(0, 0, 0, 0.5);
-  color: #fff;
-  border-radius: 50%;
-  font-size: 12px;
-  cursor: pointer;
-}
-.ge-thumb-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-top: 8px;
-}
-.ge-thumb-item {
-  position: relative;
-}
-.pic-thumb {
-  width: 72px;
-  height: 72px;
-  border-radius: 6px;
-  border: 1px solid #ebeef5;
-}
-.tab-footer {
-  display: flex;
-  justify-content: center;
-  gap: 14px;
-  padding: 16px 0 8px;
-  border-top: 1px solid #ebeef5;
-}
+/* 平铺面板 */
+.goods-edit { border: 1px solid #e6e6e6; border-radius: 4px; background: #fff; }
+.ge-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #eee; }
+.ge-title { font-weight: 600; }
+.ge-close { border: none; background: transparent; font-size: 22px; cursor: pointer; color: #666; }
+.tab-bar { display: flex; gap: 24px; padding: 10px 14px; border-bottom: 1px solid #eee; }
+.tab { cursor: pointer; padding-bottom: 6px; color: #333; }
+.tab.active { color: #f56c6c; border-bottom: 2px solid #f56c6c; font-weight: 600; }
+.ge-body { padding: 16px; }
+.form-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
+.form-label { width: 110px; text-align: right; color: #333; flex-shrink: 0; line-height: 32px; }
+.form-control { flex: 0 1 340px; text-align: left; }
+.hint { color: #999; font-size: 12px; line-height: 32px; }
+.img-preview img { width: 80px; height: 80px; object-fit: cover; border: 1px solid #eee; border-radius: 3px; }
+.img-row { display: flex; gap: 6px; margin-top: 6px; }
+.img-item { width: 56px; height: 56px; object-fit: cover; border: 1px solid #eee; border-radius: 3px; }
+.area-text { line-height: 32px; color: #333; max-width: 400px; }
+.slider-wrap { width: 400px; }
+.tag-row { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.tag-chip { background: #f0f9eb; border: 1px solid #e1f3d8; border-radius: 3px; padding: 2px 8px; font-size: 12px; }
+.tag-chip i { margin-left: 4px; cursor: pointer; font-style: normal; color: #f56c6c; }
+.form-grid-btns { display: flex; flex-wrap: wrap; gap: 6px; }
+.field-add { display: flex; gap: 6px; align-items: center; }
+.mini-input { width: 160px; }
+.mini-select { width: 110px; }
+.mini-table { width: 600px; }
+.area-prov { line-height: 30px; }
+.area-city { margin-left: 16px; }
 </style>

@@ -1,24 +1,38 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { mdGetSet, mdSaveSet } from '../../api/maidan'
+import { mdGetSet, mdSaveSet, mdUploadJstxt } from '../../api/maidan'
+import LinkPicker from '../../components/LinkPicker.vue'
 
 const loading = ref(false)
 const saving = ref(false)
+const uploading = ref(false)
 
 const form = reactive({
-  maidan_login: 0,
+  maidan_login: 1,
   maidan_getlocation: 0,
   maidan_payaftertourl: '',
+  maidan_score_discount: 1,
 })
 
 const h5Url = ref('')
-const shopName = ref('')
+const mpPath = ref('pagesB/maidan/pay')
+const showWx = ref(true)
+const showAlipay = ref(true)
 
-// 二维码图片（聚合收款码指向 H5 买单页链接）
+const wxRuleUrl = 'https://developers.weixin.qq.com/miniprogram/introduction/qrcode.html'
+const alipayRuleUrl = 'https://opendocs.alipay.com/b/04ne6i'
+
 const qrSrc = computed(() => {
   if (!h5Url.value) return ''
-  return `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(h5Url.value)}`
+  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(h5Url.value)}`
+})
+
+// 查看小程序码弹窗
+const mpCodeVisible = ref(false)
+const mpCodeSrc = computed(() => {
+  if (!mpPath.value) return ''
+  return `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(mpPath.value)}`
 })
 
 async function loadData() {
@@ -28,10 +42,13 @@ async function loadData() {
     form.maidan_login = Number(result.maidan_login) || 0
     form.maidan_getlocation = Number(result.maidan_getlocation) || 0
     form.maidan_payaftertourl = result.maidan_payaftertourl || ''
+    form.maidan_score_discount = Number(result.maidan_score_discount) ?? 1
     h5Url.value = result.h5_url || ''
-    shopName.value = result.shop_name || ''
+    mpPath.value = result.mp_path || 'pagesB/maidan/pay'
+    showWx.value = result.show_wx !== false
+    showAlipay.value = result.show_alipay !== false
   } catch {
-    // 错误提示由 axios 拦截器统一处理
+    // 错误提示由拦截器统一处理
   } finally {
     loading.value = false
   }
@@ -41,21 +58,47 @@ async function handleSave() {
   saving.value = true
   try {
     await mdSaveSet({
-      maidan_login: form.maidan_login ? 1 : 0,
-      maidan_getlocation: form.maidan_getlocation ? 1 : 0,
-      maidan_payaftertourl: form.maidan_payaftertourl.trim(),
+      maidan_login: form.maidan_login,
+      maidan_getlocation: form.maidan_getlocation,
+      maidan_payaftertourl: form.maidan_payaftertourl,
+      maidan_score_discount: form.maidan_score_discount,
     })
-    ElMessage.success('保存成功')
-    await loadData()
+    ElMessage.success('设置成功')
   } catch {
-    // 错误提示由 axios 拦截器统一处理
+    // 错误提示由拦截器统一处理
   } finally {
     saving.value = false
   }
 }
 
-function openH5() {
-  if (h5Url.value) window.open(h5Url.value, '_blank')
+function copyText(text: string) {
+  if (!text) return
+  navigator.clipboard?.writeText(text).then(() => {
+    ElMessage.success('已复制')
+  }).catch(() => {
+    ElMessage.warning('复制失败，请手动复制')
+  })
+}
+
+// 上传域名校验文件
+const fileInputRef = ref<HTMLInputElement>()
+function triggerUpload() {
+  fileInputRef.value?.click()
+}
+async function handleFileChange(e: Event) {
+  const input = e.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  uploading.value = true
+  try {
+    await mdUploadJstxt(file)
+    ElMessage.success('上传成功')
+  } catch {
+    // 拦截器统一提示
+  } finally {
+    uploading.value = false
+    input.value = ''
+  }
 }
 
 onMounted(() => {
@@ -65,140 +108,241 @@ onMounted(() => {
 
 <template>
   <div class="maidan-set-page" v-loading="loading">
-    <div class="page-card">
-      <div class="card-title">聚合收款码设置</div>
-      <div class="set-body">
-        <el-form :model="form" label-width="160px" class="set-form">
-          <el-form-item label="买单需登录">
-            <el-switch v-model="form.maidan_login" :active-value="1" :inactive-value="0" />
-            <span class="form-tip">开启后会员扫码买单需先登录授权，便于识别会员身份享受折扣与积分抵扣</span>
-          </el-form-item>
-          <el-form-item label="买单获取位置">
-            <el-switch v-model="form.maidan_getlocation" :active-value="1" :inactive-value="0" />
-            <span class="form-tip">开启后买单页自动获取会员位置，用于就近识别门店</span>
-          </el-form-item>
-          <el-form-item label="支付后跳转链接">
-            <el-input
-              v-model="form.maidan_payaftertourl"
-              placeholder="买单支付成功后跳转的页面地址，留空显示默认成功页"
-              style="width: 420px"
-              maxlength="255"
-            />
-          </el-form-item>
-          <el-form-item label="买单页链接">
-            <div class="h5-url-box">
-              <span class="h5-url">{{ h5Url || '—' }}</span>
-              <el-button link type="primary" @click="openH5" :disabled="!h5Url">打开预览</el-button>
-            </div>
-          </el-form-item>
-          <el-form-item>
-            <el-button type="primary" :loading="saving" @click="handleSave">保存设置</el-button>
-          </el-form-item>
-        </el-form>
+    <!-- ========== 区块A：二维码设置 ========== -->
+    <el-card shadow="never" class="block-card">
+      <template #header>
+        <span class="block-title">二维码设置</span>
+      </template>
 
-        <div class="qr-panel">
-          <div class="qr-title">收款二维码（{{ shopName || '门店' }}）</div>
-          <div class="qr-wrap" v-if="qrSrc">
-            <img :src="qrSrc" alt="聚合收款码" class="qr-img" />
-            <div class="qr-label">微信 / 支付宝 扫码买单</div>
+      <div class="qr-set-body">
+        <!-- 微信设置 -->
+        <div v-if="showWx" class="set-row">
+          <div class="set-label">微信设置：</div>
+          <div class="set-content">
+            <p class="guide-text">
+              开发管理-&gt;开发设置-&gt;扫普通链接二维码打开小程序
+              <a :href="wxRuleUrl" target="_blank" class="rule-link">点击查看配置规则</a>
+            </p>
+            <p class="kv-row">协议类型：<span class="kv-val">https</span></p>
+            <p class="kv-row">选择大小写：<span class="kv-val">小写</span></p>
+            <p class="kv-row">
+              二维码规则：<span class="kv-val">{{ h5Url }}</span>
+              <el-button size="small" class="copy-btn" @click="copyText(h5Url)">复制</el-button>
+            </p>
+            <p class="kv-row">
+              前缀占用规则：<span class="kv-val">开启多商户使用选择"不占用"</span> 平台开启此功能，多商户的收款码即支持聚合码
+            </p>
+            <p class="kv-row">
+              小程序功能页面：<span class="kv-val">{{ mpPath }}</span>
+              <el-button size="small" class="copy-btn" @click="copyText(mpPath)">复制</el-button>
+            </p>
           </div>
-          <el-empty v-else description="买单页链接为空，保存后生成" :image-size="80" />
-          <div class="qr-tip">打印张贴于收银台，会员扫码进入 H5 买单页完成余额支付</div>
+        </div>
+
+        <!-- 支付宝设置 -->
+        <div v-if="showAlipay" class="set-row">
+          <div class="set-label">支付宝设置：</div>
+          <div class="set-content">
+            <p class="guide-text">
+              选择应用-&gt;审核&amp;发布-&gt;小程序码-&gt;关联普通链接二维码
+              <a :href="alipayRuleUrl" target="_blank" class="rule-link">点击查看配置规则</a>
+            </p>
+            <p class="kv-row">
+              关联模式：<span class="kv-val">开启多商户使用选择"模糊匹配"</span> 平台开启此功能，多商户的收款码即支持聚合码
+            </p>
+            <p class="kv-row">
+              二维码地址：<span class="kv-val">{{ h5Url }}</span>
+              <el-button size="small" class="copy-btn" @click="copyText(h5Url)">复制</el-button>
+            </p>
+            <p class="kv-row">
+              小程序功能页：<span class="kv-val">{{ mpPath }}</span>
+              <el-button size="small" class="copy-btn" @click="copyText(mpPath)">复制</el-button>
+            </p>
+          </div>
+        </div>
+
+        <!-- 二维码 -->
+        <div class="set-row">
+          <div class="set-label">二维码：</div>
+          <div class="set-content">
+            <div class="qr-wrap" v-if="qrSrc">
+              <img :src="qrSrc" alt="聚合收款码" class="qr-img" />
+            </div>
+            <el-empty v-else description="无买单页链接" :image-size="60" />
+            <div class="qr-actions">
+              <el-button size="small" @click="mpCodeVisible = true">查看小程序码</el-button>
+            </div>
+          </div>
+        </div>
+
+        <!-- 链接地址 -->
+        <div class="set-row">
+          <div class="set-label">链接地址：</div>
+          <div class="set-content">
+            <span class="kv-val">{{ h5Url }}</span>
+            <el-button size="small" class="copy-btn" @click="copyText(h5Url)">复制</el-button>
+          </div>
+        </div>
+
+        <!-- 页面路径 -->
+        <div class="set-row">
+          <div class="set-label">页面路径：</div>
+          <div class="set-content">
+            <span class="kv-val">{{ mpPath }}</span>
+            <el-button size="small" class="copy-btn" @click="copyText(mpPath)">复制</el-button>
+          </div>
         </div>
       </div>
+    </el-card>
 
-      <div class="page-note">
-        <p>配置指引：</p>
-        <p>1. 将右侧收款二维码打印后张贴于收银台显眼位置，支持微信、支付宝扫码（聚合码指向同一买单页）。</p>
-        <p>2. 会员扫码后进入 H5 买单页，输入消费金额即可使用余额支付，自动享受等级折扣、优惠券与积分抵扣。</p>
-        <p>3. 开启「买单需登录」可识别会员身份；未登录按散客收款，不享受会员优惠。</p>
-        <p>4. 收款记录在「买单记录」中查询，支持筛选、退款与导出。</p>
+    <!-- ========== 区块B：基础设置 ========== -->
+    <el-card shadow="never" class="block-card">
+      <template #header>
+        <span class="block-title">基础设置</span>
+      </template>
+
+      <div class="base-set-body">
+        <el-form label-width="130px" label-position="right">
+          <el-form-item label="收款强制登录：">
+            <el-radio-group v-model="form.maidan_login">
+              <el-radio :value="1">开启</el-radio>
+              <el-radio :value="0">关闭</el-radio>
+            </el-radio-group>
+            <div class="form-aux">选择开启：扫码进入买单页面后跳转登录页，会员登录后才能买单付款</div>
+          </el-form-item>
+
+          <el-form-item label="支付后跳转：">
+            <div class="tourl-row">
+              <LinkPicker v-model="form.maidan_payaftertourl" placeholder="买单支付成功后跳转的页面地址" pick-text="选择链接" />
+            </div>
+          </el-form-item>
+
+          <el-form-item label="开启定位：">
+            <el-radio-group v-model="form.maidan_getlocation">
+              <el-radio :value="1">开启</el-radio>
+              <el-radio :value="0">关闭</el-radio>
+            </el-radio-group>
+          </el-form-item>
+
+          <el-form-item label="会员等级折扣：">
+            <el-radio-group v-model="form.maidan_score_discount">
+              <el-radio :value="1">开启</el-radio>
+              <el-radio :value="0">关闭</el-radio>
+            </el-radio-group>
+            <div class="form-aux">是否开启会员等级折扣</div>
+          </el-form-item>
+
+          <el-form-item>
+            <el-button type="success" :loading="saving" @click="handleSave">保 存</el-button>
+            <el-button :loading="uploading" @click="triggerUpload">上传域名校验文件</el-button>
+            <input ref="fileInputRef" type="file" accept=".txt,.html" style="display:none" @change="handleFileChange" />
+          </el-form-item>
+        </el-form>
       </div>
-    </div>
+    </el-card>
+
+    <!-- 查看小程序码弹窗 -->
+    <el-dialog v-model="mpCodeVisible" title="小程序码" width="280px" align-center>
+      <div class="mp-code-wrap">
+        <img v-if="mpCodeSrc" :src="mpCodeSrc" alt="小程序码" class="mp-code-img" />
+        <p v-else class="mp-code-empty">暂无小程序码</p>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <style scoped>
 .maidan-set-page {
-  padding: 12px;
+  padding: 8px;
 }
-.page-card {
-  background: #fff;
-  border-radius: 4px;
-  padding: 16px 20px;
+.block-card {
+  margin-bottom: 8px;
 }
-.card-title {
+.block-card :deep(.el-card__body) {
+  padding: 12px 16px;
+}
+.block-title {
   font-size: 15px;
   font-weight: 600;
   color: #303133;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
 }
-.set-body {
+.qr-set-body {
+  max-width: 860px;
+}
+.set-row {
   display: flex;
-  gap: 24px;
-  align-items: flex-start;
+  margin-bottom: 14px;
+  line-height: 1.8;
 }
-.set-form {
-  flex: 1;
-  max-width: 760px;
-}
-.form-tip {
-  margin-left: 10px;
-  color: #909399;
-  font-size: 12px;
-}
-.h5-url-box {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-.h5-url {
-  color: #409eff;
-  word-break: break-all;
-}
-.qr-panel {
-  width: 280px;
+.set-label {
+  width: 130px;
   flex-shrink: 0;
-  border: 1px solid #ebeef5;
-  border-radius: 4px;
-  padding: 16px;
-  text-align: center;
+  text-align: right;
+  padding-right: 12px;
+  font-size: 13px;
+  color: #606266;
 }
-.qr-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: #303133;
-  margin-bottom: 12px;
-}
-.qr-img {
-  width: 220px;
-  height: 220px;
-  border: 1px solid #ebeef5;
-}
-.qr-label {
-  margin-top: 8px;
+.set-content {
+  flex: 1;
   font-size: 13px;
   color: #303133;
 }
-.qr-tip {
+.guide-text {
+  margin: 0 0 4px;
+}
+.rule-link {
+  color: #409eff;
+  margin-left: 4px;
+  text-decoration: none;
+}
+.kv-row {
+  margin: 2px 0;
+}
+.kv-val {
+  color: #409eff;
+  word-break: break-all;
+}
+.copy-btn {
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.qr-wrap {
+  display: inline-block;
+  padding: 8px;
+  border: 1px solid #ebeef5;
+  border-radius: 4px;
+}
+.qr-img {
+  width: 200px;
+  height: 200px;
+  display: block;
+}
+.qr-actions {
   margin-top: 8px;
+  text-align: center;
+}
+.base-set-body {
+  max-width: 720px;
+}
+.tourl-row {
+  width: 380px;
+}
+.form-aux {
   font-size: 12px;
   color: #909399;
   line-height: 1.6;
+  margin-top: 2px;
 }
-.page-note {
-  margin-top: 8px;
-  padding: 12px 14px;
-  background: #f7f8fa;
-  border-radius: 4px;
+.mp-code-wrap {
+  text-align: center;
+  padding: 10px 0;
+}
+.mp-code-img {
+  width: 200px;
+  height: 200px;
+}
+.mp-code-empty {
   color: #909399;
-  font-size: 12px;
-  line-height: 1.9;
-  max-width: 1040px;
-}
-.page-note p {
-  margin: 0;
+  font-size: 13px;
 }
 </style>

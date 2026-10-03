@@ -47,6 +47,7 @@ class SignRewardService
             'guize'    => (string) ($row['guize'] ?? ''),
             'style'    => (int) ($row['style'] ?? 1),
             'bgpic'    => (string) ($row['bgpic'] ?? ''),
+            'rewardedvideoad' => (string) ($row['rewardedvideoad'] ?? ''),
         ];
     }
 
@@ -78,6 +79,7 @@ class SignRewardService
             'status'  => $status,
             'display' => $display,
             'guize'   => trim((string) ($data['guize'] ?? '')),
+            'rewardedvideoad' => trim((string) ($data['rewardedvideoad'] ?? '')),
         ];
 
         if (array_key_exists('style', $data)) {
@@ -106,7 +108,7 @@ class SignRewardService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function signRecords(int $aid, int $mid, string $nickname, int $startTime, int $endTime, int $page, int $pageSize): array
+    public function signRecords(int $aid, int $mid, string $nickname, int $startTime, int $endTime, int $page, int $pageSize, string $field = '', string $order = 'desc'): array
     {
         $query = ScopeService::queryAs('sign_record', $aid, 's')
             ->leftJoin('member m', 'm.id = s.mid')
@@ -130,7 +132,12 @@ class SignRewardService
 
         $total = (clone $query)->count();
 
-        $rows = $query->order('s.id', 'desc')
+        // 排序白名单（对齐点大 record 页 ID/获得积分/签到总次数/连续次数 表头排序）
+        $allowedSort = ['id' => 's.id', 'score' => 's.score', 'signtimes' => 's.signtimes', 'signtimeslx' => 's.signtimeslx'];
+        $sortCol     = $allowedSort[$field] ?? '';
+        $sortDir     = 'asc' === strtolower($order) ? 'asc' : 'desc';
+
+        $rows = $query->order($sortCol ?: 's.id', $sortDir)
             ->page($page, $pageSize)
             ->select()
             ->toArray();
@@ -177,6 +184,67 @@ class SignRewardService
         }
 
         ScopeService::query('sign_record', $aid)->whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * 导出签到记录 CSV（与列表同过滤条件；返回 csv 字符串）
+     *
+     * @return string
+     */
+    public function exportSignRecords(int $aid, int $mid, string $nickname, int $startTime, int $endTime): string
+    {
+        $query = ScopeService::queryAs('sign_record', $aid, 's')
+            ->leftJoin('member m', 'm.id = s.mid')
+            ->field('s.*, m.tel as member_phone');
+
+        if ($mid > 0) {
+            $query->where('s.mid', $mid);
+        }
+
+        if ('' !== $nickname) {
+            $query->where('s.nickname', 'like', '%' . $nickname . '%');
+        }
+
+        if ($startTime > 0) {
+            $query->where('s.createtime', '>=', $startTime);
+        }
+
+        if ($endTime > 0) {
+            $query->where('s.createtime', '<', $endTime);
+        }
+
+        $rows = $query->order('s.id', 'desc')->limit(10000)->select()->toArray();
+
+        $couponNames = $this->couponNameMap($aid, $rows);
+
+        $fp = fopen('php://temp', 'r+');
+        // BOM 头解决 Excel 中文乱码
+        fwrite($fp, "\xEF\xBB\xBF");
+        fputcsv($fp, ['ID', '头像昵称', '签到时间', '获得积分', '签到总次数', '连续次数', '连续签到优惠券', '连续签到赠送优惠券', '备注', '创建时间']);
+
+        foreach ($rows as $row) {
+            $lxqd = (int) ($row['lxqd_coupon_id'] ?? 0);
+            $lxzs = (int) ($row['lxzs_coupon_id'] ?? 0);
+
+            fputcsv($fp, [
+                (int) ($row['id'] ?? 0),
+                (string) ($row['nickname'] ?? ''),
+                (string) ($row['signdate'] ?? ''),
+                (int) ($row['score'] ?? 0),
+                (int) ($row['signtimes'] ?? 0),
+                (int) ($row['signtimeslx'] ?? 0),
+                $lxqd > 0 ? ($couponNames[$lxqd] ?? '无') : '无',
+                $lxzs > 0 ? ($couponNames[$lxzs] ?? '无') : '无',
+                (string) ($row['remark'] ?? ''),
+                isset($row['createtime']) ? date('Y-m-d H:i:s', (int) $row['createtime']) : '',
+            ]);
+        }
+
+        rewind($fp);
+        $csv = (string) stream_get_contents($fp);
+        fclose($fp);
+
+        return $csv;
     }
 
     /* ================= 支付后赠配置（payaftergive） ================= */

@@ -37,6 +37,12 @@ export interface PayorderItem {
   mid: number
   nickname: string
   tel: string
+  headimg: string
+  bid: number
+  bname: string
+  refund_time: number
+  check_status: number
+  issettle: number
 }
 
 export interface PayorderStat {
@@ -52,6 +58,8 @@ export interface PayorderListQuery extends FinPageQuery {
   mid?: number
   tel?: string
   ordernum?: string
+  bname?: string
+  bid?: number
 }
 
 export type PayorderListResult = FinPageResult<PayorderItem> & { stat: PayorderStat }
@@ -67,7 +75,10 @@ export interface MoneyLogItem {
   remark: string
   paytype: string
   uid: number
+  headimg: string
+  un: string
   createtime: number
+  rechargeid: number
 }
 
 export interface MoneyLogStat {
@@ -80,6 +91,8 @@ export interface MoneyLogQuery extends FinPageQuery {
   nickname?: string
   mid?: number
   inout?: number
+  tel?: string
+  remark?: string
 }
 
 export type MoneyLogListResult = FinPageResult<MoneyLogItem> & { stat: MoneyLogStat }
@@ -99,6 +112,7 @@ export interface RechargeItem {
   mid: number
   nickname: string
   tel: string
+  headimg: string
 }
 
 export interface RechargeStat {
@@ -137,6 +151,16 @@ export interface WithdrawItem {
   createtime: number
   paytime: number
   paynum: string
+  headimg: string
+  realname: string
+  usercard: string
+  wx_transfer_bill_no: string
+  wx_state: string
+  can_audit: boolean
+  can_reject: boolean
+  can_mark_paid: boolean
+  can_wx_pay: boolean
+  can_delete: boolean
 }
 
 export interface WithdrawStat {
@@ -168,13 +192,18 @@ export interface CommissionItem {
   frommid: number
   from_nickname: string
   remark: string
+  headimg: string
+  uid: number
+  un: string
   createtime: number
+  rechargeid: number
 }
 
 export interface CommissionQuery extends FinPageQuery {
   nickname?: string
   mid?: number
   fhtype?: string
+  remark?: string
 }
 
 export type CommissionListResult = FinPageResult<CommissionItem> & { stat: MoneyLogStat }
@@ -192,6 +221,7 @@ export interface HexiaoItem {
   uid: number
   mdid: number
   mendian_name: string
+  headimg: string
   remark: string
   createtime: number
 }
@@ -199,12 +229,17 @@ export interface HexiaoItem {
 export interface HexiaoQuery extends FinPageQuery {
   keyword?: string
   type?: string
+  mid?: string
+  nickname?: string
+  title?: string
+  remark?: string
 }
 
 // ---- 7. 发票管理 ----
 export interface InvoiceItem {
   id: number
   ordernum: string
+  orderid: number
   order_type: string
   type: number
   type_text: string
@@ -215,6 +250,8 @@ export interface InvoiceItem {
   tel: string
   mobile: string
   email: string
+  bank_name: string
+  bank_account: string
   status: number
   check_remark: string
   create_time: number
@@ -231,6 +268,8 @@ export interface InvoiceStat {
 export interface InvoiceQuery extends FinPageQuery {
   status?: string
   keyword?: string
+  ordernum?: string
+  invoice_name?: string
 }
 
 export type InvoiceListResult = FinPageResult<InvoiceItem> & { stat: InvoiceStat }
@@ -361,6 +400,11 @@ export interface CommissionRecordItem {
   remark: string
   createtime: number
   endtime: number
+  from_headimg: string
+  levelid: number
+  level_text: string
+  can_view_order: boolean
+  can_delete: boolean
 }
 
 export interface CommissionRecordStat {
@@ -392,6 +436,7 @@ export interface FenhongLogItem {
   commission: number
   send_commission: number
   send_money: number
+  send_score: number
   type: string
   module: string
   ogids: string
@@ -501,4 +546,174 @@ export function exportHexiaoShopproduct(params: HexiaoShopproductQuery) {
     responseType: 'blob',
     timeout: 180000,
   }) as Promise<Blob>
+}
+
+// ============ 任务对齐点大：批量删除 / 导出 / 微信转账 / 授权 / 订单详情（P1 后端+API 契约层） ============
+
+/** 删除入参（兼容单 id 与 ids[]） */
+export interface DeleteIds {
+  id?: number
+  ids?: number[]
+}
+
+// ---- 5. 微信转账记录（对齐点大 Money::wx_transfer_log，表 wx_transfer_log） ----
+export interface WxTransferLogItem {
+  id: number
+  mid: number
+  nickname: string
+  headimg: string
+  money: number
+  ordernum: string
+  desc: string
+  createtime: number
+  state: string
+  state_str: string
+  transfer_bill_no: string
+  message: string
+  status_code: string
+  data_tbl: string
+  data_id: number
+}
+
+export interface WxTransferLogQuery extends FinPageQuery {
+  mid?: number
+  state?: string
+}
+
+export type WxTransferLogListResult = FinPageResult<WxTransferLogItem> & { stat: { count: number } }
+
+// ---- 6. 微信转账授权记录（新页；通道未接入，返回空骨架） ----
+export interface WxTransferAuthItem {
+  id: number
+  mid: number
+  nickname: string
+  headimg: string
+  appid: string
+  platform: string
+  ordernum: string
+  createtime: number
+  confirm_time: number
+  status: string
+  status_text: string
+  transfer_bill_no: string
+  message: string
+}
+
+export type WxTransferAuthListResult = FinPageResult<WxTransferAuthItem> & {
+  available: boolean
+  stat: { count: number }
+  note: string
+}
+
+/** 佣金记录 查看订单 详情 */
+export interface CommissionRecordOrderDetail {
+  type: string
+  orderid: number
+  ordernum: string
+  orderstatus: number
+  money?: number
+  createtime?: number
+}
+
+// ---- 批量删除 ----
+export function deletePayorder(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/payorder/delete', data)
+}
+
+// 抖音（头条）小程序分账（批量 ids[]，paytypeid=12）
+export function payorderDatasettle(ids: number[]) {
+  return request.post<unknown, { success: number }>('/admin/finance/payorder/datasettle', { ids })
+}
+
+// 抖音（头条）小程序订单核销/推送（批量 ids[]，paytypeid=12）
+export function payorderDatapushorder(ids: number[]) {
+  return request.post<unknown, { success: number }>('/admin/finance/payorder/datapushorder', { ids })
+}
+export function deleteMoneyLog(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/moneylog/delete', data)
+}
+export function deleteRecharge(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/recharge/delete', data)
+}
+export function deleteWithdraw(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/withdraw/delete', data)
+}
+export function deleteCommissionLog(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/commissionLog/delete', data)
+}
+export function deleteCommissionWithdraw(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/commissionWithdraw/delete', data)
+}
+export function deleteCommissionRecord(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/commissionRecord/delete', data)
+}
+
+// ---- 各日志 EXCEL 导出（返回 blob） ----
+export function exportPayorder(params: PayorderListQuery) {
+  return request.get('/admin/finance/payorder/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+export function exportMoneyLog(params: MoneyLogQuery) {
+  return request.get('/admin/finance/moneylog/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+export function exportRecharge(params: RechargeQuery) {
+  return request.get('/admin/finance/recharge/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+export function exportWithdraw(params: WithdrawQuery) {
+  return request.get('/admin/finance/withdraw/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+export function exportCommissionLog(params: CommissionQuery) {
+  return request.get('/admin/finance/commissionLog/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+export function exportCommissionWithdraw(params: WithdrawQuery) {
+  return request.get('/admin/finance/commissionWithdraw/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+
+// ---- 微信转账记录 / 授权记录 ----
+export function getWxTransferLogList(params: WxTransferLogQuery) {
+  return request.get<unknown, WxTransferLogListResult>('/admin/finance/wxTransferLog/list', { params })
+}
+export function exportWxTransferLog(params: WxTransferLogQuery) {
+  return request.get('/admin/finance/wxTransferLog/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+export function getWxTransferAuthList(params: FinPageQuery) {
+  return request.get<unknown, WxTransferAuthListResult>('/admin/finance/wxTransferAuth/list', { params })
+}
+export function queryWxTransferAuth(data: { id?: number }) {
+  return request.post<unknown, { available: boolean; msg: string }>('/admin/finance/wxTransferAuth/query', data)
+}
+
+// 微信转账撤销（对齐点大 wx_transfer_cancel）
+export function cancelWxTransfer(id: number) {
+  return request.post<unknown, { id: number; state: string }>('/admin/finance/wxTransferLog/cancel', { id })
+}
+
+// ---- 佣金记录 查看订单 详情 ----
+export function getCommissionRecordOrderDetail(params: { type: string; orderid: number }) {
+  return request.get<unknown, CommissionRecordOrderDetail>('/admin/finance/commissionRecord/orderDetail', { params })
+}
+
+// ============ 片2：分红/核销/计次核销/发票 补删除·导出·详情（对齐点大） ============
+
+export function deleteFenhongLog(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/fenhonglog/delete', data)
+}
+
+export function exportHexiao(params: HexiaoQuery) {
+  return request.get('/admin/finance/hexiao/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+
+export function deleteHexiao(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/hexiao/delete', data)
+}
+
+export function deleteHexiaoShopproduct(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/hexiaoShopproduct/delete', data)
+}
+
+export function deleteInvoice(data: DeleteIds) {
+  return request.post<unknown, { deleted: number }>('/admin/finance/invoice/delete', data)
+}
+
+export function getInvoiceDetail(params: { id: number }) {
+  return request.get<unknown, InvoiceItem>('/admin/finance/invoice/detail', { params })
 }

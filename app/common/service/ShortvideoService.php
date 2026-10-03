@@ -89,13 +89,16 @@ class ShortvideoService
      *
      * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
      */
-    public function categoryList(int $aid, string $bid, string $keyword, int $page, int $pageSize): array
+    public function categoryList(int $aid, string $bid, string $keyword, string $status, int $page, int $pageSize): array
     {
         $query = ScopeService::query('shortvideo_category', $aid);
         ScopeService::applyBid($query, $bid);
 
         if ('' !== $keyword) {
             $query->where('name', 'like', '%' . $keyword . '%');
+        }
+        if ('' !== $status) {
+            $query->where('status', (int) $status);
         }
 
         $total = (clone $query)->count();
@@ -201,6 +204,24 @@ class ShortvideoService
         Db::name('shortvideo_category')->where('id', $id)->where('aid', $aid)->delete();
     }
 
+    /**
+     * 分类批量开启/关闭（status 1 开启 0 关闭）
+     *
+     * @param array<int, int> $ids
+     */
+    public function categoryStatus(int $aid, array $ids, int $status): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要操作的分类');
+        }
+        if (!in_array($status, [0, 1], true)) {
+            throw new BusinessException('状态值非法');
+        }
+
+        Db::name('shortvideo_category')->where('aid', $aid)->whereIn('id', $ids)->update(['status' => $status]);
+    }
+
     /* ================= 视频 ================= */
 
     /**
@@ -208,7 +229,7 @@ class ShortvideoService
      *
      * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
      */
-    public function videoList(int $aid, string $keyword, string $status, int $cid, string $bid, int $page, int $pageSize, string $createtime = ''): array
+    public function videoList(int $aid, string $keyword, string $status, int $cid, string $bid, int $page, int $pageSize, string $createtime = '', string $orderby = ''): array
     {
         $query = ScopeService::query('shortvideo', $aid);
         ScopeService::applyBid($query, $bid);
@@ -222,17 +243,15 @@ class ShortvideoService
         if ($cid > 0) {
             $query->where('cid', $cid);
         }
-        // 创建时间：点大为单日期选择，按当日 00:00:00 ~ 次日 00:00:00 过滤
-        if ('' !== trim($createtime)) {
-            $day = strtotime(substr(trim($createtime), 0, 10));
-            if (false !== $day) {
-                $query->where('createtime', '>=', $day)->where('createtime', '<', $day + 86400);
-            }
-        }
+        // 创建时间：支持单日（YYYY-MM-DD）与范围（YYYY-MM-DD,YYYY-MM-DD）
+        $this->applyCreatetimeRange($query, $createtime);
 
         $total = (clone $query)->count();
-        $rows  = $query->order('sort', 'desc')->order('id', 'desc')
-            ->page($page, $pageSize)
+
+        // 列排序（点大列表头可点排序）：白名单 createtime/view_num/zan_num/sort，方向 asc/desc
+        $this->applyOrderby($query, $orderby, 'sort', 'desc');
+
+        $rows = $query->page($page, $pageSize)
             ->select()
             ->toArray();
 
@@ -445,7 +464,7 @@ class ShortvideoService
      *
      * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
      */
-    public function commentList(int $aid, string $status, int $vid, string $content, int $page, int $pageSize): array
+    public function commentList(int $aid, string $status, int $vid, string $content, int $page, int $pageSize, string $createtime = '', string $orderby = ''): array
     {
         $query = ScopeService::query('shortvideo_comment', $aid);
 
@@ -458,9 +477,11 @@ class ShortvideoService
         if ('' !== $content) {
             $query->where('content', 'like', '%' . $content . '%');
         }
+        $this->applyCreatetimeRange($query, $createtime);
 
         $total = (clone $query)->count();
-        $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+        $this->applyOrderby($query, $orderby, 'id', 'desc');
+        $rows  = $query->page($page, $pageSize)->select()->toArray();
 
         $videoNames = ScopeService::query('shortvideo', $aid)->column('name', 'id');
         $replyCount = Db::name('shortvideo_comment_reply')
@@ -486,7 +507,7 @@ class ShortvideoService
                 'content'     => (string) ($row['content'] ?? ''),
                 'zan'         => (int) ($row['zan'] ?? 0),
                 'status'      => (int) $row['status'],
-                'status_text' => 1 === (int) $row['status'] ? '显示' : '待审核',
+                'status_text' => $this->commentStatusText((int) $row['status']),
                 'replycount'  => $replyMap[(int) $row['id']] ?? 0,
                 'createtime'  => (int) ($row['createtime'] ?? 0),
             ];
@@ -561,7 +582,7 @@ class ShortvideoService
      *
      * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
      */
-    public function replyList(int $aid, string $status, int $pid, string $content, int $page, int $pageSize): array
+    public function replyList(int $aid, string $status, int $pid, string $content, int $page, int $pageSize, string $createtime = '', string $orderby = ''): array
     {
         $query = ScopeService::query('shortvideo_comment_reply', $aid);
 
@@ -574,9 +595,11 @@ class ShortvideoService
         if ('' !== $content) {
             $query->where('content', 'like', '%' . $content . '%');
         }
+        $this->applyCreatetimeRange($query, $createtime);
 
         $total = (clone $query)->count();
-        $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+        $this->applyOrderby($query, $orderby, 'id', 'desc');
+        $rows  = $query->page($page, $pageSize)->select()->toArray();
 
         $commentContents = ScopeService::query('shortvideo_comment', $aid)->column('content', 'id');
         $videoNames      = ScopeService::query('shortvideo', $aid)->column('name', 'id');
@@ -594,7 +617,7 @@ class ShortvideoService
                 'headimg'     => (string) ($row['headimg'] ?? ''),
                 'content'     => (string) ($row['content'] ?? ''),
                 'status'      => (int) $row['status'],
-                'status_text' => 1 === (int) $row['status'] ? '显示' : '待审核',
+                'status_text' => $this->commentStatusText((int) $row['status']),
                 'createtime'  => (int) ($row['createtime'] ?? 0),
             ];
         }
@@ -1161,6 +1184,66 @@ class ShortvideoService
     }
 
     /* ================= 内部工具 ================= */
+
+    /**
+     * 创建时间过滤：单日 YYYY-MM-DD 按全天；范围 YYYY-MM-DD,YYYY-MM-DD 按闭区间。
+     *
+     * @param \think\Db\Query $query
+     */
+    protected function applyCreatetimeRange($query, string $createtime): void
+    {
+        $createtime = trim($createtime);
+        if ('' === $createtime) {
+            return;
+        }
+        if (false !== strpos($createtime, ',')) {
+            [$start, $end] = array_map('trim', explode(',', $createtime, 2));
+            $ts = strtotime($start);
+            $te = strtotime($end);
+            if (false !== $ts) {
+                $query->where('createtime', '>=', $ts);
+            }
+            if (false !== $te) {
+                $query->where('createtime', '<', $te + 86400);
+            }
+            return;
+        }
+        $day = strtotime(substr($createtime, 0, 10));
+        if (false !== $day) {
+            $query->where('createtime', '>=', $day)->where('createtime', '<', $day + 86400);
+        }
+    }
+
+    /**
+     * 列排序：orderby 形如 "field|dir"（dir=asc/desc），白名单字段；非法则回退默认。
+     *
+     * @param \think\Db\Query $query
+     * @param array<int, string> $allow
+     */
+    protected function applyOrderby($query, string $orderby, string $defaultField, string $defaultDir, array $allow = ['createtime', 'view_num', 'zan_num', 'sort', 'id']): void
+    {
+        $orderby = trim($orderby);
+        if ('' !== $orderby) {
+            [$field, $dir] = array_pad(explode('|', $orderby, 2), 2, '');
+            $field = trim($field);
+            $dir   = strtolower(trim($dir));
+            if (in_array($field, $allow, true)) {
+                $dir = 'asc' === $dir ? 'asc' : 'desc';
+                $query->order($field, $dir);
+
+                return;
+            }
+        }
+        $query->order($defaultField, $defaultDir)->order('id', 'desc');
+    }
+
+    /**
+     * 评论/回评状态文案：1 已审核 / 2 已驳回 / 0 待审核
+     */
+    protected function commentStatusText(int $status): string
+    {
+        return 1 === $status ? '已审核' : (2 === $status ? '已驳回' : '待审核');
+    }
 
     /**
      * 分类 id=>name 映射

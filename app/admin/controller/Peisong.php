@@ -26,8 +26,8 @@ class Peisong extends BaseController
     /** 配送单状态：0待接单 1已接单 2已到店 3已取货 4已完成 10已取消 */
     private const ORDER_STATUS = [0 => '待接单', 1 => '已接单', 2 => '已到店', 3 => '已取货', 4 => '已完成', 10 => '已取消'];
 
-    /** 提现状态：0审核中 1已审核 2已驳回 3已打款 */
-    private const WITHDRAW_STATUS = [0 => '审核中', 1 => '已审核', 2 => '已驳回', 3 => '已打款'];
+    /** 提现状态：0审核中 1已审核 2已驳回 3已打款 4待用户确认（新版转账用户确认中） */
+    private const WITHDRAW_STATUS = [0 => '审核中', 1 => '已审核', 2 => '已驳回', 3 => '已打款', 4 => '待用户确认'];
 
     // ==================== 配送员（peisong_user） ====================
 
@@ -97,6 +97,7 @@ class Peisong extends BaseController
             'tel'           => trim((string) $this->request->post('tel', '')),
             'status'        => (int) $this->request->post('status', 1) === 1 ? 1 : 0,
             'sort'          => (int) $this->request->post('sort', 0),
+            'mid'           => (int) $this->request->post('mid', 0),
             'weixin'        => trim((string) $this->request->post('weixin', '')),
             'aliaccount'    => trim((string) $this->request->post('aliaccount', '')),
             'bankname'      => trim((string) $this->request->post('bankname', '')),
@@ -115,7 +116,6 @@ class Peisong extends BaseController
             PlogService::write($aid, $this->uid(), '编辑配送员' . $id);
         } else {
             $data['aid']        = $aid;
-            $data['mid']        = (int) $this->request->post('mid', 0);
             $data['createtime'] = time();
             $id = (int) ScopeService::query('peisong_user', $aid)->insertGetId($data);
             PlogService::write($aid, $this->uid(), '添加配送员' . $id);
@@ -201,6 +201,11 @@ class Peisong extends BaseController
         $ordernum = trim((string) $this->request->param('ordernum', ''));
         if ('' !== $ordernum) {
             $query->where('p.ordernum', $ordernum);
+        }
+        // 下单人ID（对标 PeisongOrder::index mid 过滤）
+        $mid = $this->request->param('mid', '');
+        if ('' !== $mid && null !== $mid) {
+            $query->where('p.mid', (int) $mid);
         }
         $psid = $this->request->param('psid', '');
         if ('' !== $psid && null !== $psid) {
@@ -394,6 +399,30 @@ class Peisong extends BaseController
         PlogService::write($aid, $this->uid(), '删除配送员评价' . implode(',', $ids));
 
         return $this->success([], '删除成功');
+    }
+
+    /**
+     * 评价回复（对标 PeisongComment::reply；回复内容真实落库）
+     * POST /admin/peisong/comment/reply {id, content}
+     */
+    public function commentReply()
+    {
+        $aid     = $this->aid();
+        $id      = (int) $this->request->post('id', 0);
+        $content = trim((string) $this->request->post('content', ''));
+
+        $detail = ScopeService::query('peisong_order_comment', $aid)->where('id', $id)->find();
+        if (empty($detail)) {
+            throw new BusinessException('评价不存在');
+        }
+
+        ScopeService::query('peisong_order_comment', $aid)->where('id', $id)->update([
+            'reply_content' => $content,
+            'reply_time'     => time(),
+        ]);
+        PlogService::write($aid, $this->uid(), '回复配送员评价' . $id);
+
+        return $this->success([], '回复成功');
     }
 
     // ==================== 提成明细（peisong_moneylog） ====================

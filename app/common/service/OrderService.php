@@ -523,13 +523,6 @@ class OrderService
             ->where('status', self::STATUS_SHIPPED)
             ->update(['status' => self::STATUS_FINISHED, 'endtime' => time()]);
 
-        // 奖金池入池（P19-6 任务184）：利润池+区域/达标池，服务内部各自幂等，异常不阻断确认收货
-        try {
-            app(PrizePoolService::class)->onOrderFinished($aid, $orderId);
-        } catch (\Throwable $e) {
-            Log::error('prizepool collect fail order#' . $orderId . ': ' . $e->getMessage());
-        }
-
         // 确认收货奖励（批次4-E 任务190）：按 order_collect_reward 设置发积分/券/余额/佣金，异常不阻断确认收货
         try {
             app(CollectRewardService::class)->onOrderFinished($aid, $orderId);

@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace app\common\service;
 
+use app\common\constant\ExpressCompany;
 use app\common\exception\BusinessException;
 use think\facade\Db;
 
@@ -73,7 +74,7 @@ class CollageService
                 'aid'           => $aid,
                 'autoshdays'    => 7,
                 'comment'       => 1,
-                'comment_check' => 1,
+                'comment_check' => 0,
                 'showjd'        => 1,
                 'team_refund'   => 0,
                 'teamnum'       => 3,
@@ -89,10 +90,13 @@ class CollageService
             'teamhour'      => (int) ($info['teamhour'] ?? 24),
             'leadermoney'   => (float) ($info['leadermoney'] ?? 0),
             'autoshdays'    => (int) ($info['autoshdays'] ?? 7),
-            'comment_check' => (int) ($info['comment_check'] ?? 1),
+            'comment'       => (int) ($info['comment'] ?? 1),
+            'comment_check' => (int) ($info['comment_check'] ?? 0),
+            'showjd'        => (int) ($info['showjd'] ?? 1),
             'timeset'       => (string) ($info['timeset'] ?? ''),
             'team_refund'   => (int) ($info['team_refund'] ?? 0),
             'pics'          => (string) ($info['pics'] ?? ''),
+            'leveldiscount' => (int) ($info['leveldiscount'] ?? 1),
         ];
     }
 
@@ -129,6 +133,14 @@ class CollageService
             $update['comment_check'] = (int) $data['comment_check'] === 1 ? 1 : 0;
         }
 
+        if (isset($data['comment'])) {
+            $update['comment'] = (int) $data['comment'] === 1 ? 1 : 0;
+        }
+
+        if (isset($data['showjd'])) {
+            $update['showjd'] = (int) $data['showjd'] === 1 ? 1 : 0;
+        }
+
         if (array_key_exists('timeset', $data)) {
             $update['timeset'] = trim((string) $data['timeset']);
         }
@@ -139,6 +151,10 @@ class CollageService
 
         if (array_key_exists('pics', $data)) {
             $update['pics'] = trim((string) $data['pics']);
+        }
+
+        if (isset($data['leveldiscount'])) {
+            $update['leveldiscount'] = (int) $data['leveldiscount'] === 1 ? 1 : 0;
         }
 
         if (!empty($update)) {
@@ -251,6 +267,9 @@ class CollageService
             $row['market_price'] = (float) ($row['market_price'] ?? 0);
             $row['cost_price']  = (float) ($row['cost_price'] ?? 0);
             $row['stock']       = (int) ($row['stock'] ?? 0);
+            $row['procode']     = (string) ($row['procode'] ?? '');
+            $row['weight']      = (float) ($row['weight'] ?? 0);
+            $row['pic']         = (string) ($row['pic'] ?? '');
         }
         unset($row);
 
@@ -315,6 +334,9 @@ class CollageService
                 'market_price' => $marketPrice,
                 'cost_price'   => $costPrice,
                 'stock'        => $stock,
+                'procode'      => trim((string) ($row['procode'] ?? '')),
+                'weight'       => max(0, (float) ($row['weight'] ?? 0)),
+                'pic'          => trim((string) ($row['pic'] ?? '')),
             ];
 
             $stockTotal += $stock;
@@ -336,9 +358,14 @@ class CollageService
             'buymax'      => max(0, (int) ($data['buymax'] ?? 0)),
             'sort'        => (int) ($data['sort'] ?? 0),
             'status'      => (int) ($data['status'] ?? 1) === 1 ? 1 : 0,
-            'detail'      => (string) ($data['detail'] ?? ''),
-            'sell_price'  => (float) $minPrice,
-            'stock'       => $stockTotal,
+            'detail'        => (string) ($data['detail'] ?? ''),
+            'sell_price'    => (float) $minPrice,
+            'stock'         => $stockTotal,
+            'goods_id'      => (int) ($data['goods_id'] ?? 0),
+            'no_discount'   => (int) ($data['no_discount'] ?? -1),
+            'freighttype'   => (int) ($data['freighttype'] ?? 0),
+            'leaderscore'    => max(0, (int) ($data['leaderscore'] ?? 0)),
+            'commissionset' => (int) ($data['commissionset'] ?? 0),
         ];
 
         $id = (int) ($data['id'] ?? 0);
@@ -352,6 +379,7 @@ class CollageService
             $update['bid']        = 0;
             $update['ischecked']  = 1;
             $update['createtime'] = time();
+            $update['sales']      = max(0, (int) ($data['sales'] ?? 0));
 
             $id = (int) ScopeService::query('collage_product', $aid)->insertGetId($update);
         }
@@ -369,6 +397,9 @@ class CollageService
                 'market_price' => $row['market_price'],
                 'cost_price'   => $row['cost_price'],
                 'stock'        => $row['stock'],
+                'procode'      => $row['procode'],
+                'weight'       => $row['weight'],
+                'pic'          => $row['pic'],
             ];
 
             $exists = Db::name('collage_guige')
@@ -494,7 +525,7 @@ class CollageService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function teamList(int $aid, string $status, int $page, int $pageSize): array
+    public function teamList(int $aid, string $status, int $page, int $pageSize, string $ctimeStart = '', string $ctimeEnd = ''): array
     {
         $query = ScopeService::query('collage_order_team', $aid);
 
@@ -502,6 +533,14 @@ class CollageService
             $query->where('status', (int) $status);
         } else {
             $query->where('status', '<>', self::TEAM_UNPAID); // 未支付的空团不展示
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
         }
 
         $total = (clone $query)->count();
@@ -588,8 +627,20 @@ class CollageService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function orderList(int $aid, string $status, string $buytype, string $keyword, int $teamId, int $page, int $pageSize): array
-    {
+    public function orderList(
+        int $aid,
+        string $status,
+        string $buytype,
+        string $keyword,
+        int $teamId,
+        int $page,
+        int $pageSize,
+        string $ordernum = '',
+        string $linkman = '',
+        string $tel = '',
+        string $ctimeStart = '',
+        string $ctimeEnd = ''
+    ): array {
         $query = ScopeService::query('collage_order', $aid);
 
         if ('' !== $status) {
@@ -616,6 +667,26 @@ class CollageService
 
         if ($teamId > 0) {
             $query->where('teamid', $teamId);
+        }
+
+        if ('' !== $ordernum) {
+            $query->where('ordernum', 'like', '%' . $ordernum . '%');
+        }
+
+        if ('' !== $linkman) {
+            $query->where('linkman', 'like', '%' . $linkman . '%');
+        }
+
+        if ('' !== $tel) {
+            $query->where('tel', 'like', '%' . $tel . '%');
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
         }
 
         if ('' !== $keyword) {
@@ -819,6 +890,435 @@ class CollageService
         }
 
         throw new BusinessException('当前订单状态不可发货');
+    }
+
+    /**
+     * 订单详情（含下单人/团/收货地址完整字段）
+     *
+     * @return array<string, mixed>
+     */
+    public function orderDetail(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        return $this->formatOrder($aid, $order);
+    }
+
+    /**
+     * 删除订单（兼容单个 id 与批量 ids[]）
+     *
+     * @param int[] $ids
+     */
+    public function orderDelete(int $aid, array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的订单');
+        }
+
+        ScopeService::query('collage_order', $aid)->whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * 设置订单备注
+     */
+    public function orderSetRemark(int $aid, int $orderId, string $content): void
+    {
+        $this->findOrder($aid, $orderId);
+
+        ScopeService::query('collage_order', $aid)->where('id', $orderId)->update([
+            'remark' => trim($content),
+        ]);
+    }
+
+    /**
+     * 改为已支付（后台支付；仅未支付订单）
+     */
+    public function orderIspay(int $aid, int $orderId): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (self::ORDER_UNPAID !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改为已支付');
+        }
+
+        ScopeService::query('collage_order', $aid)->where('id', $orderId)->update([
+            'status'  => self::ORDER_PAID,
+            'paytime' => time(),
+            'paytype' => '后台支付',
+        ]);
+    }
+
+    /**
+     * 快递公司下拉（手动发货用；读快递配置字典）
+     *
+     * @return array{list: array<int, array{name: string, code: string}>}
+     */
+    public function expressOptions(): array
+    {
+        $list = [];
+        foreach (ExpressCompany::dict() as $name => $code) {
+            $list[] = ['name' => $name, 'code' => $code];
+        }
+
+        return ['list' => $list];
+    }
+
+    /**
+     * 直接退款（管理员在订单列表点「退款」，原路退回 + 退积分 + 退券）
+     *
+     * 区别于 orderRefundCheck：后者处理用户发起的退款申请（refund_status=1）；
+     * 本方法是管理员对已支付/已发货订单直接发起退款。
+     */
+    public function orderRefund(int $aid, int $orderId, string $reason): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (!in_array((int) $order['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+            throw new BusinessException('该订单状态不允许退款');
+        }
+
+        $team = !empty($order['teamid'])
+            ? Db::name('collage_order_team')->where('id', (int) $order['teamid'])->find()
+            : null;
+
+        if (!empty($team) && self::TEAM_ONGOING === (int) $team['status']) {
+            throw new BusinessException('拼团中不允许退款');
+        }
+
+        $reason = trim($reason);
+
+        if ('' === $reason) {
+            throw new BusinessException('请填写退款原因');
+        }
+
+        Db::transaction(function () use ($aid, $orderId, $reason) {
+            $locked = Db::name('collage_order')
+                ->where('aid', $aid)
+                ->where('id', $orderId)
+                ->lock(true)
+                ->find();
+
+            if (empty($locked) || !in_array((int) $locked['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+                throw new BusinessException('订单状态已变化，请刷新后重试');
+            }
+
+            $refundMoney = (float) $locked['totalprice'];
+
+            if ($refundMoney > 0) {
+                $this->payService->refund($locked, $refundMoney, 'RC' . (string) $locked['ordernum']);
+                $this->markPayorderRefund($aid, (string) $locked['ordernum'], $refundMoney);
+            }
+
+            Db::name('collage_order')->where('id', $orderId)->update([
+                'status'         => self::ORDER_CLOSED,
+                'refund_status'  => 2,
+                'refund_money'   => $refundMoney,
+                'refund_reason'  => $reason,
+                'refund_time'    => time(),
+            ]);
+
+            // 已支付未发货退款回补库存
+            if (self::ORDER_PAID === (int) $locked['status']) {
+                $this->restoreStock($locked);
+            }
+
+            $this->refundScoreAndCoupon($aid, $locked, $reason);
+        });
+    }
+
+    /**
+     * 批量发货（Excel 导入：第一列订单号、第二列快递单号，统一快递公司）
+     *
+     * @param array<int, array<int, string>> $pairs
+     * @return array{total: int, success: int, fail: int, items: array}
+     */
+    public function orderBatchShip(int $aid, string $expressCompany, array $pairs): array
+    {
+        $expressCompany = trim($expressCompany);
+
+        if ('' === $expressCompany) {
+            throw new BusinessException('请选择快递公司');
+        }
+
+        $result = ['total' => count($pairs), 'success' => 0, 'fail' => 0, 'items' => []];
+
+        foreach ($pairs as $pair) {
+            $ordernum  = trim((string) ($pair[0] ?? ''));
+            $expressNo = trim((string) ($pair[1] ?? ''));
+
+            if ('' === $ordernum || '' === $expressNo) {
+                ++$result['fail'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => false, 'msg' => '订单号或快递单号为空'];
+                continue;
+            }
+
+            $order = ScopeService::query('collage_order', $aid)->where('ordernum', $ordernum)->find();
+
+            if (empty($order)) {
+                ++$result['fail'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => false, 'msg' => '订单不存在'];
+                continue;
+            }
+
+            try {
+                $this->orderSendExpress($aid, (int) $order['id'], $expressCompany, $expressNo);
+                ++$result['success'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => true, 'msg' => '发货成功'];
+            } catch (BusinessException $e) {
+                ++$result['fail'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => false, 'msg' => $e->getMessage()];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * 订单导出数据（xlsx 行数据；筛选口径同 orderList）
+     *
+     * @return array{0: array<int, string>, 1: array<int, array<int, mixed>>}
+     */
+    public function orderExportData(
+        int $aid,
+        string $status,
+        string $buytype,
+        string $ordernum,
+        string $linkman,
+        string $tel,
+        string $ctimeStart,
+        string $ctimeEnd,
+        int $teamId,
+        int $limit = 20000
+    ): array {
+        $query = ScopeService::query('collage_order', $aid);
+
+        if ('' !== $status && !str_starts_with($status, 'r')) {
+            $query->where('status', (int) $status);
+        } elseif (str_starts_with($status, 'r')) {
+            $query->where('refund_status', (int) substr($status, 1));
+        }
+
+        if ('' !== $buytype) {
+            $query->where('buytype', (int) $buytype);
+        }
+
+        if ($teamId > 0) {
+            $query->where('teamid', $teamId);
+        }
+
+        if ('' !== $ordernum) {
+            $query->where('ordernum', 'like', '%' . $ordernum . '%');
+        }
+
+        if ('' !== $linkman) {
+            $query->where('linkman', 'like', '%' . $linkman . '%');
+        }
+
+        if ('' !== $tel) {
+            $query->where('tel', 'like', '%' . $tel . '%');
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
+        }
+
+        $rows = $query->order('id', 'desc')->limit($limit)->select()->toArray();
+
+        $titles = ['订单号', '商品名称', '规格数量', '商品总价', '实付款', '支付方式', '收货人', '电话', '收货地址', '配送方式', '快递信息', '下单时间', '状态', '来源'];
+
+        $data = [];
+
+        foreach ($rows as $r) {
+            $item = $this->formatOrder($aid, $r);
+            $data[] = [
+                $item['ordernum'],
+                $item['proname'],
+                trim($item['ggname'] . ' × ' . $item['num']),
+                $item['product_price'],
+                $item['totalprice'],
+                $item['paytype'],
+                $item['linkman'],
+                $item['tel'],
+                $item['address'],
+                $item['freight_text'],
+                $item['express_com'] ? ($item['express_com'] . ' ' . $item['express_no']) : '',
+                date('Y-m-d H:i:s', $item['createtime']),
+                $item['status_text'] . ($item['refund_money'] > 0 ? '（已退¥' . $item['refund_money'] . '）' : ''),
+                $item['platform'],
+            ];
+        }
+
+        return [$titles, $data];
+    }
+
+    /* ================= 评价管理 ================= */
+
+    /**
+     * 评价列表（content 模糊 / ctime 时间范围 / status 审核态）
+     *
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function commentList(int $aid, string $content, string $ctimeStart, string $ctimeEnd, string $status, int $page, int $pageSize): array
+    {
+        $query = ScopeService::query('collage_comment', $aid);
+
+        if ('' !== $content) {
+            $query->where('content', 'like', '%' . $content . '%');
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
+        }
+
+        if ('' !== $status) {
+            $query->where('status', (int) $status);
+        }
+
+        $total = (clone $query)->count();
+
+        $rows = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+
+        $list = array_map(fn (array $r) => [
+            'id'            => (int) ($r['id'] ?? 0),
+            'proid'         => (int) ($r['proid'] ?? 0),
+            'proname'       => (string) ($r['proname'] ?? ''),
+            'propic'        => (string) ($r['propic'] ?? ''),
+            'ggname'        => (string) ($r['ggname'] ?? ''),
+            'nickname'      => (string) ($r['nickname'] ?? ''),
+            'headimg'       => (string) ($r['headimg'] ?? ''),
+            'score'         => (int) ($r['score'] ?? 5),
+            'content'       => (string) ($r['content'] ?? ''),
+            'content_pic'   => (string) ($r['content_pic'] ?? ''),
+            'reply_content' => (string) ($r['reply_content'] ?? ''),
+            'reply_time'    => (int) ($r['reply_time'] ?? 0),
+            'status'        => (int) ($r['status'] ?? 1),
+            'createtime'    => (int) ($r['createtime'] ?? 0),
+        ], $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 评价审核/批量审核（status=1 通过 / 0 不通过），回写商品好评聚合
+     */
+    public function commentSetst(int $aid, array $ids, int $status): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            throw new BusinessException('请选择要操作的评价');
+        }
+
+        if (1 !== $status && 0 !== $status) {
+            throw new BusinessException('非法的审核状态');
+        }
+
+        foreach ($ids as $id) {
+            $row = ScopeService::query('collage_comment', $aid)->where('id', $id)->find();
+
+            if (empty($row)) {
+                continue;
+            }
+
+            ScopeService::query('collage_comment', $aid)->where('id', $id)->update(['status' => $status]);
+
+            $proid = (int) ($row['proid'] ?? 0);
+
+            if ($proid > 0) {
+                $avgScore  = (float) ScopeService::query('collage_comment', $aid)->where('proid', $proid)->where('status', 1)->avg('score');
+                $num       = (int) ScopeService::query('collage_comment', $aid)->where('proid', $proid)->where('status', 1)->count();
+                $haoNum    = (int) ScopeService::query('collage_comment', $aid)->where('proid', $proid)->where('status', 1)->where('score', '>', 3)->count();
+                $score     = $num > 0 ? round($avgScore, 2) : 5;
+                $haoPercent = $num > 0 ? round($haoNum / $num * 100, 2) : 100;
+
+                ScopeService::query('collage_product', $aid)->where('id', $proid)->update([
+                    'comment_score'      => $score,
+                    'comment_num'       => $num,
+                    'comment_haopercent' => $haoPercent,
+                ]);
+            }
+        }
+    }
+
+    /**
+     * 评价详情
+     *
+     * @return array<string, mixed>
+     */
+    public function commentDetail(int $aid, int $id): array
+    {
+        $row = ScopeService::query('collage_comment', $aid)->where('id', $id)->find();
+
+        if (empty($row)) {
+            throw new BusinessException('评价不存在', 404, 404);
+        }
+
+        return [
+            'id'            => (int) ($row['id'] ?? 0),
+            'proid'         => (int) ($row['proid'] ?? 0),
+            'proname'       => (string) ($row['proname'] ?? ''),
+            'propic'        => (string) ($row['propic'] ?? ''),
+            'ggname'        => (string) ($row['ggname'] ?? ''),
+            'nickname'      => (string) ($row['nickname'] ?? ''),
+            'headimg'       => (string) ($row['headimg'] ?? ''),
+            'score'         => (int) ($row['score'] ?? 5),
+            'content'       => (string) ($row['content'] ?? ''),
+            'content_pic'   => (string) ($row['content_pic'] ?? ''),
+            'reply_content' => (string) ($row['reply_content'] ?? ''),
+            'reply_time'    => (int) ($row['reply_time'] ?? 0),
+            'status'        => (int) ($row['status'] ?? 1),
+            'createtime'    => (int) ($row['createtime'] ?? 0),
+        ];
+    }
+
+    /**
+     * 评价回复
+     */
+    public function commentReply(int $aid, int $id, string $content): void
+    {
+        $content = trim($content);
+
+        if ('' === $content) {
+            throw new BusinessException('请填写回复内容');
+        }
+
+        $comment = ScopeService::query('collage_comment', $aid)->where('id', $id)->find();
+
+        if (empty($comment)) {
+            throw new BusinessException('评价不存在');
+        }
+
+        ScopeService::query('collage_comment', $aid)->where('id', $id)->update([
+            'reply_content' => $content,
+            'reply_time'    => time(),
+            'status'        => 1, // 回复后自动转为已审核（对齐参考系统）
+        ]);
+    }
+
+    /**
+     * 删除评价（兼容单个 id 与批量 ids[]）
+     *
+     * @param int[] $ids
+     */
+    public function commentDelete(int $aid, array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的评价');
+        }
+
+        ScopeService::query('collage_comment', $aid)->whereIn('id', $ids)->delete();
     }
 
     /* ================= 定时任务：超时解散 ================= */
@@ -1507,6 +2007,11 @@ class CollageService
             'ischecked'    => (int) ($row['ischecked'] ?? 1),
             'check_reason' => (string) ($row['check_reason'] ?? ''),
             'detail'       => (string) ($row['detail'] ?? ''),
+            'goods_id'      => (int) ($row['goods_id'] ?? 0),
+            'no_discount'   => (int) ($row['no_discount'] ?? -1),
+            'freighttype'   => (int) ($row['freighttype'] ?? 0),
+            'leaderscore'   => (int) ($row['leaderscore'] ?? 0),
+            'commissionset' => (int) ($row['commissionset'] ?? 0),
             'createtime'   => (int) ($row['createtime'] ?? 0),
         ];
     }
@@ -1523,12 +2028,15 @@ class CollageService
         $createtime = (int) ($row['createtime'] ?? 0);
         $teamhour = (int) ($row['teamhour'] ?? 0);
 
-        $productName = (string) Db::name('collage_product')
+        $product = Db::name('collage_product')
             ->where('aid', $aid)
             ->where('id', (int) ($row['proid'] ?? 0))
-            ->value('name');
+            ->find();
 
-        // 团员列表（机器人订单标记机器人昵称）
+        $productName = (string) ($product['name'] ?? '');
+        $productPic  = (string) ($product['pic'] ?? '');
+
+        // 团员列表（机器人订单标记机器人昵称；脱敏手机号）
         $members = [];
         $orders  = Db::name('collage_order')
             ->where('aid', $aid)
@@ -1538,21 +2046,43 @@ class CollageService
             ->toArray();
 
         foreach ($orders as $order) {
-            $members[] = $this->buyerOf($aid, $order);
+            $m        = $this->buyerOf($aid, $order);
+            $tel      = (string) ($order['tel'] ?? '');
+            $m['tel_mask'] = $this->maskTel($tel);
+            $members[] = $m;
+        }
+
+        // 未占位的团员位置补空头像
+        $need = max(0, $teamnum - count($members));
+        for ($i = 0; $i < $need; ++$i) {
+            $members[] = ['mid' => 0, 'nickname' => '', 'headimg' => '', 'isjiqiren' => 0, 'tel_mask' => ''];
         }
 
         return [
             'id'            => $teamId,
             'proid'         => (int) ($row['proid'] ?? 0),
             'product_name'  => $productName,
+            'product_pic'   => $productPic,
             'teamnum'       => $teamnum,
-            'num'           => count($members),
+            'num'           => count($orders),
             'status'        => $status,
             'status_text'   => self::TEAM_STATUS_TEXT[$status] ?? '未知',
             'members'       => $members,
             'createtime'    => $createtime,
             'deadline'      => $createtime + $teamhour * 3600,
         ];
+    }
+
+    /** 手机号脱敏：178****11 */
+    protected function maskTel(string $tel): string
+    {
+        $tel = trim($tel);
+        $len = strlen($tel);
+        if ($len < 7) {
+            return $tel;
+        }
+
+        return substr($tel, 0, 3) . '****' . substr($tel, -2);
     }
 
     /**
@@ -1593,6 +2123,7 @@ class CollageService
             'ggname'          => (string) ($row['ggname'] ?? ''),
             'num'             => (int) ($row['num'] ?? 0),
             'sell_price'      => (float) ($row['sell_price'] ?? 0),
+            'product_price'   => (float) ($row['product_price'] ?? ($row['sell_price'] ?? 0) * (int) ($row['num'] ?? 1)),
             'totalprice'      => (float) ($row['totalprice'] ?? 0),
             'refund_money'    => (float) ($row['refund_money'] ?? 0),
             'refund_reason'   => (string) ($row['refund_reason'] ?? ''),
@@ -1603,7 +2134,10 @@ class CollageService
             'buyer'           => $this->buyerOf($aid, $row),
             'linkman'         => (string) ($row['linkman'] ?? ''),
             'tel'             => (string) ($row['tel'] ?? ''),
+            'area'            => (string) ($row['area'] ?? ''),
             'address'         => trim(((string) ($row['area'] ?? '')) . ' ' . ((string) ($row['address'] ?? ''))),
+            'freight_text'    => (string) ($row['freight_text'] ?? '包邮'),
+            'platform'        => $this->platformName((string) ($row['platform'] ?? '')),
             'express_com'     => (string) ($row['express_com'] ?? ''),
             'express_no'      => (string) ($row['express_no'] ?? ''),
             'paytype'         => (string) ($row['paytype'] ?? ''),
@@ -1611,6 +2145,19 @@ class CollageService
             'send_time'       => (int) ($row['send_time'] ?? 0),
             'createtime'      => (int) ($row['createtime'] ?? 0),
         ];
+    }
+
+    /** 来源平台文案（对标参考 getplatformname） */
+    protected function platformName(string $platform): string
+    {
+        return match ($platform) {
+            'wx'        => '微信公众号',
+            'wxapp'     => '微信小程序',
+            'h5'        => '手机H5',
+            'app'       => 'APP',
+            'alipay'    => '支付宝',
+            default     => '' !== $platform ? $platform : '-',
+        };
     }
 
     /**

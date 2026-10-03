@@ -1,80 +1,55 @@
 <script setup lang="ts">
+function onAvatarError(e: Event) { (e.target as HTMLImageElement).style.visibility = 'hidden' }
+
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  adjustScore,
-  getScoreConfig,
-  getScoreLog,
-  getScoreMemberList,
-  saveScoreConfig,
+  cancelScoreLog,
+  deleteScoreLog,
+  exportScoreLog,
+  getScoreLogList,
 } from '../../api/score'
-import type { ScoreLogItem, ScoreMemberItem } from '../../api/types'
+import type { ScoreLogItem as ScoreLogRow } from '../../api/score'
+import { assetUrl } from '../../api/upload'
 import { formatTime } from '../../utils/time'
 
-// ============ 积分配置 ============
-const configLoading = ref(false)
-const saving = ref(false)
-
-const config = reactive({
-  score_switch: 0,
-  score_ratio: 1,
-  pay_score: 0,
-})
-
-async function fetchConfig() {
-  configLoading.value = true
-  try {
-    const data = await getScoreConfig()
-    config.score_switch = data.score_switch
-    config.score_ratio = data.score_ratio
-    config.pay_score = data.pay_score
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    configLoading.value = false
-  }
-}
-
-async function handleSaveConfig() {
-  saving.value = true
-  try {
-    await saveScoreConfig({
-      score_switch: config.score_switch,
-      score_ratio: config.score_ratio,
-      pay_score: config.pay_score,
-    })
-    ElMessage.success('保存成功')
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    saving.value = false
-  }
-}
-
-// ============ 会员积分列表 ============
 const loading = ref(false)
-const tableData = ref<ScoreMemberItem[]>([])
+const exporting = ref(false)
+const tableData = ref<ScoreLogRow[]>([])
+const selectedRows = ref<ScoreLogRow[]>([])
 const total = ref(0)
+const statCount = ref(0)
 
 const query = reactive({
   page: 1,
   pagesize: 10,
-  keyword: '',
+  mid: '',
+  nickname: '',
+  remark: '',
+  timeRange: null as [string, string] | null,
 })
 
-async function fetchMembers() {
+function buildParams() {
+  return {
+    page: query.page,
+    pagesize: query.pagesize,
+    mid: query.mid ? Number(query.mid) : undefined,
+    nickname: query.nickname || undefined,
+    remark: query.remark || undefined,
+    start_date: query.timeRange?.[0] || undefined,
+    end_date: query.timeRange?.[1] || undefined,
+  }
+}
+
+async function fetchList() {
   loading.value = true
   try {
-    const data = await getScoreMemberList({
-      page: query.page,
-      pagesize: query.pagesize,
-      keyword: query.keyword || undefined,
-    })
+    const data = await getScoreLogList(buildParams())
     tableData.value = data.list || []
     total.value = data.total || 0
+    statCount.value = (data.stat && data.stat.count) || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     loading.value = false
   }
@@ -82,197 +57,169 @@ async function fetchMembers() {
 
 function handleSearch() {
   query.page = 1
-  fetchMembers()
-}
-
-function handleReset() {
-  query.keyword = ''
-  query.page = 1
-  fetchMembers()
+  fetchList()
 }
 
 function handlePageChange(page: number) {
   query.page = page
-  fetchMembers()
+  fetchList()
 }
 
 function handleSizeChange(size: number) {
   query.pagesize = size
   query.page = 1
-  fetchMembers()
+  fetchList()
 }
 
-// ============ 积分调整弹窗 ============
-const adjustVisible = ref(false)
-const adjustSubmitting = ref(false)
-const adjustTarget = ref<ScoreMemberItem | null>(null)
-const adjustFormRef = ref<FormInstance>()
-
-const adjustForm = reactive({
-  score: 0,
-  remark: '',
-})
-
-const adjustRules: FormRules = {
-  score: [
-    {
-      validator: (_rule, value: number, callback) => {
-        if (value === undefined || value === null || Number.isNaN(value)) {
-          callback(new Error('请输入调整积分'))
-        } else if (!Number.isInteger(value)) {
-          callback(new Error('积分必须为整数'))
-        } else if (value === 0) {
-          callback(new Error('调整积分不能为 0'))
-        } else {
-          callback()
-        }
-      },
-      trigger: 'blur',
-    },
-  ],
-  remark: [{ required: true, message: '请输入调整备注', trigger: 'blur' }],
+function handleSelectionChange(rows: ScoreLogRow[]) {
+  selectedRows.value = rows
 }
 
-function openAdjust(row: ScoreMemberItem) {
-  adjustTarget.value = row
-  adjustForm.score = 0
-  adjustForm.remark = ''
-  adjustVisible.value = true
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
 }
 
-async function handleAdjust() {
-  if (!adjustFormRef.value || !adjustTarget.value) return
-  await adjustFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    adjustSubmitting.value = true
-    try {
-      await adjustScore({
-        mid: adjustTarget.value!.mid,
-        score: adjustForm.score,
-        remark: adjustForm.remark,
-      })
-      ElMessage.success('调整成功')
-      adjustVisible.value = false
-      fetchMembers()
-    } catch {
-      // 错误提示已由 axios 拦截器统一弹出
-    } finally {
-      adjustSubmitting.value = false
-    }
-  })
-}
-
-// ============ 积分明细抽屉 ============
-const logVisible = ref(false)
-const logLoading = ref(false)
-const logTarget = ref<ScoreMemberItem | null>(null)
-const logData = ref<ScoreLogItem[]>([])
-const logTotal = ref(0)
-const logPage = ref(1)
-const logPagesize = ref(10)
-
-const LOG_TYPE_TEXT: Record<number, string> = {
-  1: '支付赠送',
-  2: '下单抵扣',
-  3: '取消返还',
-  4: '后台调整',
-}
-
-async function fetchLogs() {
-  if (!logTarget.value) return
-  logLoading.value = true
+async function handleExport() {
+  exporting.value = true
   try {
-    const data = await getScoreLog({
-      mid: logTarget.value.mid,
-      page: logPage.value,
-      pagesize: logPagesize.value,
-    })
-    logData.value = data.list || []
-    logTotal.value = data.total || 0
+    const blob = await exportScoreLog(buildParams())
+    downloadBlob(blob, `积分明细_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.xlsx`)
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
-    logLoading.value = false
+    exporting.value = false
   }
 }
 
-function openLog(row: ScoreMemberItem) {
-  logTarget.value = row
-  logPage.value = 1
-  logVisible.value = true
-  fetchLogs()
+async function doDelete(ids: number[]) {
+  await ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '操作确认', {
+    type: 'warning',
+    confirmButtonText: '确 定',
+    cancelButtonText: '取 消',
+  })
+  await deleteScoreLog({ ids })
+  ElMessage.success('删除成功')
+  fetchList()
 }
 
-function handleLogPageChange(page: number) {
-  logPage.value = page
-  fetchLogs()
+function handleBatchDelete() {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选数据')
+    return
+  }
+  doDelete(selectedRows.value.map((r) => r.id)).catch(() => {})
+}
+
+function handleRowDelete(row: ScoreLogRow) {
+  doDelete([row.id]).catch(() => {})
+}
+
+async function handleRowCancel(row: ScoreLogRow) {
+  try {
+    await ElMessageBox.confirm('确定要撤销吗?', '操作确认', {
+      type: 'warning',
+      confirmButtonText: '确 定',
+      cancelButtonText: '取 消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await cancelScoreLog({ id: row.id })
+    ElMessage.success('撤销成功')
+    fetchList()
+  } catch {
+    // 拦截器统一提示
+  }
 }
 
 onMounted(() => {
-  fetchConfig()
-  fetchMembers()
+  fetchList()
 })
 </script>
 
 <template>
   <div>
-    <!-- 积分配置卡 -->
-    <el-card v-loading="configLoading" shadow="never" class="config-card">
-      <template #header>
-        <span class="card-title">积分配置</span>
-      </template>
-      <el-form inline>
-        <el-form-item label="积分功能">
-          <el-switch
-            v-model="config.score_switch"
-            :active-value="1"
-            :inactive-value="0"
-            active-text="开启"
-            inactive-text="关闭"
+    <!-- 工具栏一行：批量删除 + 导出 + 搜索 + 绿色放大镜 -->
+    <el-card shadow="never" class="toolbar-card">
+      <el-form inline @submit.prevent>
+        <el-form-item>
+          <el-button :disabled="selectedRows.length === 0" @click="handleBatchDelete">删除</el-button>
+          <el-button :loading="exporting" @click="handleExport">导出EXCEL</el-button>
+        </el-form-item>
+        <el-form-item label="会员ID">
+          <el-input v-model="query.mid" placeholder="会员ID" clearable style="width: 100px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="昵称">
+          <el-input v-model="query.nickname" placeholder="昵称" clearable style="width: 120px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="时间">
+          <el-date-picker
+            v-model="query.timeRange"
+            type="daterange"
+            range-separator="至"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            style="width: 230px"
           />
         </el-form-item>
-        <el-form-item label="抵扣比例">
-          <el-input-number v-model="config.score_ratio" :min="1" :step="1" />
-          <span class="form-tip">N 积分抵 1 元</span>
-        </el-form-item>
-        <el-form-item label="支付赠送">
-          <el-input-number v-model="config.pay_score" :min="0" :step="1" />
-          <span class="form-tip">每满 1 元送 N 积分</span>
+        <el-form-item label="备注">
+          <el-input v-model="query.remark" placeholder="备注" clearable style="width: 120px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="saving" @click="handleSaveConfig">
-            保存配置
+          <el-button type="success" class="search-icon-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z"/></svg>
           </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- 会员积分列表 -->
-    <el-card shadow="never">
-      <el-form inline @submit.prevent>
-        <el-form-item label="手机号">
-          <el-input
-            v-model="query.keyword"
-            placeholder="会员手机号"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-        </el-form-item>
-      </el-form>
-
-      <el-table v-loading="loading" :data="tableData" stripe>
-        <el-table-column prop="mid" label="会员ID" width="100" />
-        <el-table-column prop="phone" label="手机号" width="150" />
-        <el-table-column prop="score" label="当前积分" width="120" />
-        <el-table-column label="操作" width="160">
+    <!-- 表格 -->
+    <el-card shadow="never" class="table-card">
+      <div class="table-stat">
+        <span>总记录 <b>{{ statCount }}</b></span>
+      </div>
+      <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="mid" label="会员ID" width="80" />
+        <el-table-column label="会员信息" min-width="160">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openAdjust(row)">调整</el-button>
-            <el-button link type="primary" @click="openLog(row)">明细</el-button>
+            <div class="member-cell">
+              <img v-if="row.headimg" :src="assetUrl(row.headimg)" class="member-avatar" @error="onAvatarError" alt="" />
+              <span>{{ row.nickname || ('会员' + row.mid) }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="变更积分" width="110">
+          <template #default="{ row }">
+            <span :class="Number(row.score) >= 0 ? 'money-plus' : 'money-minus'">
+              {{ Number(row.score) >= 0 ? '+' : '' }}{{ row.score }}
+            </span>
+          </template>
+        </el-table-column>
+        <el-table-column label="变更后剩余" width="110">
+          <template #default="{ row }">{{ row.after_score }}</template>
+        </el-table-column>
+        <el-table-column label="变更时间" width="150">
+          <template #default="{ row }">{{ row.create_time ? formatTime(row.create_time) : '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" min-width="140" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.remark || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="120">
+          <template #default="{ row }">
+            <div class="row-ops">
+              <el-button v-if="row.can_cancel" link type="warning" @click="handleRowCancel(row)">撤销</el-button>
+              <el-button v-if="row.can_delete" link type="danger" @click="handleRowDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -289,110 +236,92 @@ onMounted(() => {
         @size-change="handleSizeChange"
       />
     </el-card>
-
-    <!-- 积分调整弹窗 -->
-    <el-dialog v-model="adjustVisible" title="积分调整" width="420px">
-      <el-form
-        ref="adjustFormRef"
-        :model="adjustForm"
-        :rules="adjustRules"
-        label-width="90px"
-        label-position="left"
-      >
-        <el-form-item label="会员">
-          <span>{{ adjustTarget?.phone }}（ID：{{ adjustTarget?.mid }}）</span>
-        </el-form-item>
-        <el-form-item label="当前积分">
-          <span>{{ adjustTarget?.score }}</span>
-        </el-form-item>
-        <el-form-item label="调整积分" prop="score">
-          <el-input-number v-model="adjustForm.score" :step="1" />
-          <span class="form-tip">正数加分，负数扣分</span>
-        </el-form-item>
-        <el-form-item label="调整备注" prop="remark">
-          <el-input
-            v-model="adjustForm.remark"
-            type="textarea"
-            :rows="3"
-            placeholder="请输入调整原因"
-          />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="adjustVisible = false">取消</el-button>
-        <el-button type="primary" :loading="adjustSubmitting" @click="handleAdjust">
-          确定
-        </el-button>
-      </template>
-    </el-dialog>
-
-    <!-- 积分明细抽屉 -->
-    <el-drawer
-      v-model="logVisible"
-      :title="`积分明细 - ${logTarget?.phone || ''}`"
-      size="640px"
-    >
-      <el-table v-loading="logLoading" :data="logData" stripe>
-        <el-table-column label="变动积分" width="110">
-          <template #default="{ row }">
-            <span :class="row.score > 0 ? 'score-plus' : 'score-minus'">
-              {{ row.score > 0 ? `+${row.score}` : row.score }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column label="类型" width="110">
-          <template #default="{ row }">{{ LOG_TYPE_TEXT[row.type] || '未知' }}</template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="160" show-overflow-tooltip />
-        <el-table-column label="时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.create_time) }}</template>
-        </el-table-column>
-      </el-table>
-
-      <el-pagination
-        class="pagination"
-        background
-        layout="total, prev, pager, next"
-        :total="logTotal"
-        :current-page="logPage"
-        :page-size="logPagesize"
-        @current-change="handleLogPageChange"
-      />
-    </el-drawer>
   </div>
 </template>
 
 <style scoped>
-.config-card {
-  margin-bottom: 16px;
+.toolbar-card {
+  margin-bottom: 8px;
 }
-
-.card-title {
+.toolbar-card :deep(.el-card__body) {
+  padding: 8px 12px;
+}
+.toolbar-card :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
+}
+.toolbar-card :deep(.el-form-item__label) {
+  padding-right: 6px;
+}
+.search-icon-btn {
+  padding: 8px 14px;
+}
+.search-icon-btn svg {
+  display: block;
+}
+.table-card :deep(.el-card__body) {
+  padding: 5px;
+}
+.table-stat {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 2px 4px 6px;
+  font-size: 12px;
+  color: #606266;
+}
+.table-stat b {
+  color: #303133;
   font-weight: 600;
 }
-
-.config-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+.table-card :deep(.el-table__header-wrapper th.el-table__cell) {
+  background: #e6e6e6;
 }
-
-.form-tip {
-  margin-left: 8px;
-  color: #909399;
+.table-card :deep(.el-table .cell) {
+  text-align: left;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.table-card :deep(.el-table td.el-table__cell) {
+  padding: 3px 0;
+}
+.member-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.member-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  white-space: nowrap;
+  align-items: center;
+}
+.row-ops :deep(.el-button) {
+  height: auto;
+  padding: 0;
+  margin: 0;
   font-size: 12px;
 }
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-.score-plus {
-  color: #67c23a;
+.money-plus {
+  color: #03bc01;
   font-weight: 600;
 }
-
-.score-minus {
+.money-minus {
   color: #f56c6c;
   font-weight: 600;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
 }
 </style>

@@ -26,6 +26,9 @@ class ScoreshopService
     public const STATUS_FINISHED = 3;
     public const STATUS_CLOSED   = 4;
 
+    /** 退款状态文案 */
+    public const REFUND_TEXT = [0 => '', 1 => '已退款', 2 => '退款中', 3 => '拒绝退款'];
+
     /** 定时任务单轮扫描上限 */
     protected const SCAN_LIMIT = 500;
 
@@ -334,27 +337,45 @@ class ScoreshopService
         $buymax = max(0, (int) ($data['buymax'] ?? 0));
 
         $product = [
-            'cid'         => $cid,
-            'name'        => $name,
-            'pic'         => trim((string) ($data['pic'] ?? '')),
-            'pics'        => trim((string) ($data['pics'] ?? '')),
-            'detail'      => (string) ($data['detail'] ?? ''),
-            'sell_price'  => $this->money($data['sell_price'] ?? 0), // 市场价（划线价）
-            'cost_price'  => $this->money($data['cost_price'] ?? 0),
-            'score_price' => $scorePrice,
-            'money_price' => $moneyPrice,
-            'buymax'      => $buymax,
-            'sort'        => (int) ($data['sort'] ?? 0),
-            'status'      => array_key_exists('status', $data) ? ((int) $data['status'] ? 1 : 0) : 1,
+            'cid'             => $cid,
+            'name'            => $name,
+            'pic'             => trim((string) ($data['pic'] ?? '')),
+            'pics'            => trim((string) ($data['pics'] ?? '')),
+            'detail'          => (string) ($data['detail'] ?? ''),
+            'sell_price'      => $this->money($data['sell_price'] ?? 0), // 市场价（划线价）
+            'cost_price'      => $this->money($data['cost_price'] ?? 0),
+            'score_price'     => $scorePrice,
+            'money_price'     => $moneyPrice,
+            'buymax'          => $buymax,
+            'everyday_buymax' => max(0, (int) ($data['everyday_buymax'] ?? 0)),
+            'lvprice'         => !empty($data['lvprice']) ? 1 : 0,
+            'weight'          => max(0, (int) ($data['weight'] ?? 0)),
+            'sort'            => (int) ($data['sort'] ?? 0),
+            'status'          => array_key_exists('status', $data) ? ((int) $data['status'] ? 1 : 0) : 1,
+            // 配送模板：1全部模板 0选择模板 3自动发货 4在线卡密
+            'freighttype'     => (int) ($data['freighttype'] ?? 1),
+            'freightdata'     => trim((string) ($data['freightdata'] ?? '')),
+            'freightcontent' => trim((string) ($data['freightcontent'] ?? '')),
+            'contact_require' => !empty($data['contact_require']) ? 1 : 0,
+            // 分销设置：0按会员等级 1单独比例 2单独金额 3送积分 5比例+积分 -1不参与
+            'commissionset'   => array_key_exists('commissionset', $data) ? (int) $data['commissionset'] : 0,
+            'commissiondata1'  => $this->encodeJson($data['commissiondata1'] ?? null),
+            'commissiondata2'  => $this->encodeJson($data['commissiondata2'] ?? null),
+            'commissiondata3'  => $this->encodeJson($data['commissiondata3'] ?? null),
+            'commissiondata5'  => $this->encodeJson($data['commissiondata5'] ?? null),
+            // 显示/购买条件（数组→逗号串，-1 所有人）
+            'showtj'          => $this->encodeTj($data['showtj'] ?? ['-1']),
+            'gettj'           => $this->encodeTj($data['gettj'] ?? ['-1']),
         ];
 
         if ($id > 0) {
             $this->findProduct($aid, $id);
+            // 编辑不覆盖已累计销量
             Db::name('scoreshop_product')->where('aid', $aid)->where('id', $id)->update($product);
         } else {
             $product['aid']        = $aid;
             $product['bid']        = 0;
-            $product['sales']      = 0;
+            $product['sales']      = max(0, (int) ($data['sales'] ?? 0));
             $product['stock']      = max(0, (int) ($data['stock'] ?? 100));
             $product['createtime'] = time();
             $id                    = (int) Db::name('scoreshop_product')->insertGetId($product);
@@ -483,13 +504,26 @@ class ScoreshopService
             'totalprice'  => (float) ($row['totalprice'] ?? 0),
             'totalnum'    => (int) ($row['totalnum'] ?? 1),
             'status'      => (int) ($row['status'] ?? 0),
+            'freight_type' => (int) ($row['freight_type'] ?? 0),
+            'freight_text' => (string) ($row['freight_text'] ?? ''),
             'linkman'     => (string) ($row['linkman'] ?? ''),
             'tel'         => (string) ($row['tel'] ?? ''),
+            'area'        => (string) ($row['area'] ?? ''),
             'address'     => trim(((string) ($row['area'] ?? '')) . ' ' . ((string) ($row['address'] ?? ''))),
+            'express_com' => (string) ($row['express_com'] ?? ''),
+            'express_no'  => (string) ($row['express_no'] ?? ''),
+            'mdid'        => (int) ($row['mdid'] ?? 0),
+            'refund_status' => (int) ($row['refund_status'] ?? 0),
+            'refund_text' => self::REFUND_TEXT[(int) ($row['refund_status'] ?? 0)] ?? '',
+            'refund_money' => (float) ($row['refund_money'] ?? 0),
             'paytype'     => (string) ($row['paytype'] ?? ''),
+            'platform'    => (string) ($row['platform'] ?? ''),
+            'platform_text' => (string) ($row['platform'] ?? ''),
+            'hexiao_code' => (string) ($row['hexiao_code'] ?? ''),
             'createtime'  => (int) ($row['createtime'] ?? 0),
             'paytime'     => (int) ($row['paytime'] ?? 0),
             'send_time'   => (int) ($row['send_time'] ?? 0),
+            'collect_time' => (int) ($row['collect_time'] ?? 0),
             'remark'      => (string) ($row['remark'] ?? ''),
             'goods'       => $goodsMap[(int) $row['id']] ?? [],
         ], $rows);
@@ -1059,8 +1093,12 @@ class ScoreshopService
 
             $row = [
                 'name'        => trim((string) ($gg['name'] ?? '')) ?: '默认',
+                'pic'         => trim((string) ($gg['pic'] ?? '')),
+                'market_price' => $this->money($gg['market_price'] ?? 0),
+                'cost_price'  => $this->money($gg['cost_price'] ?? 0),
                 'score_price' => $ggScore,
                 'money_price' => $ggMoney,
+                'weight'      => max(0, (int) ($gg['weight'] ?? 0)),
                 'stock'       => max(0, (int) ($gg['stock'] ?? 0)),
             ];
 
@@ -1077,10 +1115,490 @@ class ScoreshopService
     }
 
     /**
+     * 商品详情（编辑回填）
+     *
+     * @return array<string, mixed>
+     */
+    public function productDetail(int $aid, int $id): array
+    {
+        $row = $this->findProduct($aid, $id);
+
+        $guiges = ScopeService::query('scoreshop_guige', $aid)
+            ->where('proid', $id)->order('id', 'asc')->select()->toArray();
+
+        $guige = array_map(static fn (array $g): array => [
+            'id'          => (int) $g['id'],
+            'name'        => (string) ($g['name'] ?? '默认规格'),
+            'pic'         => (string) ($g['pic'] ?? ''),
+            'market_price' => (float) ($g['market_price'] ?? 0),
+            'cost_price'  => (float) ($g['cost_price'] ?? 0),
+            'score_price' => (int) ($g['score_price'] ?? 0),
+            'money_price' => (float) ($g['money_price'] ?? 0),
+            'weight'      => (int) ($g['weight'] ?? 0),
+            'stock'       => (int) ($g['stock'] ?? 0),
+        ], $guiges);
+
+        return [
+            'id'              => (int) $row['id'],
+            'cid'             => (int) $row['cid'],
+            'name'            => (string) $row['name'],
+            'pic'             => (string) ($row['pic'] ?? ''),
+            'pics'            => (string) ($row['pics'] ?? ''),
+            'detail'          => (string) ($row['detail'] ?? ''),
+            'sell_price'      => (float) ($row['sell_price'] ?? 0),
+            'cost_price'      => (float) ($row['cost_price'] ?? 0),
+            'score_price'     => (int) $row['score_price'],
+            'money_price'     => (float) $row['money_price'],
+            'buymax'          => (int) ($row['buymax'] ?? 0),
+            'everyday_buymax' => (int) ($row['everyday_buymax'] ?? 0),
+            'lvprice'         => (int) ($row['lvprice'] ?? 0),
+            'weight'          => (int) ($row['weight'] ?? 0),
+            'sales'           => (int) ($row['sales'] ?? 0),
+            'stock'           => (int) ($row['stock'] ?? 0),
+            'sort'            => (int) ($row['sort'] ?? 0),
+            'status'          => (int) ($row['status'] ?? 0),
+            'freighttype'     => (int) ($row['freighttype'] ?? 1),
+            'freightdata'     => (string) ($row['freightdata'] ?? ''),
+            'freightcontent'  => (string) ($row['freightcontent'] ?? ''),
+            'contact_require' => (int) ($row['contact_require'] ?? 0),
+            'commissionset'   => (int) ($row['commissionset'] ?? 0),
+            'commissiondata1'  => $this->decodeJson((string) ($row['commissiondata1'] ?? '')),
+            'commissiondata2'  => $this->decodeJson((string) ($row['commissiondata2'] ?? '')),
+            'commissiondata3'  => $this->decodeJson((string) ($row['commissiondata3'] ?? '')),
+            'commissiondata5'  => $this->decodeJson((string) ($row['commissiondata5'] ?? '')),
+            'showtj'          => $this->decodeTj((string) ($row['showtj'] ?? '-1')),
+            'gettj'           => $this->decodeTj((string) ($row['gettj'] ?? '-1')),
+            'guige'           => $guige,
+        ];
+    }
+
+    /* ================= 订单后台操作 ================= */
+
+    /**
+     * 手动快递发货（status=1→2）
+     */
+    public function orderSendExpress(int $aid, int $orderId, string $expressCom, string $expressNo): void
+    {
+        $expressCom = trim($expressCom);
+        $expressNo = trim($expressNo);
+        if ('' === $expressCom || '' === $expressNo) {
+            throw new BusinessException('请填写快递公司与快递单号');
+        }
+        $order = ScopeService::query('scoreshop_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+        if (self::STATUS_PAID !== (int) $order['status']) {
+            throw new BusinessException('仅已支付订单可发货');
+        }
+        Db::name('scoreshop_order')->where('aid', $aid)->where('id', $orderId)->update([
+            'express_com' => $expressCom,
+            'express_no'  => $expressNo,
+            'send_time'   => time(),
+            'status'      => self::STATUS_SHIPPED,
+        ]);
+    }
+
+    /**
+     * 到店核销（自提订单 status=1→3，写核销记录）
+     */
+    public function orderHexiao(int $aid, int $orderId): void
+    {
+        Db::transaction(function () use ($aid, $orderId) {
+            $order = Db::name('scoreshop_order')->where('aid', $aid)->where('id', $orderId)->lock(true)->find();
+            if (empty($order)) {
+                throw new BusinessException('订单不存在', 404, 404);
+            }
+            if (self::STATUS_PAID !== (int) $order['status']) {
+                throw new BusinessException('仅已支付订单可核销');
+            }
+            Db::name('hexiao_order')->insert([
+                'aid'        => $aid,
+                'bid'        => 0,
+                'uid'        => 0,
+                'mid'        => (string) ($order['mid'] ?? ''),
+                'orderid'    => $orderId,
+                'ordernum'   => (string) $order['ordernum'],
+                'title'      => (string) ($order['title'] ?? ''),
+                'createtime' => time(),
+                'remark'     => '积分兑换到店核销',
+                'type'       => 'scoreshop',
+                'mdid'       => (int) ($order['mdid'] ?? 0),
+            ]);
+            Db::name('scoreshop_order')->where('id', $orderId)->update([
+                'status'       => self::STATUS_FINISHED,
+                'collect_time' => time(),
+            ]);
+        });
+    }
+
+    /**
+     * 退款（已支付/已发货 → 已关闭/已退款）
+     */
+    public function orderRefund(int $aid, int $orderId, string $reason): void
+    {
+        $order = ScopeService::query('scoreshop_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+        if (!in_array((int) $order['status'], [self::STATUS_PAID, self::STATUS_SHIPPED], true)) {
+            throw new BusinessException('仅已支付/已发货订单可退款');
+        }
+        Db::name('scoreshop_order')->where('aid', $aid)->where('id', $orderId)->update([
+            'status'         => self::STATUS_CLOSED,
+            'refund_status'  => 2,
+            'refund_reason'  => trim($reason),
+            'refund_money'   => (float) $order['totalprice'],
+            'refund_time'    => time(),
+        ]);
+    }
+
+    /**
+     * 配送（同城配送员派单，写 mdid，status=1→2）
+     */
+    public function orderDeliver(int $aid, int $orderId, int $mdid): void
+    {
+        $order = ScopeService::query('scoreshop_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+        if (self::STATUS_PAID !== (int) $order['status']) {
+            throw new BusinessException('仅已支付订单可派配送');
+        }
+        Db::name('scoreshop_order')->where('aid', $aid)->where('id', $orderId)->update([
+            'mdid'      => $mdid,
+            'send_time' => time(),
+            'status'    => self::STATUS_SHIPPED,
+        ]);
+    }
+
+    /**
+     * 改为已支付（未支付→已支付）
+     */
+    public function orderIspay(int $aid, int $orderId): void
+    {
+        $order = ScopeService::query('scoreshop_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        if (0 !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改为已支付');
+        }
+        Db::name('scoreshop_order')->where('aid', $aid)->where('id', $orderId)->update([
+            'status'  => 1,
+            'paytime' => time(),
+            'paytype' => '后台支付',
+        ]);
+    }
+
+    /**
+     * 删除订单
+     *
+     * @param array<int,int> $ids
+     */
+    public function orderDelete(int $aid, array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的订单');
+        }
+        Db::name('scoreshop_order')->where('aid', $aid)->whereIn('id', $ids)->delete();
+        Db::name('scoreshop_order_goods')->where('aid', $aid)->whereIn('orderid', $ids)->delete();
+    }
+
+    /**
+     * 快递公司下拉
+     *
+     * @return array<int,array{code:string,name:string}>
+     */
+    public function expressOptions(): array
+    {
+        $list = [];
+        foreach (\app\common\Kdniao::expressData() as $code => $info) {
+            $list[] = ['code' => (string) $code, 'name' => (string) ($info['name'] ?? $code)];
+        }
+        return $list;
+    }
+
+    /**
+     * 可分销会员等级
+     *
+     * @return array<int,array{id:int,name:string,can_agent:int}>
+     */
+    public function agentLevels(int $aid): array
+    {
+        $rows = Db::name('member_level')->where('aid', $aid)->where('can_agent', '>', 0)
+            ->order('sort', 'asc')->order('id', 'asc')->field('id, name, can_agent')->select()->toArray();
+        return array_map(static fn (array $r): array => [
+            'id' => (int) $r['id'],
+            'name' => (string) $r['name'],
+            'can_agent' => (int) $r['can_agent'],
+        ], $rows);
+    }
+
+    /**
+     * 配送员列表（同城配送弹窗用）
+     *
+     * @return array<int,array{id:int,name:string,mobile:string,doing:int}>
+     */
+    public function deliveryStaff(int $aid): array
+    {
+        try {
+            $rows = Db::name('peisong')->where('aid', $aid)->where('status', 1)->field('id, name, mobile')->select()->toArray();
+        } catch (\Throwable $e) {
+            $rows = [];
+        }
+        $out = [];
+        foreach ($rows as $r) {
+            $doing = (int) Db::name('scoreshop_order')->where('aid', $aid)
+                ->where('mdid', (int) $r['id'])->where('status', self::STATUS_SHIPPED)->count();
+            $out[] = ['id' => (int) $r['id'], 'name' => (string) $r['name'], 'mobile' => (string) $r['mobile'], 'doing' => $doing];
+        }
+        return $out;
+    }
+
+    /**
+     * 物流轨迹（快递鸟）
+     *
+     * @return array{express_com:string,express_no:string,traces:array}
+     */
+    public function orderTrace(int $aid, int $orderId): array
+    {
+        $order = ScopeService::query('scoreshop_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+        $expressNo = trim((string) ($order['express_no'] ?? ''));
+        $expressCom = trim((string) ($order['express_com'] ?? ''));
+        if ('' === $expressNo) {
+            throw new BusinessException('该订单尚未发货，暂无物流轨迹');
+        }
+        $shipperCode = '';
+        foreach (\app\common\Kdniao::expressData() as $code => $info) {
+            if ('' !== $expressCom && (string) ($info['name'] ?? '') === $expressCom) {
+                $shipperCode = (string) $code;
+                break;
+            }
+        }
+        if ('' === $shipperCode) {
+            $shipperCode = $expressCom;
+        }
+        $kdniao = new \app\common\Kdniao($aid, 0);
+        $res = $kdniao->trace($shipperCode, $expressNo, (string) ($order['ordernum'] ?? ''));
+        $traces = [];
+        if (1 === (int) ($res['status'] ?? 0)) {
+            foreach ((array) ($res['data']['Traces'] ?? []) as $t) {
+                $traces[] = ['time' => (string) ($t['AcceptTime'] ?? ''), 'station' => (string) ($t['AcceptStation'] ?? '')];
+            }
+        } else {
+            $traces[] = ['time' => date('Y-m-d H:i:s'), 'station' => (string) ($res['message'] ?? '暂无轨迹')];
+        }
+        return ['express_com' => $expressCom, 'express_no' => $expressNo, 'traces' => $traces];
+    }
+
+    /**
+     * 批量发货（Excel：订单号+快递单号）
+     *
+     * @param array<string,string> $rows
+     * @return array{success:int,fail:int,fail_list:array}
+     */
+    public function orderBatchSend(int $aid, string $expressCom, array $rows): array
+    {
+        $success = 0;
+        $failList = [];
+        foreach ($rows as $ordernum => $expressNo) {
+            $ordernum = trim((string) $ordernum);
+            $expressNo = trim((string) $expressNo);
+            if ('' === $ordernum || '' === $expressNo) { continue; }
+            $order = ScopeService::query('scoreshop_order', $aid)->where('ordernum', $ordernum)->find();
+            if (empty($order)) { $failList[] = $ordernum . '：订单不存在'; continue; }
+            if ((int) $order['status'] !== self::STATUS_PAID) {
+                $failList[] = $ordernum . '：仅已支付订单可发货';
+                continue;
+            }
+            Db::name('scoreshop_order')->where('aid', $aid)->where('id', (int) $order['id'])->update([
+                'express_com' => $expressCom,
+                'express_no'  => $expressNo,
+                'send_time'   => time(),
+                'status'      => self::STATUS_SHIPPED,
+            ]);
+            $success++;
+        }
+        return ['success' => $success, 'fail' => count($failList), 'fail_list' => $failList];
+    }
+
+    /**
+     * 送货单打印数据（按订单自动生成售货单）
+     *
+     * @return array<string, mixed>
+     */
+    public function orderShdData(int $aid, int $orderId): array
+    {
+        $order = ScopeService::query('scoreshop_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+
+        $goodsRows = Db::name('scoreshop_order_goods')
+            ->where('aid', $aid)
+            ->where('orderid', $orderId)
+            ->order('id', 'asc')
+            ->select()
+            ->toArray();
+
+        $items = [];
+        foreach ($goodsRows as $og) {
+            $items[] = [
+                'name'  => trim((string) $og['name'] . ((string) $og['ggname'] !== '' ? '（' . $og['ggname'] . '）' : '')),
+                'num'   => (int) $og['num'],
+                'price' => (float) $og['money_price'],
+                'money' => (float) ($og['totalmoney'] ?? ($og['money_price'] * $og['num'])),
+                'score' => (int) ($og['totalscore'] ?? 0),
+            ];
+        }
+
+        $sysset = Db::name('shop_sysset')->where('aid', $aid)->field('shipping_pagetitle,shipping_pagenum,shipping_linenum')->find();
+
+        $freightPrice = (float) ($order['freight_price'] ?? 0);
+        $totalprice   = (float) ($order['totalprice'] ?? 0);
+
+        return [
+            'title'         => (string) ($sysset['shipping_pagetitle'] ?? '') !== '' ? (string) $sysset['shipping_pagetitle'] : '送货单',
+            'pagenum'       => max(1, (int) ($sysset['shipping_pagenum'] ?? 8)),
+            'linenum'       => max(0, (int) ($sysset['shipping_linenum'] ?? 2)),
+            'ordernum'      => (string) $order['ordernum'],
+            'linkman'       => (string) $order['linkman'],
+            'tel'           => (string) $order['tel'],
+            'address'       => trim((string) ($order['area'] ?? '') . ' ' . (string) $order['address']),
+            'createtime'    => (int) $order['createtime'],
+            'goods'         => $items,
+            'freight_price' => $freightPrice,
+            'totalprice'    => $totalprice,
+            'totalscore'    => (int) ($order['totalscore'] ?? 0),
+            'total_upper'   => $this->moneyUpper($totalprice),
+            'message'       => (string) ($order['message'] ?? ''),
+        ];
+    }
+    /**
+     * 送货单打印数据
+     *
+     * @param array<int,int> $orderIds
+     * @return array<int,array<string,mixed>>
+     */
+    public function orderSonghuo(int $aid, array $orderIds): array
+    {
+        $orderIds = array_values(array_filter(array_map('intval', $orderIds)));
+        if (empty($orderIds)) { throw new BusinessException('请选择订单'); }
+        $rows = ScopeService::query('scoreshop_order', $aid)->whereIn('id', $orderIds)->select()->toArray();
+        return array_map(static function (array $o): array {
+            return [
+                'ordernum'    => (string) $o['ordernum'],
+                'title'       => (string) $o['title'],
+                'totalnum'    => (int) $o['totalnum'],
+                'linkman'     => (string) $o['linkman'],
+                'tel'         => (string) $o['tel'],
+                'address'     => trim((string) $o['area'] . (string) $o['address']),
+                'totalscore'  => (int) $o['totalscore'],
+                'totalprice'  => (float) $o['totalprice'],
+                'express_com' => (string) ($o['express_com'] ?? ''),
+                'express_no'  => (string) ($o['express_no'] ?? ''),
+                'createtime'  => (int) $o['createtime'],
+            ];
+        }, $rows);
+    }
+
+    /* ================= 内部辅助 ================= */
+
+    /**
+     * @param array<string,mixed>|null $value
+     */
+    protected function encodeJson($value): string
+    {
+        if (null === $value || '' === $value || [] === (array) $value) {
+            return '';
+        }
+        return (string) json_encode($value, JSON_UNESCAPED_UNICODE);
+    }
+
+    /**
+     * @return array<string,mixed>
+     */
+    protected function decodeJson(string $value): array
+    {
+        $value = trim($value);
+        if ('' === $value) {
+            return [];
+        }
+        $decoded = json_decode($value, true);
+        return is_array($decoded) ? $decoded : [];
+    }
+
+    /**
+     * @param array<int,mixed> $tj
+     */
+    protected function encodeTj(array $tj): string
+    {
+        $tj = array_values(array_map('strval', $tj));
+        $tj = array_filter($tj, static fn ($v) => '' !== $v);
+        if (empty($tj)) {
+            return '-1';
+        }
+        if (in_array('-1', $tj, true)) {
+            return '-1';
+        }
+        return implode(',', $tj);
+    }
+
+    /**
+     * @return array<int,string>
+     */
+    protected function decodeTj(string $value): array
+    {
+        $value = trim($value);
+        if ('' === $value || '-1' === $value) {
+            return ['-1'];
+        }
+        return array_values(explode(',', $value));
+    }
+
+    /**
      * 金额归一：保留两位（round(x*100)/100 口径）
      */
     protected function money(mixed $value): float
     {
         return round((float) $value * 100) / 100;
+    }
+
+    /**
+     * 金额大写（人民币）
+     */
+    protected function moneyUpper(float $money): string
+    {
+        $money = round($money, 2);
+        if ($money <= 0) { return '零元整'; }
+        $digits = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
+        $units  = ['分', '角', '元', '拾', '佰', '仟', '万', '拾', '佰', '仟', '亿'];
+        $str    = number_format($money, 2, '.', '');
+        $parts  = explode('.', $str);
+        $zheng  = (int) $parts[0];
+        $fen    = (int) ($parts[1] ?? 0);
+        $result = '';
+        if ($zheng > 0) {
+            $zs = (string) $zheng;
+            $len = strlen($zs);
+            for ($i = 0; $i < $len; ++$i) {
+                $n = (int) $zs[$i];
+                $u = $units[$len - $i + 1];
+                $result .= $digits[$n] . $u;
+            }
+            $result .= '整';
+        }
+        if ($fen > 0) {
+            $jiao = intdiv($fen, 10);
+            $fc   = $fen % 10;
+            if ($jiao > 0) { $result .= $digits[$jiao] . '角'; }
+            if ($fc > 0)   { $result .= $digits[$fc] . '分'; }
+        }
+        return '' !== $result ? $result : '零元整';
     }
 }

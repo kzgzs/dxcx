@@ -86,9 +86,10 @@ export interface ArticleSetData {
   title_size: number
   share_score: number
   share_score_max_perday: number
-  reward_status: number
-  money_data: string
-  score_data: string
+  // 打赏相关字段：本后台设置页不编辑，后端 save 仅更新提交字段，故可选
+  reward_status?: number
+  money_data?: string
+  score_data?: string
 }
 
 export interface ArticleListQuery {

@@ -1,80 +1,76 @@
 <script setup lang="ts">
+// 用户论坛 - 系统设置（对齐点大 Luntan/sysset）
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getLuntanSysset, saveLuntanSysset } from '../../api/luntan'
+import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import LinkPicker from '../../components/LinkPicker.vue'
 
 const loading = ref(false)
 const saving = ref(false)
 
 const form = reactive({
+  status: 1 as number,
   title: '',
   pic: '',
   picurl: '',
-  sendtjAll: false, // -1 全部会员可发帖
-  sendtjSubscribe: false, // 0 需关注公众号
-  sendtjLevels: '', // 其余为等级 ID，逗号分隔
-  sendcheck: 0,
-  pingluncheck: 0,
-  cansave: 0,
-  status: 0,
+  sendtjAll: true,
+  sendLevels: [] as number[],
+  sendcheck: 1 as number,
+  pingluncheck: 0 as number,
+  cansave: 1 as number,
 })
+const memberLevels = ref<{ id: number; name: string }[]>([])
 
-function parseSendtj(arr: string[]) {
-  form.sendtjAll = arr.includes('-1')
-  form.sendtjSubscribe = arr.includes('0')
-  form.sendtjLevels = arr.filter((v) => v !== '-1' && v !== '0').join(',')
-}
-
-function buildSendtj(): string[] {
-  const out: string[] = []
-  if (form.sendtjAll) out.push('-1')
-  if (form.sendtjSubscribe) out.push('0')
-  form.sendtjLevels
-    .split(',')
-    .map((v) => v.trim())
-    .filter((v) => v !== '')
-    .forEach((v) => {
-      if (!out.includes(v)) out.push(v)
-    })
-  return out.length ? out : ['-1']
-}
+const bannerPickerVisible = ref(false)
 
 async function fetchSysset() {
   loading.value = true
   try {
     const res = await getLuntanSysset()
+    form.status = res.status || 0
     form.title = res.title || ''
     form.pic = res.pic || ''
     form.picurl = res.picurl || ''
-    form.sendcheck = res.sendcheck
-    form.pingluncheck = res.pingluncheck
-    form.cansave = res.cansave
-    form.status = res.status
-    parseSendtj(res.sendtj || [])
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    form.sendcheck = res.sendcheck || 0
+    form.pingluncheck = res.pingluncheck || 0
+    form.cansave = res.cansave || 0
+    memberLevels.value = res.member_levels || []
+    const tj = res.sendtj || []
+    form.sendtjAll = tj.includes('-1')
+    form.sendLevels = memberLevels.value
+      .filter((l) => tj.includes(String(l.id)))
+      .map((l) => l.id)
   } finally {
     loading.value = false
   }
 }
 
+function toggleLevel(id: number) {
+  const i = form.sendLevels.indexOf(id)
+  if (i >= 0) form.sendLevels.splice(i, 1)
+  else form.sendLevels.push(id)
+}
+
 async function handleSave() {
   saving.value = true
   try {
+    const sendtj: string[] = []
+    if (form.sendtjAll) sendtj.push('-1')
+    form.sendLevels.forEach((id) => sendtj.push(String(id)))
+    if (sendtj.length === 0) sendtj.push('-1')
     await saveLuntanSysset({
       title: form.title,
       pic: form.pic,
       picurl: form.picurl,
-      sendtj: buildSendtj(),
+      sendtj,
       sendcheck: form.sendcheck,
       pingluncheck: form.pingluncheck,
       cansave: form.cansave,
       status: form.status,
     })
-    ElMessage.success('保存成功')
+    ElMessage.success('设置成功')
     fetchSysset()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
   } finally {
     saving.value = false
   }
@@ -84,64 +80,121 @@ onMounted(fetchSysset)
 </script>
 
 <template>
-  <div>
-    <el-card v-loading="loading" shadow="never" header="论坛系统设置">
-      <el-form label-width="130px" style="max-width: 680px">
-        <el-form-item label="功能总开关">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
+  <div v-loading="loading">
+    <div class="page-title">⚙ 系统设置</div>
+
+    <el-card shadow="never">
+      <el-form label-width="110px" class="set-form">
+        <el-form-item label="论坛状态">
+          <el-radio-group v-model="form.status">
+            <el-radio :value="1">开启</el-radio>
+            <el-radio :value="0">关闭</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item label="论坛标题">
-          <el-input v-model="form.title" placeholder="如：社区论坛" />
+          <el-input v-model="form.title" placeholder="请输入论坛标题" style="width: 240px" />
         </el-form-item>
-        <el-form-item label="头部图片">
-          <el-input v-model="form.pic" placeholder="图片地址" />
+        <el-form-item label="banner图">
+          <el-button @click="bannerPickerVisible = true">上传图片</el-button>
+          <span class="field-tip">建议尺寸：690×260像素</span>
+          <div class="banner-preview">
+            <el-image v-if="form.pic" :src="form.pic" fit="cover" class="banner-box" />
+            <div v-else class="banner-box banner-empty">暂无图片</div>
+          </div>
         </el-form-item>
-        <el-form-item label="图片跳转链接">
-          <el-input v-model="form.picurl" placeholder="点击头部图片跳转的地址" />
+        <el-form-item label="banner图链接">
+          <LinkPicker v-model="form.picurl" pick-text="选择链接" placeholder="banner图跳转链接（可空）" style="width: 360px" />
         </el-form-item>
-        <el-form-item label="发帖权限">
-          <div>
-            <el-checkbox v-model="form.sendtjAll">全部会员可发帖</el-checkbox>
-            <el-checkbox v-model="form.sendtjSubscribe">需关注公众号</el-checkbox>
-            <div class="level-row">
-              <span>指定等级 ID（逗号分隔）：</span>
-              <el-input v-model="form.sendtjLevels" placeholder="如：1,2,3" style="width: 200px" />
-            </div>
+        <el-form-item label="*发帖条件">
+          <div class="chip-row">
+            <span class="chip" :class="{ on: form.sendtjAll }" @click="form.sendtjAll = !form.sendtjAll">所有人</span>
+            <span
+              v-for="l in memberLevels"
+              :key="l.id"
+              class="chip"
+              :class="{ on: form.sendLevels.includes(l.id) }"
+              @click="toggleLevel(l.id)"
+            >{{ l.name }}</span>
           </div>
         </el-form-item>
         <el-form-item label="发帖审核">
           <el-radio-group v-model="form.sendcheck">
-            <el-radio :value="0">免审直发</el-radio>
-            <el-radio :value="1">需管理员审核</el-radio>
-            <el-radio :value="2">禁止发帖</el-radio>
+            <el-radio :value="1">开启</el-radio>
+            <el-radio :value="0">关闭</el-radio>
           </el-radio-group>
         </el-form-item>
         <el-form-item label="评论审核">
-          <el-switch v-model="form.pingluncheck" :active-value="1" :inactive-value="0" />
-          <span class="tip">开启后评论需审核通过才显示</span>
+          <el-radio-group v-model="form.pingluncheck">
+            <el-radio :value="1">开启</el-radio>
+            <el-radio :value="0">关闭</el-radio>
+          </el-radio-group>
         </el-form-item>
-        <el-form-item label="允许收藏">
-          <el-switch v-model="form.cansave" :active-value="1" :inactive-value="0" />
+        <el-form-item label="保存文案">
+          <el-radio-group v-model="form.cansave">
+            <el-radio :value="1">开启</el-radio>
+            <el-radio :value="0">关闭</el-radio>
+          </el-radio-group>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="saving" @click="handleSave">保存设置</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSave">提 交</el-button>
         </el-form-item>
       </el-form>
     </el-card>
+
+    <ImgIconPicker v-model:visible="bannerPickerVisible" @pick="(urls) => { if (urls[0]) form.pic = urls[0] }" />
   </div>
 </template>
 
 <style scoped>
-.level-row {
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  padding: 2px 4px 8px;
+}
+.set-form {
+  max-width: 720px;
+}
+.field-tip {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 8px;
+}
+.banner-preview {
+  margin-top: 8px;
+}
+.banner-box {
+  width: 240px;
+  height: 90px;
+  border-radius: 4px;
+}
+.banner-empty {
+  background: #f5f7fa;
+  border: 1px solid #ebeef5;
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.tip {
-  margin-left: 8px;
-  color: #999;
+  justify-content: center;
+  color: #c0c4cc;
   font-size: 12px;
+}
+.chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.chip {
+  padding: 5px 14px;
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  color: #606266;
+  cursor: pointer;
+  font-size: 13px;
+  background: #f5f7fa;
+  user-select: none;
+}
+.chip.on {
+  background: #67c23a;
+  border-color: #67c23a;
+  color: #fff;
 }
 </style>

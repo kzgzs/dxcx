@@ -37,6 +37,7 @@ class CouponManageService
     /** 有效期类型 */
     protected const YXQ_RANGE = 1; // 定时间范围
     protected const YXQ_DAYS  = 2; // 领取后N天
+    protected const YXQ_DAYS_NEXT = 3; // 领取后N天（次日起）
 
     /** getnum>0 后禁止修改的核心面值字段 */
     protected const CORE_COLUMNS = ['name', 'type', 'money', 'discount', 'minprice'];
@@ -170,7 +171,7 @@ class CouponManageService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function records(int $aid, int $couponId, int $mid, string $status, string $keyword, int $startTime, int $endTime, int $page, int $pageSize): array
+    public function records(int $aid, int $couponId, int $mid, string $status, string $keyword, string $remark, int $startTime, int $endTime, int $page, int $pageSize): array
     {
         $now   = time();
         $query = ScopeService::queryAs('coupon_record', $aid, 'r')
@@ -190,6 +191,10 @@ class CouponManageService
                 $q->where('m.nickname', 'like', '%' . $keyword . '%')
                     ->whereOr('m.tel', 'like', '%' . $keyword . '%');
             });
+        }
+
+        if ('' !== $remark) {
+            $query->where('r.remark', 'like', '%' . $remark . '%');
         }
 
         if ($startTime > 0) {
@@ -400,6 +405,40 @@ class CouponManageService
         });
     }
 
+    /* ================= 领取记录删除 =================
+
+    /**
+     * 删除领取记录（同步券已使用计数回退）
+     *
+     * @param int[] $ids
+     */
+    public function recordDelete(int $aid, array $ids): void
+    {
+        if (empty($ids)) {
+            throw new BusinessException('缺少记录ID');
+        }
+
+        Db::transaction(function () use ($aid, $ids) {
+            foreach ($ids as $id) {
+                $record = Db::name('coupon_record')
+                    ->where('id', (int) $id)
+                    ->where('aid', $aid)
+                    ->find();
+
+                if (empty($record)) {
+                    continue;
+                }
+
+                Db::name('coupon_record')->where('id', (int) $record['id'])->delete();
+
+                $couponId = (int) ($record['couponid'] ?? 0);
+                if ($couponId > 0 && 1 === (int) ($record['status'] ?? 0)) {
+                    Db::name('coupon')->where('id', $couponId)->where('used', '>', 0)->dec('used', 1)->update();
+                }
+            }
+        });
+    }
+
     /* ================= 过期提醒设置（coupon_set） ================= */
 
     /**
@@ -562,7 +601,7 @@ class CouponManageService
         // 有效期
         $yxqtype = (int) ($data['yxqtype'] ?? self::YXQ_RANGE);
 
-        if (!in_array($yxqtype, [self::YXQ_RANGE, self::YXQ_DAYS], true)) {
+        if (!in_array($yxqtype, [self::YXQ_RANGE, self::YXQ_DAYS, self::YXQ_DAYS_NEXT], true)) {
             throw new BusinessException('有效期类型无效');
         }
 
@@ -572,7 +611,7 @@ class CouponManageService
         $startStamp = $this->stampOf($data['starttime'] ?? '');
         $endStamp   = $this->stampOf($data['endtime'] ?? '');
 
-        if (self::YXQ_DAYS === $yxqtype) {
+        if (self::YXQ_DAYS === $yxqtype || self::YXQ_DAYS_NEXT === $yxqtype) {
             if ($yxqdate <= 0) {
                 throw new BusinessException('请填写领取后有效天数');
             }
@@ -592,14 +631,16 @@ class CouponManageService
 
         // 适用人群/范围
         $gettj = $this->normalizeCsv($data['gettj'] ?? '-1');
+        $showtj = $this->normalizeCsv($data['showtj'] ?? '-1');
         $fwtype = (int) ($data['fwtype'] ?? 0);
 
-        if (!in_array($fwtype, [0, 1, 2], true)) {
+        if (!in_array($fwtype, [0, 1, 2, 4], true)) {
             throw new BusinessException('适用范围类型无效');
         }
 
-        $categoryids = 1 === $fwtype ? $this->normalizeCsv($data['categoryids'] ?? '') : '';
-        $productids  = 2 === $fwtype ? $this->normalizeCsv($data['productids'] ?? '') : '';
+        $categoryids  = 1 === $fwtype ? $this->normalizeCsv($data['categoryids'] ?? '') : '';
+        $productids   = 2 === $fwtype ? $this->normalizeCsv($data['productids'] ?? '') : '';
+        $yuyueids     = 4 === $fwtype ? $this->normalizeCsv($data['yuyue_productids'] ?? ($data['yuyueids'] ?? '')) : '';
 
         if (1 === $fwtype && '' === $categoryids) {
             throw new BusinessException('请选择指定类目');
@@ -607,6 +648,10 @@ class CouponManageService
 
         if (2 === $fwtype && '' === $productids) {
             throw new BusinessException('请选择指定商品');
+        }
+
+        if (4 === $fwtype && '' === $yuyueids) {
+            throw new BusinessException('请选择指定服务商品');
         }
 
         // 付费购（price/score 均为 0 表示免费领取）
@@ -620,9 +665,31 @@ class CouponManageService
         $isgive = (int) ($data['isgive'] ?? 0);
         $tolist = (int) ($data['tolist'] ?? 1);
 
-        if (!in_array($isgive, [0, 1], true) || !in_array($tolist, [0, 1], true)) {
+        if (!in_array($isgive, [0, 1, 2], true) || !in_array($tolist, [0, 1], true)) {
             throw new BusinessException('转赠/领取开关值无效');
         }
+
+        // 发放设置开关
+        $paygive = (int) ($data['paygive'] ?? 0);
+        $buyprogive = (int) ($data['buyprogive'] ?? 0);
+        $buyyuyueprogive = (int) ($data['buyyuyueprogive'] ?? 0);
+        $giveNumType = (int) ($data['give_num_type'] ?? 0);
+
+        if (!in_array($paygive, [0, 1], true) || !in_array($buyprogive, [0, 1], true)
+            || !in_array($buyyuyueprogive, [0, 1], true) || !in_array($giveNumType, [0, 1], true)) {
+            throw new BusinessException('发放设置开关值无效');
+        }
+
+        // 购买商品赠送明细（id,数量 列表；以逗号 id 串 + 数量串成对保存）
+        $buyproids = $buyprogive ? $this->normalizeCsv($data['buyproids'] ?? '') : '';
+        $buyproGiveNum = $buyprogive ? $this->normalizeNumList($data['buypro_give_num'] ?? '') : '';
+        $buyyuyueproids = $buyyuyueprogive ? $this->normalizeCsv($data['buyyuyueproids'] ?? '') : '';
+        $buyyuyueGiveNum = $buyyuyueprogive ? $this->normalizeNumList($data['buyyuyuepro_give_num'] ?? '') : '';
+
+        // 页面设计颜色
+        $fontColor = $this->normalizeColor($data['font_color'] ?? '#2B2B2B', '#2B2B2B');
+        $titleColor = $this->normalizeColor($data['title_color'] ?? '#2B2B2B', '#2B2B2B');
+        $bgColor = $this->normalizeColor($data['bg_color'] ?? '#FFFFFF', '#FFFFFF');
 
         $status = isset($data['status']) ? (int) $data['status'] : (null !== $old ? (int) ($old['status'] ?? 1) : 1);
 
@@ -631,27 +698,40 @@ class CouponManageService
         }
 
         $build = [
-            'name'        => $name,
-            'type'        => $type,
-            'money'       => $money,
-            'discount'    => $discount,
-            'minprice'    => $minprice,
-            'stock'       => $stock,
-            'perlimit'    => $perlimit,
-            'yxqtype'     => $yxqtype,
-            'yxqdate'     => self::YXQ_DAYS === $yxqtype ? $yxqdate : 0,
-            'yxqtime'     => $yxqtime,
-            'starttime'   => $startStamp > 0 ? date('Y-m-d H:i:s', $startStamp) : '',
-            'endtime'     => $endStamp > 0 ? date('Y-m-d H:i:s', $endStamp) : '',
-            'gettj'       => $gettj,
-            'isgive'      => $isgive,
-            'tolist'      => $tolist,
-            'fwtype'      => $fwtype,
-            'categoryids' => $categoryids,
-            'productids'  => $productids,
-            'price'       => $price,
-            'score'       => $score,
-            'status'      => $status,
+            'name'             => $name,
+            'type'             => $type,
+            'money'            => $money,
+            'discount'         => $discount,
+            'minprice'         => $minprice,
+            'stock'            => $stock,
+            'perlimit'         => $perlimit,
+            'yxqtype'          => $yxqtype,
+            'yxqdate'          => (self::YXQ_DAYS === $yxqtype || self::YXQ_DAYS_NEXT === $yxqtype) ? $yxqdate : 0,
+            'yxqtime'          => $yxqtime,
+            'starttime'        => $startStamp > 0 ? date('Y-m-d H:i:s', $startStamp) : '',
+            'endtime'          => $endStamp > 0 ? date('Y-m-d H:i:s', $endStamp) : '',
+            'gettj'            => $gettj,
+            'showtj'           => $showtj,
+            'isgive'           => $isgive,
+            'tolist'           => $tolist,
+            'fwtype'           => $fwtype,
+            'categoryids'      => $categoryids,
+            'productids'       => $productids,
+            'yuyue_productids' => $yuyueids,
+            'price'            => $price,
+            'score'            => $score,
+            'paygive'          => $paygive,
+            'buyprogive'       => $buyprogive,
+            'buyproids'        => $buyproids,
+            'buypro_give_num'  => $buyproGiveNum,
+            'buyyuyueprogive'  => $buyyuyueprogive,
+            'buyyuyueproids'   => $buyyuyueproids,
+            'buyyuyuepro_give_num' => $buyyuyueGiveNum,
+            'give_num_type'    => $giveNumType,
+            'font_color'       => $fontColor,
+            'title_color'      => $titleColor,
+            'bg_color'         => $bgColor,
+            'status'           => $status,
         ];
 
         // 计次券次数
@@ -843,6 +923,37 @@ class CouponManageService
     }
 
     /**
+     * 数量列表归一化（每个元素为正整数，逗号分隔）
+     */
+    protected function normalizeNumList(mixed $value): string
+    {
+        if (is_array($value)) {
+            $parts = $value;
+        } else {
+            $parts = explode(',', (string) $value);
+        }
+
+        $parts = array_map(static fn ($v) => max(1, (int) trim((string) $v)), $parts);
+        $parts = array_filter($parts, static fn (int $v) => $v > 0);
+
+        return implode(',', array_values($parts));
+    }
+
+    /**
+     * 颜色值归一化（#RRGGBB；非法回退默认值）
+     */
+    protected function normalizeColor(mixed $value, string $default): string
+    {
+        $str = trim((string) $value);
+
+        if (preg_match('/^#[0-9a-fA-F]{6}$/', $str)) {
+            return $str;
+        }
+
+        return $default;
+    }
+
+    /**
      * 逗号分隔字符串转 int 数组
      *
      * @return int[]
@@ -922,13 +1033,26 @@ class CouponManageService
             'end_stamp'   => $end,
             'phase'       => $phase,
             'gettj'       => (string) ($row['gettj'] ?? '-1'),
+            'showtj'      => (string) ($row['showtj'] ?? '-1'),
             'isgive'      => (int) ($row['isgive'] ?? 0),
             'tolist'      => (int) ($row['tolist'] ?? 1),
             'fwtype'      => (int) ($row['fwtype'] ?? 0),
             'categoryids' => (string) ($row['categoryids'] ?? ''),
             'productids'  => (string) ($row['productids'] ?? ''),
+            'yuyue_productids' => (string) ($row['yuyue_productids'] ?? ''),
             'price'       => (float) ($row['price'] ?? 0),
             'score'       => (int) ($row['score'] ?? 0),
+            'paygive'     => (int) ($row['paygive'] ?? 0),
+            'buyprogive'  => (int) ($row['buyprogive'] ?? 0),
+            'buyproids'   => (string) ($row['buyproids'] ?? ''),
+            'buypro_give_num' => (string) ($row['buypro_give_num'] ?? ''),
+            'buyyuyueprogive' => (int) ($row['buyyuyueprogive'] ?? 0),
+            'buyyuyueproids'  => (string) ($row['buyyuyueproids'] ?? ''),
+            'buyyuyuepro_give_num' => (string) ($row['buyyuyuepro_give_num'] ?? ''),
+            'give_num_type'   => (int) ($row['give_num_type'] ?? 0),
+            'font_color'   => (string) ($row['font_color'] ?? '#2B2B2B'),
+            'title_color'  => (string) ($row['title_color'] ?? '#2B2B2B'),
+            'bg_color'     => (string) ($row['bg_color'] ?? '#FFFFFF'),
             'limit_count' => (int) ($row['limit_count'] ?? 1),
             'gettips'     => (string) ($row['gettips'] ?? ''),
             'usetips'     => (string) ($row['usetips'] ?? ''),
@@ -968,6 +1092,8 @@ class CouponManageService
             'minprice'     => (float) ($row['minprice'] ?? 0),
             'type'         => $type,
             'type_txt'     => self::TYPE_MAP[$type] ?? (string) $type,
+            'limit_count'  => (int) ($row['limit_count'] ?? 0),
+            'used_count'   => (int) ($row['used_count'] ?? 0),
             'status'       => $status,
             'starttime'    => (int) ($row['starttime'] ?? 0),
             'endtime'      => (int) ($row['endtime'] ?? 0),

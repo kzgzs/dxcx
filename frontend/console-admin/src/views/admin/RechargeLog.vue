@@ -1,46 +1,43 @@
 <script setup lang="ts">
+function onAvatarError(e: Event) { (e.target as HTMLImageElement).style.visibility = 'hidden' }
+
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { getRechargeList, refundRecharge } from '../../api/finance'
+import { deleteRecharge, exportRecharge, getRechargeList } from '../../api/finance'
 import type { RechargeItem, RechargeStat } from '../../api/finance'
+import { assetUrl } from '../../api/upload'
 import { formatTime } from '../../utils/time'
 
-// 状态 0未支付 1已支付 2已退款
-const STATUS_TEXT: Record<number, string> = { 0: '未支付', 1: '已支付', 2: '已退款' }
-const STATUS_TAG: Record<number, 'warning' | 'success' | 'danger'> = {
-  0: 'warning',
-  1: 'success',
-  2: 'danger',
-}
-
 const loading = ref(false)
-const tableData = ref<RechargeItem[]>([])
+const exporting = ref(false)
 const total = ref(0)
+const tableData = ref<RechargeItem[]>([])
+const selectedRows = ref<RechargeItem[]>([])
 const stat = ref<RechargeStat>({ paid_total: 0, paid_count: 0, refund_count: 0 })
 
 const query = reactive({
   page: 1,
   pagesize: 10,
-  nickname: '',
   mid: '',
-  status: '',
-  ordernum: '',
+  nickname: '',
   timeRange: null as [string, string] | null,
 })
+
+function buildParams() {
+  return {
+    page: query.page,
+    pagesize: query.pagesize,
+    mid: query.mid ? Number(query.mid) : undefined,
+    nickname: query.nickname || undefined,
+    start_date: query.timeRange?.[0] || undefined,
+    end_date: query.timeRange?.[1] || undefined,
+  }
+}
 
 async function fetchList() {
   loading.value = true
   try {
-    const data = await getRechargeList({
-      page: query.page,
-      pagesize: query.pagesize,
-      nickname: query.nickname || undefined,
-      mid: query.mid ? Number(query.mid) : undefined,
-      status: query.status || undefined,
-      ordernum: query.ordernum || undefined,
-      start_date: query.timeRange?.[0] || undefined,
-      end_date: query.timeRange?.[1] || undefined,
-    })
+    const data = await getRechargeList(buildParams())
     tableData.value = data.list || []
     total.value = data.total || 0
     stat.value = data.stat || { paid_total: 0, paid_count: 0, refund_count: 0 }
@@ -56,16 +53,6 @@ function handleSearch() {
   fetchList()
 }
 
-function handleReset() {
-  query.nickname = ''
-  query.mid = ''
-  query.status = ''
-  query.ordernum = ''
-  query.timeRange = null
-  query.page = 1
-  fetchList()
-}
-
 function handlePageChange(page: number) {
   query.page = page
   fetchList()
@@ -77,30 +64,73 @@ function handleSizeChange(size: number) {
   fetchList()
 }
 
-// 充值退款（事务：状态改退款 + 余额扣回 + 流水）
-async function handleRefund(row: RechargeItem) {
+function handleSelectionChange(rows: RechargeItem[]) {
+  selectedRows.value = rows
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    const blob = await exportRecharge(buildParams())
+    downloadBlob(blob, `充值记录_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.xlsx`)
+  } catch {
+    // 错误提示已由拦截器弹出
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function handleBatchDelete() {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选要删除的记录')
+    return
+  }
   try {
     await ElMessageBox.confirm(
-      `确认对「${row.nickname || '会员' + row.mid}」的充值单（￥${Number(row.money).toFixed(2)}）执行退款？退款将从会员余额中扣回该金额。`,
-      '充值退款',
-      { type: 'warning', confirmButtonText: '确认退款', cancelButtonText: '取消' },
+      `确认删除选中的 ${selectedRows.value.length} 条充值记录？删除后无法恢复！`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' },
     )
   } catch {
     return
   }
   try {
-    await refundRecharge(row.id)
-    ElMessage.success('已退款，充值金额已从会员余额扣回')
+    await deleteRecharge({ ids: selectedRows.value.map((r) => r.id) })
+    ElMessage.success('删除成功')
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 错误提示已由拦截器弹出
   }
 }
 
-function shortDate(ts: number): string {
-  if (!ts) return '-'
-  const full = formatTime(ts)
-  return full.length >= 10 ? full.slice(2, 10) : full
+async function handleRowDelete(row: RechargeItem) {
+  try {
+    await ElMessageBox.confirm('确定要删除该条充值记录吗？删除后无法恢复！', '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await deleteRecharge({ id: row.id })
+    ElMessage.success('删除成功')
+    fetchList()
+  } catch {
+    // 错误提示已由拦截器弹出
+  }
 }
 
 onMounted(() => {
@@ -110,46 +140,17 @@ onMounted(() => {
 
 <template>
   <div>
-    <!-- 顶部统计卡片 -->
-    <el-row :gutter="12" class="stat-row">
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">充值总额（已支付）</div>
-          <div class="stat-value primary">￥{{ Number(stat.paid_total).toFixed(2) }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">已支付笔数</div>
-          <div class="stat-value success">{{ stat.paid_count }}</div>
-        </el-card>
-      </el-col>
-      <el-col :span="8">
-        <el-card shadow="never" class="stat-card">
-          <div class="stat-label">已退款笔数</div>
-          <div class="stat-value danger">{{ stat.refund_count }}</div>
-        </el-card>
-      </el-col>
-    </el-row>
-
-    <!-- 搜索工具栏 -->
     <el-card shadow="never" class="toolbar-card">
       <el-form inline @submit.prevent>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px">
-            <el-option label="未支付" value="0" />
-            <el-option label="已支付" value="1" />
-            <el-option label="已退款" value="2" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="订单号">
-          <el-input v-model="query.ordernum" placeholder="订单号" clearable style="width: 150px" @keyup.enter="handleSearch" />
-        </el-form-item>
-        <el-form-item label="昵称">
-          <el-input v-model="query.nickname" placeholder="会员昵称" clearable style="width: 130px" @keyup.enter="handleSearch" />
+        <el-form-item>
+          <el-button :disabled="selectedRows.length === 0" @click="handleBatchDelete">删除</el-button>
+          <el-button :loading="exporting" @click="handleExport">导出EXCEL</el-button>
         </el-form-item>
         <el-form-item label="会员ID">
-          <el-input v-model="query.mid" placeholder="ID" clearable style="width: 90px" @keyup.enter="handleSearch" />
+          <el-input v-model="query.mid" placeholder="ID" clearable style="width: 80px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="昵称">
+          <el-input v-model="query.nickname" placeholder="昵称" clearable style="width: 130px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="时间">
           <el-date-picker
@@ -159,71 +160,74 @@ onMounted(() => {
             start-placeholder="开始"
             end-placeholder="结束"
             value-format="YYYY-MM-DD"
-            style="width: 220px"
+            style="width: 230px"
           />
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
+          <el-button type="success" class="search-icon-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z"/></svg>
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- 列表（border 竖线 + 紧凑列宽，1366 无横向滚动） -->
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe border size="small">
-        <el-table-column prop="ordernum" label="订单号" min-width="150" show-overflow-tooltip />
-        <el-table-column label="会员" min-width="120" show-overflow-tooltip>
+    <el-card shadow="never" class="table-card">
+      <div class="stat-inline">
+        <span class="stat-inline-item">小计充值金额：<b>￥{{ Number(stat.paid_total).toFixed(2) }}</b></span>
+      </div>
+      <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="mid" label="会员ID" width="80" />
+        <el-table-column label="会员信息" min-width="160">
           <template #default="{ row }">
-            {{ row.nickname || `会员${row.mid}` }}
-            <span v-if="row.tel" class="sub-text">{{ row.tel }}</span>
+            <div class="member-cell">
+              <img v-if="row.headimg" :src="assetUrl(row.headimg)" class="member-avatar" @error="onAvatarError" />
+              <span>{{ row.nickname || ('会员' + row.mid) }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="充值金额" width="92" class-name="compact-col">
+        <el-table-column label="充值金额" width="100" sortable="custom">
           <template #default="{ row }">￥{{ Number(row.money).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column prop="paytype_text" label="支付方式" width="86" class-name="compact-col" show-overflow-tooltip />
-        <el-table-column prop="paynum" label="支付单号" min-width="130" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.paynum || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="支付时间" width="92" class-name="compact-col">
-          <template #default="{ row }">
-            <el-tooltip v-if="row.paytime" :content="formatTime(row.paytime)" placement="top">
-              <span>{{ shortDate(row.paytime) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="下单时间" width="92" class-name="compact-col">
+        <el-table-column label="充值时间" width="150" sortable="custom">
           <template #default="{ row }">
             <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ shortDate(row.createtime) }}</span>
+              <span>{{ formatTime(row.createtime) }}</span>
             </el-tooltip>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="状态" width="76" class-name="compact-col">
+        <el-table-column prop="paytype_text" label="支付方式" width="100" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.paytype_text || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="订单号/付款单号" min-width="200">
           <template #default="{ row }">
-            <el-tag :type="STATUS_TAG[row.status] || 'info'" size="small">
-              {{ STATUS_TEXT[row.status] || '未知' }}
-            </el-tag>
+            <div>订单号：{{ row.ordernum || '-' }}</div>
+            <div v-if="row.paynum" class="sub-text">付款单号：{{ row.paynum }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="84" fixed="right" class-name="compact-col">
+        <el-table-column label="付款时间" width="150" sortable="custom">
           <template #default="{ row }">
-            <el-button
-              v-if="row.status === 1"
-              link
-              type="danger"
-              @click="handleRefund(row)"
-            >
-              退款
-            </el-button>
-            <span v-else class="sub-text">-</span>
+            <el-tooltip v-if="row.paytime" :content="formatTime(row.paytime)" placement="top">
+              <span>{{ formatTime(row.paytime) }}</span>
+            </el-tooltip>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template #default="{ row }">
+            <span v-if="row.status === 1" class="success-text">充值成功</span>
+            <span v-else class="sub-text">未充值</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="80">
+          <template #default="{ row }">
+            <div class="row-ops">
+              <el-button link type="danger" @click="handleRowDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-
       <el-pagination
         class="pagination"
         background
@@ -240,51 +244,89 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.stat-row {
-  margin-bottom: 12px;
-}
-
-.stat-card .stat-label {
-  color: #909399;
-  font-size: 13px;
-}
-
-.stat-card .stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  margin-top: 4px;
-}
-
-.stat-value.primary {
-  color: #409eff;
-}
-
-.stat-value.danger {
-  color: #f56c6c;
-}
-
-.stat-value.success {
-  color: #67c23a;
-}
-
 .toolbar-card {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
-
+.toolbar-card :deep(.el-card__body) {
+  padding: 8px 12px;
+}
+.toolbar-card :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
+}
+.toolbar-card :deep(.el-form-item__label) {
+  padding-right: 6px;
+}
+.search-icon-btn {
+  padding: 8px 14px;
+}
+.search-icon-btn svg {
+  display: block;
+}
+.table-card :deep(.el-card__body) {
+  padding: 5px;
+}
+.table-card :deep(.el-table__header-wrapper th.el-table__cell) {
+  background: #e6e6e6;
+}
+.table-card :deep(.el-table .cell) {
+  text-align: left;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.table-card :deep(.el-table td.el-table__cell) {
+  padding: 3px 0;
+}
+.stat-inline {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 6px 18px;
+  padding: 2px 6px 6px;
+  font-size: 13px;
+  color: #606266;
+}
+.stat-inline b {
+  color: #303133;
+  font-weight: 700;
+}
+.member-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.member-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  white-space: nowrap;
+  align-items: center;
+}
+.row-ops :deep(.el-button) {
+  height: auto;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
 .sub-text {
   color: #909399;
   font-size: 12px;
-  margin-left: 4px;
 }
-
+.success-text {
+  color: #67c23a;
+  font-weight: 600;
+}
 .pagination {
-  margin-top: 16px;
+  margin-top: 12px;
   justify-content: flex-end;
-}
-
-/* 紧凑列：收紧单元格左右内边距 */
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
 }
 </style>

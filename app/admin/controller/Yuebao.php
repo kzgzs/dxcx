@@ -130,4 +130,52 @@ class Yuebao extends BaseController
 
         return $this->success([], '保存成功');
     }
+
+    /** POST /admin/yuebao/moneylog/delete */
+    public function moneylogDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) { $s = (int) $this->request->post('id', 0); if ($s > 0) $ids = [$s]; }
+        $n = $this->yuebaoService->deleteMoneylog($aid, array_values(array_filter(array_map('intval', $ids))));
+        return $this->success(['deleted' => $n], '删除成功');
+    }
+
+    /** POST /admin/yuebao/withdraw/delete */
+    public function withdrawDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) { $s = (int) $this->request->post('id', 0); if ($s > 0) $ids = [$s]; }
+        $n = $this->yuebaoService->deleteWithdraw($aid, array_values(array_filter(array_map('intval', $ids))));
+        return $this->success(['deleted' => $n], '删除成功');
+    }
+
+    /** GET /admin/yuebao/moneylog/export */
+    public function moneylogExport()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+        [$titles, $rows] = $this->yuebaoService->moneylogExport($aid, [
+            'nickname' => $this->request->get('nickname', ''), 'mid' => $this->request->get('mid', 0),
+            'type'     => $this->request->get('type', ''),
+            'start_date' => $this->request->get('start_date', ''), 'end_date' => $this->request->get('end_date', ''),
+        ]);
+        \util\ExcelUtil::export($titles, $rows, '余额宝明细_' . date('YmdHis'));
+    }
+
+    /** GET /admin/yuebao/withdraw/export */
+    public function withdrawExport()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+        [$titles, $rows] = $this->yuebaoService->withdrawExport($aid, [
+            'nickname' => $this->request->get('nickname', ''), 'mid' => $this->request->get('mid', 0),
+            'status'   => $this->request->get('status', ''),
+            'start_date' => $this->request->get('start_date', ''), 'end_date' => $this->request->get('end_date', ''),
+        ]);
+        \util\ExcelUtil::export($titles, $rows, '余额宝提现_' . date('YmdHis'));
+    }
 }

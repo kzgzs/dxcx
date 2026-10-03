@@ -43,29 +43,86 @@ class CollectRewardService
     }
 
     /**
-     * 奖励记录列表（B 端）
+     * 奖励记录列表（B 端，口径对齐 canzhao OrderCollectReward/index）
      *
+     * @param array<string, mixed> $filter ordertype/keyword/ordernum/reward_type/mid/ordertime_start/ordertime_end
      * @return array{list: array<int, array<string, mixed>>, total: int}
      */
-    public function recordList(int $aid, string $ordertype, int $mid, int $page, int $pageSize): array
+    public function recordList(int $aid, array $filter, int $page, int $pageSize): array
     {
-        $query = ScopeService::query('order_collect_reward_record', $aid);
+        $query = Db::name('order_collect_reward_record')->alias('cr')
+            ->leftJoin('member m', 'm.id = cr.mid')
+            ->where('cr.aid', $aid);
 
+        $ordertype = trim((string) ($filter['ordertype'] ?? ''));
         if ('' !== $ordertype) {
-            $query->where('ordertype', $ordertype);
+            $query->where('cr.ordertype', $ordertype);
         }
 
+        $rewardType = (int) ($filter['reward_type'] ?? 0);
+        if ($rewardType > 0) {
+            $query->where('cr.reward_type', $rewardType);
+        }
+
+        $ordernum = trim((string) ($filter['ordernum'] ?? ''));
+        if ('' !== $ordernum) {
+            $query->where('cr.ordernum', '=', $ordernum);
+        }
+
+        $mid = (int) ($filter['mid'] ?? 0);
         if ($mid > 0) {
-            $query->where('mid', $mid);
+            $query->where('cr.mid', $mid);
+        }
+
+        $keyword = trim((string) ($filter['keyword'] ?? ''));
+        if ('' !== $keyword) {
+            $query->where(function ($q) use ($keyword) {
+                $q->whereLike('m.nickname', '%' . $keyword . '%')
+                    ->whereOr('m.tel', 'like', '%' . $keyword . '%');
+            });
+        }
+
+        $otStart = (int) ($filter['ordertime_start'] ?? 0);
+        $otEnd   = (int) ($filter['ordertime_end'] ?? 0);
+        if ($otStart > 0) {
+            $query->where('cr.ordertime', '>=', $otStart);
+        }
+        if ($otEnd > 0) {
+            $query->where('cr.ordertime', '<', $otEnd + 86400);
         }
 
         $total = (clone $query)->count();
-        $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+
+        $rows = $query->field('cr.*, m.nickname as member_nickname, m.headimg as member_headimg, m.tel as member_tel')
+            ->order('cr.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        // 商家名（businessshop 订单）
+        $bids = array_values(array_unique(array_filter(array_map(static fn (array $r) => (int) ($r['bid'] ?? 0), $rows))));
+        $bnameMap = $bids
+            ? Db::name('business')->where('aid', $aid)->whereIn('id', $bids)->column('name', 'id')
+            : [];
+
+        // 券名（reward_type=2）
+        $couponIds = array_values(array_unique(array_filter(array_map(
+            static fn (array $r) => 2 === (int) $r['reward_type'] ? (int) $r['reward'] : 0,
+            $rows
+        ))));
+        $couponNameMap = $couponIds
+            ? Db::name('coupon')->where('aid', $aid)->whereIn('id', $couponIds)->column('name', 'id')
+            : [];
 
         foreach ($rows as &$row) {
+            $row['nickname']       = (string) ($row['member_nickname'] ?? '');
+            $row['headimg']        = (string) ($row['member_headimg'] ?? '');
             $row['createtime_text'] = (int) $row['createtime'] > 0 ? date('Y-m-d H:i:s', (int) $row['createtime']) : '';
             $row['ordertime_text']  = (int) ($row['ordertime'] ?? 0) > 0 ? date('Y-m-d H:i:s', (int) $row['ordertime']) : '';
-            $row['reward_text']     = $this->rewardText((int) $row['reward_type'], $row['reward']);
+            $row['ordertype_text']  = self::ORDERTYPE_TEXT[(string) $row['ordertype']] ?? (string) $row['ordertype'];
+            $row['reward_type_text'] = self::REWARD_TYPE_TEXT[(int) $row['reward_type']] ?? '';
+            $row['business']        = $bnameMap[(int) ($row['bid'] ?? 0)] ?? '';
+            $row['reward_text']     = $this->rewardText((int) $row['reward_type'], $row['reward'], $couponNameMap);
         }
 
         unset($row);
@@ -73,7 +130,40 @@ class CollectRewardService
         return ['list' => $rows, 'total' => $total];
     }
 
+    /**
+     * 删除奖励记录（兼容 id 单删 / ids[] 批量删）
+     *
+     * @param array<int, int> $ids
+     */
+    public function deleteRecords(int $aid, array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            return;
+        }
+
+        Db::name('order_collect_reward_record')->where('aid', $aid)->whereIn('id', $ids)->delete();
+    }
+
     /* ================= 内部实现 ================= */
+
+    /** 订单类型文案（对齐 canzhao index） */
+    private const ORDERTYPE_TEXT = [
+        'shop'        => '商城订单',
+        'collage'     => '多人拼团订单',
+        'tuangou'     => '团购订单',
+        'scoreshop'   => '积分兑换订单',
+        'businessshop' => '商家订单',
+    ];
+
+    /** 奖励类型文案（对齐 canzhao index） */
+    private const REWARD_TYPE_TEXT = [
+        1 => '积分',
+        2 => '优惠券',
+        3 => '余额返现',
+        4 => '佣金返现',
+    ];
 
     /**
      * 单笔订单发放判定与执行
@@ -314,11 +404,19 @@ class CollectRewardService
         ]);
     }
 
-    protected function rewardText(int $rewardType, mixed $reward): string
+    /**
+     * 奖励文案（对齐 canzhao：券显示券名，其余显示数值）
+     *
+     * @param array<int|string, string> $couponNameMap
+     */
+    protected function rewardText(int $rewardType, mixed $reward, array $couponNameMap = []): string
     {
+        if (2 === $rewardType) {
+            return (string) ($couponNameMap[(int) $reward] ?? ('优惠券（面额' . number_format((float) $reward, 2) . '元）'));
+        }
+
         return match ($rewardType) {
             1 => (string) (int) $reward . '积分',
-            2 => '优惠券（面额' . number_format((float) $reward, 2) . '元）',
             3 => '余额' . number_format((float) $reward, 2) . '元',
             4 => '佣金' . number_format((float) $reward, 2) . '元',
             default => (string) $reward,

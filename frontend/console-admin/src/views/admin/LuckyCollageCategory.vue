@@ -7,11 +7,10 @@ import {
   saveLuckyCollageCategory,
 } from '../../api/luckyCollage'
 import type { LuckyCollageCategoryItem } from '../../api/luckyCollage'
-import ImgIconPicker from '../../components/ImgIconPicker.vue'
-import { formatTime } from '../../utils/time'
 
 const loading = ref(false)
 const tableData = ref<LuckyCollageCategoryItem[]>([])
+const selectedIds = ref<number[]>([])
 
 async function fetchList() {
   loading.value = true
@@ -19,37 +18,44 @@ async function fetchList() {
     const data = await getLuckyCollageCategoryList()
     tableData.value = data.list || []
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器统一提示 */
   } finally {
     loading.value = false
   }
 }
 
-// ============ 新增 / 编辑弹窗 ============
-const dialogVisible = ref(false)
+function handleSelectionChange(rows: LuckyCollageCategoryItem[]) {
+  selectedIds.value = rows.map((r) => r.id)
+}
+
+// ============ 平铺新增 / 编辑 ============
+const isEdit = ref(false)
 const submitting = ref(false)
 const form = reactive({
   id: 0,
   name: '',
-  pic: '',
   status: 1,
-  sort: 1,
+  sort: 0,
 })
 
 function openAdd() {
-  Object.assign(form, { id: 0, name: '', pic: '', status: 1, sort: 1 })
-  dialogVisible.value = true
+  Object.assign(form, { id: 0, name: '', status: 1, sort: 0 })
+  isEdit.value = true
 }
 
 function openEdit(row: LuckyCollageCategoryItem) {
   Object.assign(form, {
     id: row.id,
     name: row.name,
-    pic: row.pic,
     status: row.status,
     sort: row.sort,
   })
-  dialogVisible.value = true
+  isEdit.value = true
+}
+
+function backToList() {
+  isEdit.value = false
+  Object.assign(form, { id: 0, name: '', status: 1, sort: 0 })
 }
 
 async function handleSubmit() {
@@ -61,10 +67,10 @@ async function handleSubmit() {
   try {
     await saveLuckyCollageCategory({ ...form, id: form.id || undefined })
     ElMessage.success('保存成功')
-    dialogVisible.value = false
+    isEdit.value = false
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器统一提示 */
   } finally {
     submitting.value = false
   }
@@ -82,133 +88,115 @@ function handleDelete(row: LuckyCollageCategoryItem) {
         ElMessage.success('删除成功')
         fetchList()
       } catch {
-        // 错误提示已由 axios 拦截器统一弹出（有商品占用会被后端拒绝）
+        /* 拦截器统一提示 */
       }
     })
     .catch(() => {})
 }
 
-// ============ 图片选择（任务294：ImgIconPicker，默认素材库） ============
-const imgPickerVisible = ref(false)
-
-function openImgPicker() {
-  imgPickerVisible.value = true
-}
-
-function onImgPick(urls: string[]) {
-  if (urls.length) form.pic = urls[0]
+function batchDelete() {
+  if (!selectedIds.value.length) {
+    ElMessage.warning('请先选择分类')
+    return
+  }
+  ElMessageBox.confirm(`确定要删除选中的 ${selectedIds.value.length} 个分类吗？`, '批量删除', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      try {
+        for (const id of selectedIds.value) {
+          await deleteLuckyCollageCategory(id)
+        }
+        ElMessage.success('删除成功')
+        fetchList()
+      } catch {
+        /* 拦截器统一提示 */
+      }
+    })
+    .catch(() => {})
 }
 
 onMounted(fetchList)
 </script>
 
 <template>
-  <div>
-    <el-card shadow="never">
-      <template #header>
-        <div class="card-header">
-          <span>幸运拼团商品分类</span>
-          <el-button type="success" @click="openAdd">新增分类</el-button>
-        </div>
-      </template>
+  <!-- ============ 列表视图 ============ -->
+  <div v-if="!isEdit" class="lucky-category">
+    <div class="page-head"><span class="head-title">商品分类</span></div>
+    <div class="toolbar">
+      <div class="toolbar-left">
+        <el-button type="success" @click="openAdd">添加</el-button>
+        <el-button :disabled="!selectedIds.length" @click="batchDelete">删除</el-button>
+      </div>
+    </div>
 
-      <el-table v-loading="loading" :data="tableData" stripe>
-        <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column label="图标" width="90">
-          <template #default="{ row }">
-            <el-image
-              v-if="row.pic"
-              :src="row.pic"
-              fit="cover"
-              style="width: 40px; height: 40px; border-radius: 4px"
-            />
-            <span v-else class="text-muted">-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="name" label="分类名称" min-width="160" />
-        <el-table-column prop="sort" label="排序" width="90" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-              {{ row.status === 1 ? '显示' : '隐藏' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="创建时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="140" fixed="right">
-          <template #default="{ row }">
+    <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange">
+      <el-table-column type="selection" width="40" />
+      <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column prop="name" label="名称" min-width="200" />
+      <el-table-column prop="sort" label="序号" width="90" />
+      <el-table-column label="状态" width="90">
+        <template #default="{ row }">
+          <span :class="row.status === 1 ? 'status-on' : 'status-off'">
+            {{ row.status === 1 ? '显示' : '隐藏' }}
+          </span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="120">
+        <template #default="{ row }">
+          <div class="row-ops">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-    </el-card>
-
-    <!-- 新增 / 编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="form.id ? '编辑分类' : '新增分类'" width="440px">
-      <el-form label-width="90px" label-position="left">
-        <el-form-item label="分类名称">
-          <el-input v-model="form.name" placeholder="请输入分类名称" />
-        </el-form-item>
-        <el-form-item label="图标">
-          <div class="img-pick-row">
-            <el-image v-if="form.pic" :src="form.pic" class="img-pick-thumb" fit="cover" />
-            <el-button size="small" @click="openImgPicker">选择图片</el-button>
-            <el-button v-if="form.pic" size="small" link type="danger" @click="form.pic = ''">删除</el-button>
           </div>
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort" :min="0" :precision="0" :step="1" />
-          <span class="form-tip">数值越大越靠前</span>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
-      </template>
-    </el-dialog>
+        </template>
+      </el-table-column>
+    </el-table>
+  </div>
 
-    <!-- 选图弹窗（任务294） -->
-    <ImgIconPicker
-      v-model:visible="imgPickerVisible"
-      default-tab="library"
-      @pick="(urls: string[]) => onImgPick(urls)"
-    />
+  <!-- ============ 平铺编辑视图 ============ -->
+  <div v-else class="cat-edit">
+    <div class="edit-head">
+      <span class="edit-title">{{ form.id ? '编辑商品分类' : '添加商品分类' }}</span>
+      <button class="edit-close" @click="backToList">✕</button>
+    </div>
+    <el-form label-width="90px" label-position="right" style="max-width: 560px">
+      <el-form-item label="分类名称" required>
+        <el-input v-model="form.name" placeholder="请输入分类名称" style="width: 240px" />
+      </el-form-item>
+      <el-form-item label="序号">
+        <el-input-number v-model="form.sort" :min="0" :precision="0" :step="1" />
+        <span class="form-tip">用于排序,越大越靠前</span>
+      </el-form-item>
+      <el-form-item label="状态">
+        <el-radio-group v-model="form.status">
+          <el-radio :value="1">显示</el-radio>
+          <el-radio :value="0">隐藏</el-radio>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="success" :loading="submitting" @click="handleSubmit">提 交</el-button>
+      </el-form-item>
+    </el-form>
   </div>
 </template>
 
 <style scoped>
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
+.lucky-category { margin: 3px; background: #fff; padding: 12px 16px; }
+.page-head { margin-bottom: 8px; }
+.head-title { font-size: 15px; font-weight: 600; }
+.toolbar { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.toolbar-left { display: flex; gap: 8px; }
+.row-ops { display: flex; flex-direction: row; gap: 6px; }
+.status-on { color: #21ba45; }
+.status-off { color: #f56c6c; }
+:deep(.el-table__header th) { background: #e6e6e6; }
+:deep(.el-table .cell) { text-align: left; }
 
-.text-muted {
-  color: #909399;
-}
-
-.form-tip {
-  margin-left: 8px;
-  color: #909399;
-  font-size: 12px;
-}
-
-.img-pick-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.img-pick-thumb {
-  width: 72px;
-  height: 72px;
-  border-radius: 6px;
-  border: 1px solid #ebeef5;
-}
+.cat-edit { background: #fff; padding: 16px 20px; margin: 3px; }
+.edit-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px; }
+.edit-title { font-size: 15px; font-weight: 600; }
+.edit-close { border: none; background: transparent; color: #909399; font-size: 18px; cursor: pointer; }
+.form-tip { color: #909399; font-size: 12px; margin-left: 8px; }
 </style>

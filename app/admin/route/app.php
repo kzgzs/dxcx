@@ -102,9 +102,11 @@ Route::post('maidan/preview', 'Maidan/preview');
 Route::post('maidan/add', 'Maidan/add');
 Route::get('maidan/list', 'Maidan/list');
 Route::post('maidan/refund', 'Maidan/refund');
+Route::post('maidan/logdel', 'Maidan/logdel');
 Route::get('maidan/export', 'Maidan/export');
 Route::get('maidan/set', 'Maidan/set');
 Route::post('maidan/saveSet', 'Maidan/saveSet');
+Route::post('maidan/uploadJstxt', 'Maidan/uploadJstxt');
 
 // 送货单（设置三字段读写 + HTML 打印页）
 Route::get('shd/set', 'Shd/set');
@@ -164,14 +166,17 @@ Route::post('couponManage/copy', 'CouponManage/copy');
 Route::get('couponManage/records', 'CouponManage/records');
 Route::post('couponManage/send', 'CouponManage/send');
 Route::post('couponManage/recordStatus', 'CouponManage/recordStatus');
+Route::post('couponManage/recordDelete', 'CouponManage/recordDelete');
 Route::get('couponManage/set', 'CouponManage/set');
 Route::post('couponManage/set', 'CouponManage/saveSet');
+Route::get('couponManage/export', 'CouponManage/export');
 
 // 营销中心 - 积分签到（设置/记录/删除）
 Route::get('sign/set', 'SignReward/signSet');
 Route::post('sign/set', 'SignReward/saveSignSet');
 Route::get('sign/records', 'SignReward/signRecords');
 Route::post('sign/recordDelete', 'SignReward/signRecordDelete');
+Route::get('sign/recordExport', 'SignReward/signRecordExport');
 
 // 营销中心 - 赠送奖励设置（支付后赠 / 确认收货奖励）
 Route::get('reward/payaftergive', 'SignReward/payaftergive');
@@ -216,6 +221,10 @@ Route::post('score/config', 'Score/saveConfig');
 Route::get('score/memberlist', 'Score/memberlist');
 Route::post('score/adjust', 'Score/adjust');
 Route::get('score/log', 'Score/log');
+Route::get('score/logList', 'Score/logList');
+Route::get('score/logExport', 'Score/logExport');
+Route::post('score/logDelete', 'Score/logDelete');
+Route::post('score/cancel', 'Score/cancel');
 
 // 营销中心 - 满减促销
 Route::get('promotion/list', 'Promotion/list');
@@ -240,6 +249,19 @@ Route::post('collage/order/changePrice', 'Collage/orderChangePrice');
 Route::post('collage/order/close', 'Collage/orderClose');
 Route::post('collage/order/refundCheck', 'Collage/orderRefundCheck');
 Route::post('collage/order/sendExpress', 'Collage/orderSendExpress');
+Route::get('collage/order/expressOptions', 'Collage/orderExpressOptions');
+Route::post('collage/order/refund', 'Collage/orderRefund');
+Route::post('collage/order/batchShip', 'Collage/orderBatchShip');
+Route::get('collage/order/export', 'Collage/orderExport');
+Route::get('collage/order/detail', 'Collage/orderDetail');
+Route::post('collage/order/delete', 'Collage/orderDelete');
+Route::post('collage/order/setRemark', 'Collage/orderSetRemark');
+Route::post('collage/order/ispay', 'Collage/orderIspay');
+Route::get('collage/comment/list', 'Collage/commentList');
+Route::post('collage/comment/setst', 'Collage/commentSetst');
+Route::get('collage/comment/detail', 'Collage/commentDetail');
+Route::post('collage/comment/reply', 'Collage/commentReply');
+Route::post('collage/comment/delete', 'Collage/commentDelete');
 
 // 营销中心 - 幸运拼团（设置/分类/商品/团/订单/评价/卡密/机器人；超时退款由 schedule:run 挂接）
 Route::get('luckyCollage/set', 'LuckyCollage/setGet');
@@ -261,6 +283,13 @@ Route::post('luckyCollage/order/sendExpress', 'LuckyCollage/orderSendExpress');
 Route::get('luckyCollage/comment/list', 'LuckyCollage/commentList');
 Route::post('luckyCollage/comment/reply', 'LuckyCollage/commentReply');
 Route::post('luckyCollage/comment/delete', 'LuckyCollage/commentDelete');
+Route::post('luckyCollage/comment/setst', 'LuckyCollage/commentSetst');
+Route::get('luckyCollage/comment/detail', 'LuckyCollage/commentDetail');
+Route::get('luckyCollage/order/detail', 'LuckyCollage/orderDetail');
+Route::post('luckyCollage/order/delete', 'LuckyCollage/orderDelete');
+Route::post('luckyCollage/order/changePrice', 'LuckyCollage/orderChangePrice');
+Route::post('luckyCollage/order/setRemark', 'LuckyCollage/orderSetRemark');
+Route::post('luckyCollage/order/ispay', 'LuckyCollage/orderIspay');
 Route::get('luckyCollage/code/list', 'LuckyCollage/codeList');
 Route::post('luckyCollage/code/import', 'LuckyCollage/codeImport');
 Route::post('luckyCollage/code/delete', 'LuckyCollage/codeDelete');
@@ -268,7 +297,15 @@ Route::get('luckyCollage/jiqi/list', 'LuckyCollage/jiqiList');
 Route::post('luckyCollage/jiqi/save', 'LuckyCollage/jiqiSave');
 Route::post('luckyCollage/jiqi/delete', 'LuckyCollage/jiqiDelete');
 Route::post('luckyCollage/jiqi/kaituan', 'LuckyCollage/kaituan');
-
+Route::get('luckyCollage/order/expressOptions', 'LuckyCollage/orderExpressOptions');
+Route::post('luckyCollage/order/refundCheck', 'LuckyCollage/orderRefundCheck');
+Route::post('luckyCollage/order/refund', 'LuckyCollage/orderRefund');
+Route::post('luckyCollage/order/hexiao', 'LuckyCollage/orderHexiao');
+Route::post('luckyCollage/order/collect', 'LuckyCollage/orderCollect');
+Route::get('luckyCollage/order/getExpress', 'LuckyCollage/orderGetExpress');
+Route::get('luckyCollage/order/shd', 'LuckyCollage/orderShd');
+Route::post('luckyCollage/order/batchShip', 'LuckyCollage/orderBatchShip');
+Route::get('luckyCollage/order/export', 'LuckyCollage/orderExport');
 // 营销中心 - 团购（设置/分类/商品阶梯价/订单全操作/评价/卡密；任务187）
 Route::get('tuangou/set', 'Tuangou/setGet');
 Route::post('tuangou/set', 'Tuangou/setSave');
@@ -286,12 +323,20 @@ Route::post('tuangou/product/refundDiff', 'Tuangou/productRefundDiff');
 Route::get('tuangou/order/list', 'Tuangou/orderList');
 Route::get('tuangou/order/detail', 'Tuangou/orderDetail');
 Route::get('tuangou/order/export', 'Tuangou/orderExport');
+Route::post('tuangou/order/del', 'Tuangou/orderDelete');
+Route::post('tuangou/order/ispay', 'Tuangou/orderIspay');
 Route::post('tuangou/order/changePrice', 'Tuangou/orderChangePrice');
 Route::post('tuangou/order/close', 'Tuangou/orderClose');
 Route::post('tuangou/order/remark', 'Tuangou/orderRemark');
 Route::post('tuangou/order/refundCheck', 'Tuangou/orderRefundCheck');
 Route::post('tuangou/order/sendExpress', 'Tuangou/orderSendExpress');
 Route::post('tuangou/order/hexiao', 'Tuangou/orderHexiao');
+Route::get('tuangou/agentLevels', 'Tuangou/agentLevels');
+Route::get('tuangou/order/expressOptions', 'Tuangou/orderExpressOptions');
+Route::get('tuangou/order/trace', 'Tuangou/orderTrace');
+Route::post('tuangou/order/batchSend', 'Tuangou/orderBatchSend');
+Route::get('tuangou/order/songhuo', 'Tuangou/orderSonghuo');
+
 Route::get('tuangou/comment/list', 'Tuangou/commentList');
 Route::post('tuangou/comment/setst', 'Tuangou/commentSetStatus');
 Route::post('tuangou/comment/reply', 'Tuangou/commentReply');
@@ -348,8 +393,15 @@ Route::post('yuyue/worker/add', 'Yuyue/workerAdd');
 Route::post('yuyue/worker/edit', 'Yuyue/workerEdit');
 Route::post('yuyue/worker/delete', 'Yuyue/workerDelete');
 Route::post('yuyue/worker/status', 'Yuyue/workerStatus');
+Route::post('yuyue/worker/addMoney', 'Yuyue/workerAddMoney');
+Route::get('yuyue/worker/orders', 'Yuyue/workerOrders');
+Route::get('yuyue/worker/orderProgress', 'Yuyue/workerOrderProgress');
 Route::get('yuyue/order/list', 'Yuyue/orderList');
 Route::post('yuyue/order/verify', 'Yuyue/orderVerify');
+Route::get('yuyue/order/progress', 'Yuyue/orderProgress');
+Route::get('yuyue/order/detail', 'Yuyue/orderDetail');
+Route::post('yuyue/order/finish', 'Yuyue/orderFinish');
+Route::post('yuyue/order/delete', 'Yuyue/orderDelete');
 
 // 行业应用 - 餐饮管理（区域/桌台规则先于其他前缀注册）
 Route::get('restaurant/area/list', 'Restaurant/areaList');
@@ -441,6 +493,34 @@ Route::get('finance/fenhonglog/list', 'Finance/fenhonglogList');
 Route::get('finance/fenhonglog/export', 'Finance/fenhonglogExport');
 Route::get('finance/hexiaoShopproduct/list', 'Finance/hexiaoShopproductList');
 Route::get('finance/hexiaoShopproduct/export', 'Finance/hexiaoShopproductExport');
+Route::post('finance/fenhonglog/delete', 'Finance/fenhonglogDelete');
+Route::get('finance/hexiao/export', 'Finance/hexiaoExport');
+Route::post('finance/hexiao/delete', 'Finance/hexiaoDelete');
+Route::post('finance/hexiaoShopproduct/delete', 'Finance/hexiaoShopproductDelete');
+Route::post('finance/invoice/delete', 'Finance/invoiceDelete');
+Route::get('finance/invoice/detail', 'Finance/invoiceDetail');
+// 财务中心 - 批量删除 / 导出 / 微信转账（任务对齐点大 Money::wx_transfer_log）
+Route::post('finance/payorder/delete', 'Finance/payorderDelete');
+Route::get('finance/payorder/export', 'Finance/payorderExport');
+Route::post('finance/payorder/datasettle', 'Finance/payorderDatasettle');
+Route::post('finance/payorder/datapushorder', 'Finance/payorderDatapushorder');
+Route::post('finance/moneylog/delete', 'Finance/moneylogDelete');
+Route::get('finance/moneylog/export', 'Finance/moneylogExport');
+Route::post('finance/recharge/delete', 'Finance/rechargeDelete');
+Route::get('finance/recharge/export', 'Finance/rechargeExport');
+Route::post('finance/withdraw/delete', 'Finance/withdrawDelete');
+Route::get('finance/withdraw/export', 'Finance/withdrawExport');
+Route::post('finance/commissionLog/delete', 'Finance/commissionLogDelete');
+Route::get('finance/commissionLog/export', 'Finance/commissionLogExport');
+Route::post('finance/commissionWithdraw/delete', 'Finance/commissionWithdrawDelete');
+Route::get('finance/commissionWithdraw/export', 'Finance/commissionWithdrawExport');
+Route::post('finance/commissionRecord/delete', 'Finance/commissionRecordDelete');
+Route::get('finance/commissionRecord/orderDetail', 'Finance/commissionRecordOrderDetail');
+Route::get('finance/wxTransferLog/list', 'Finance/wxTransferLogList');
+Route::get('finance/wxTransferLog/export', 'Finance/wxTransferLogExport');
+Route::post('finance/wxTransferLog/cancel', 'Finance/wxTransferCancel');
+Route::get('finance/wxTransferAuth/list', 'Finance/wxTransferAuthList');
+Route::post('finance/wxTransferAuth/query', 'Finance/wxTransferAuthQuery');
 
 // 余额宝（收益明细/提现审核打款/设置；任务181）
 Route::get('yuebao/moneylog/list', 'Yuebao/moneylogList');
@@ -449,6 +529,10 @@ Route::post('yuebao/withdraw/audit', 'Yuebao/withdrawAudit');
 Route::post('yuebao/withdraw/pay', 'Yuebao/withdrawPay');
 Route::get('yuebao/config', 'Yuebao/config');
 Route::post('yuebao/config', 'Yuebao/saveConfig');
+Route::get('yuebao/moneylog/export', 'Yuebao/moneylogExport');
+Route::post('yuebao/moneylog/delete', 'Yuebao/moneylogDelete');
+Route::get('yuebao/withdraw/export', 'Yuebao/withdrawExport');
+Route::post('yuebao/withdraw/delete', 'Yuebao/withdrawDelete');
 
 // 营销中心 - 整点秒杀（场次明细规则先注册；关单定时任务挂 schedule:run）
 Route::get('seckill/set', 'Seckill/set');
@@ -465,6 +549,19 @@ Route::post('seckill/prodata/save', 'Seckill/prodataSave');
 Route::post('seckill/prodata/delete', 'Seckill/prodataDelete');
 Route::get('seckill/order/list', 'Seckill/orderList');
 Route::post('seckill/order/close', 'Seckill/orderClose');
+Route::get('seckill/order/detail', 'Seckill/orderDetail');
+Route::post('seckill/order/del', 'Seckill/orderDelete');
+Route::post('seckill/order/ispay', 'Seckill/orderIspay');
+Route::post('seckill/order/hexiao', 'Seckill/orderHexiao');
+Route::post('seckill/order/sendExpress', 'Seckill/orderSendExpress');
+Route::get('seckill/order/expressOptions', 'Seckill/orderExpressOptions');
+Route::get('seckill/order/trace', 'Seckill/orderTrace');
+Route::get('seckill/order/deliveryNote', 'Seckill/orderDeliveryNote');
+Route::get('seckill/order/export', 'Seckill/orderExport');
+Route::get('seckill/comment/list', 'Seckill/commentList');
+Route::post('seckill/comment/setStatus', 'Seckill/commentSetStatus');
+Route::post('seckill/comment/reply', 'Seckill/commentReply');
+Route::post('seckill/comment/delete', 'Seckill/commentDelete');
 
 // 营销中心 - 积分商城（设置/分类/商品/兑换订单；关单定时任务挂 schedule:run）
 Route::get('scoreshop/set', 'Scoreshop/set');
@@ -476,8 +573,24 @@ Route::get('scoreshop/product/list', 'Scoreshop/productList');
 Route::post('scoreshop/product/save', 'Scoreshop/productSave');
 Route::post('scoreshop/product/delete', 'Scoreshop/productDelete');
 Route::post('scoreshop/product/status', 'Scoreshop/productStatus');
+Route::post('scoreshop/product/batchDelete', 'Scoreshop/productBatchDelete');
+Route::post('scoreshop/product/batchStatus', 'Scoreshop/productBatchStatus');
 Route::get('scoreshop/order/list', 'Scoreshop/orderList');
 Route::post('scoreshop/order/close', 'Scoreshop/orderClose');
+Route::get('scoreshop/order/export', 'Scoreshop/orderExport');
+Route::get('scoreshop/product/detail', 'Scoreshop/productDetail');
+Route::post('scoreshop/order/sendExpress', 'Scoreshop/orderSendExpress');
+Route::post('scoreshop/order/hexiao', 'Scoreshop/orderHexiao');
+Route::post('scoreshop/order/refund', 'Scoreshop/orderRefund');
+Route::post('scoreshop/order/deliver', 'Scoreshop/orderDeliver');
+Route::post('scoreshop/order/ispay', 'Scoreshop/orderIspay');
+Route::post('scoreshop/order/del', 'Scoreshop/orderDel');
+Route::get('scoreshop/order/expressOptions', 'Scoreshop/orderExpressOptions');
+Route::get('scoreshop/order/trace', 'Scoreshop/orderTrace');
+Route::get('scoreshop/order/shd', 'Scoreshop/orderShd');
+Route::post('scoreshop/order/batchSend', 'Scoreshop/orderBatchSend');
+Route::get('scoreshop/agentLevels', 'Scoreshop/agentLevels');
+Route::get('scoreshop/deliveryStaff', 'Scoreshop/deliveryStaff');
 
 // 营销中心 - 抽奖活动（大转盘/刮刮卡：活动管理 + 中奖记录领奖核销；概率/防超发核心在 LotteryService）
 Route::get('choujiang/list', 'Choujiang/list');
@@ -487,6 +600,8 @@ Route::post('choujiang/delete', 'Choujiang/delete');
 Route::post('choujiang/status', 'Choujiang/status');
 Route::get('choujiang/records', 'Choujiang/records');
 Route::post('choujiang/recordSetst', 'Choujiang/recordSetst');
+Route::post('choujiang/recordDelete', 'Choujiang/recordDelete');
+Route::get('choujiang/export', 'Choujiang/export');
 
 // 营销中心 - 投票活动（活动 CRUD/分组/选手审核/排行/投票记录；防刷：同会员同活动每日 per_daycount 票、累计 per_allcount 票）
 Route::get('toupiao/list', 'Toupiao/list');
@@ -522,6 +637,11 @@ Route::post('kanjia/order/ship', 'Kanjia/orderShip');
 Route::post('kanjia/order/refundCheck', 'Kanjia/orderRefundCheck');
 Route::post('kanjia/order/close', 'Kanjia/orderClose');
 Route::post('kanjia/order/remark', 'Kanjia/orderRemark');
+Route::get('kanjia/order/detail', 'Kanjia/orderDetail');
+Route::post('kanjia/order/del', 'Kanjia/orderDelete');
+Route::post('kanjia/order/ispay', 'Kanjia/orderIspay');
+Route::post('kanjia/order/hexiao', 'Kanjia/orderHexiao');
+Route::get('kanjia/order/export', 'Kanjia/orderExport');
 Route::get('kanjia/codelist/list', 'Kanjia/codelistList');
 Route::post('kanjia/codelist/hexiao', 'Kanjia/codelistHexiao');
 
@@ -720,18 +840,6 @@ Route::get('fenhong/loglist', 'Fenhong/loglist');
 Route::post('fenhong/examinesend', 'Fenhong/examinesend');
 Route::post('fenhong/sendall', 'Fenhong/sendall');
 
-// 奖金池（利润池配置/区域达标池CRUD/发放记录；任务184）
-Route::get('prizepool/profit/config', 'PrizePool/profitConfig');
-Route::post('prizepool/profit/config', 'PrizePool/saveProfitConfig');
-Route::post('prizepool/profit/send', 'PrizePool/sendProfitNow');
-Route::get('prizepool/profit/log', 'PrizePool/profitLog');
-Route::get('prizepool/pool/list', 'PrizePool/poolList');
-Route::post('prizepool/pool/save', 'PrizePool/savePool');
-Route::post('prizepool/pool/delete', 'PrizePool/deletePool');
-Route::get('prizepool/pool/orderlog', 'PrizePool/orderLog');
-Route::get('prizepool/sendlog/list', 'PrizePool/sendLogList');
-Route::get('prizepool/provinces', 'PrizePool/provinces');
-
 // 口令/谜语游戏（批次4-E 任务190 E1-1：页面设置/活动CRUD/参与记录，type=kouling|riddle）
 Route::get('kouling/set', 'Kouling/set');
 Route::post('kouling/set', 'Kouling/saveSet');
@@ -771,11 +879,11 @@ Route::post('activityComment/delete', 'ActivityComment/delete');
 
 // 确认收货奖励记录（批次4-E 任务190 E2-5；设置在 SignReward reward/collect）
 Route::get('orderCollectReward/records', 'OrderCollectReward/records');
+Route::post('orderCollectReward/del', 'OrderCollectReward/del');
 
-// 营销数据统计（批次4-E 任务190 E2-6：六模块汇总/金额分布/时间趋势）
-Route::get('dataStatistics/summary', 'DataStatistics/summary');
-Route::get('dataStatistics/moneyDist', 'DataStatistics/moneyDist');
-Route::get('dataStatistics/trend', 'DataStatistics/trend');
+// 营销数据统计（客户端·营销：一次返回卡片/占比/趋势/会员消费/明细表 + 筛选项）
+Route::get('dataStatistics/index', 'DataStatistics/index');
+Route::get('dataStatistics/options', 'DataStatistics/options');
 
 // 营销中心 - 注册赠送设置（批次4-A 任务186）
 Route::get('registerGive/config', 'RegisterGive/config');
@@ -803,11 +911,16 @@ Route::post('cashback/delete', 'Cashback/delete');
 Route::get('cashback/memberList', 'Cashback/memberList');
 Route::get('cashback/memberLogList', 'Cashback/memberLogList');
 
+// 营销中心 - 购物满减 manjian（对齐参考系统 Manjian/set：单条配置 upsert）
+Route::get('manjian/config', 'Manjian/config');
+Route::post('manjian/save', 'Manjian/save');
+
 // 短视频整组（批次5-C 任务196：分类/视频管理审核/评论回复/系统设置；海报走通用 poster 路由 type=shortvideo）
 Route::get('shortvideo/category/list', 'ShortvideoCategory/list');
 Route::get('shortvideo/category/options', 'ShortvideoCategory/options');
 Route::post('shortvideo/category/save', 'ShortvideoCategory/save');
 Route::post('shortvideo/category/delete', 'ShortvideoCategory/delete');
+Route::post('shortvideo/category/status', 'ShortvideoCategory/status');
 Route::get('shortvideo/video/list', 'Shortvideo/list');
 Route::get('shortvideo/video/detail', 'Shortvideo/detail');
 Route::post('shortvideo/video/save', 'Shortvideo/save');
@@ -851,6 +964,8 @@ Route::post('articleset/save', 'ArticleSet/save');
 
 // Luntan group (batch 5-B task 195: post/category/comment/reply/sysset)
 Route::get('luntan/list', 'Luntan/list');
+Route::get('luntan/detail', 'Luntan/detail');
+Route::post('luntan/save', 'Luntan/save');
 Route::post('luntan/audit', 'Luntan/audit');
 Route::post('luntan/setTop', 'Luntan/setTop');
 Route::post('luntan/delete', 'Luntan/delete');
@@ -884,14 +999,20 @@ Route::post('kechengList/status', 'KechengList/status');
 Route::get('kechengChapter/list', 'KechengChapter/list');
 Route::post('kechengChapter/save', 'KechengChapter/save');
 Route::post('kechengChapter/delete', 'KechengChapter/delete');
+Route::get('kechengChapter/detail', 'KechengChapter/detail');
+Route::post('kechengChapter/status', 'KechengChapter/status');
 
 Route::get('kechengOrder/list', 'KechengOrder/list');
+Route::get('kechengOrder/detail', 'KechengOrder/detail');
+Route::post('kechengOrder/close', 'KechengOrder/close');
+Route::post('kechengOrder/delete', 'KechengOrder/delete');
 Route::get('kechengStudylog/list', 'KechengStudylog/list');
+Route::post('kechengStudylog/delete', 'KechengStudylog/delete');
 
 Route::get('kechengSet/config', 'KechengSet/config');
 Route::post('kechengSet/save', 'KechengSet/save');
 
-// Knowledge-payment question bank & lecturer audit (batch 5-D2 task 198)
+// Knowledge-payment question bank (batch 5-D2 task 198; lecturer audit removed)
 Route::get('kechengTiku/list', 'KechengTiku/list');
 Route::post('kechengTiku/save', 'KechengTiku/save');
 Route::post('kechengTiku/delete', 'KechengTiku/delete');
@@ -899,10 +1020,9 @@ Route::post('kechengTiku/status', 'KechengTiku/status');
 Route::get('kechengTiku/chapters', 'KechengTiku/chapters');
 Route::post('kechengTiku/import', 'KechengTiku/import');
 Route::get('kechengTiku/export', 'KechengTiku/export');
-
-Route::get('kechengLecturer/list', 'KechengLecturer/list');
-Route::post('kechengLecturer/check', 'KechengLecturer/check');
-Route::post('kechengLecturer/status', 'KechengLecturer/status');
+Route::get('kechengRecord/list', 'KechengRecord/list');
+Route::get('kechengRecord/logs', 'KechengRecord/logs');
+Route::post('kechengRecord/delete', 'KechengRecord/delete');
 
 // 行业应用 - 餐饮排队叫号（批次6-T6-2 任务203：分类CRUD/队列列表+叫号过号/大屏设置；语音降级浏览器TTS）
 Route::get('restaurant/queue/category/list', 'RestaurantQueueCategory/list');
@@ -1142,6 +1262,7 @@ Route::post('peisong/order/del', 'Peisong/orderDel');
 Route::get('peisong/comment/list', 'Peisong/commentList');
 Route::post('peisong/comment/detail', 'Peisong/commentDetail');
 Route::post('peisong/comment/del', 'Peisong/commentDel');
+Route::post('peisong/comment/reply', 'Peisong/commentReply');
 
 Route::get('peisong/moneylog/list', 'Peisong/moneylogList');
 Route::post('peisong/moneylog/del', 'Peisong/moneylogDel');
@@ -1155,6 +1276,15 @@ Route::post('peisong/set', 'Peisong/setSave');
 Route::get('peisong/makeset', 'Peisong/makeset');
 Route::post('peisong/makeset', 'Peisong/makesetSave');
 Route::get('peisong/getpeisonguser', 'Peisong/getpeisonguser');
+
+// 扩展·同城配送·快递鸟即时配送（片C：设置 express_set / 门店 express_shop / 记录 express_order + 物流 trace 复用 Kdniao）
+Route::get('expresskdn/set', 'ExpressKdn/set');
+Route::post('expresskdn/set', 'ExpressKdn/setSave');
+Route::get('expresskdn/shop/list', 'ExpressKdn/shopList');
+Route::post('expresskdn/shop/save', 'ExpressKdn/shopSave');
+Route::post('expresskdn/shop/del', 'ExpressKdn/shopDel');
+Route::get('expresskdn/record/list', 'ExpressKdn/recordList');
+Route::post('expresskdn/record/trace', 'ExpressKdn/recordTrace');
 
 // 行业应用 - 预约域批次8（任务222：商品服务/商品评价/人员类型/人员评价/提成明细/提现记录/系统设置；
 // 海报走通用 poster 路由 type=yuyue；服务类目复用上方 yuyue/category 既有路由；商户视图用 bid 参数过滤）
@@ -1199,11 +1329,6 @@ Route::get('cycleComment/list', 'CycleComment/list');
 Route::post('cycleComment/check', 'CycleComment/check');
 Route::post('cycleComment/reply', 'CycleComment/reply');
 Route::post('cycleComment/delete', 'CycleComment/delete');
-
-Route::get('offlineSubsidies/set', 'OfflineSubsidies/setGet');
-Route::post('offlineSubsidies/set', 'OfflineSubsidies/setSave');
-Route::get('offlineSubsidies/log/list', 'OfflineSubsidies/logList');
-Route::post('offlineSubsidies/log/delete', 'OfflineSubsidies/logDelete');
 
 Route::get('huodongCalendar/get', 'HuodongCalendar/get');
 Route::post('huodongCalendar/save', 'HuodongCalendar/save');

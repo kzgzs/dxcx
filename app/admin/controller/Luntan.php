@@ -113,6 +113,32 @@ class Luntan extends BaseController
     }
 
     /**
+     * 帖子详情（后台编辑回显）
+     * GET /admin/luntan/detail?id=
+     */
+    public function detail()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $id  = (int) $this->request->get('id', 0);
+
+        return $this->success($this->service->adminPostDetail($aid, $id));
+    }
+
+    /**
+     * 帖子新增/编辑
+     * POST /admin/luntan/save {id?,mid,cid,content,pics,video,readcount,zan,status}
+     */
+    public function save()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $id = $this->service->adminPostSave($aid, $this->request->post());
+        PlogService::write($aid, $this->uid(), '保存论坛帖子' . $id);
+
+        return $this->success(['id' => $id], '保存成功');
+    }
+
+    /**
      * 系统设置读取
      * GET /admin/luntan/sysset
      */

@@ -59,23 +59,6 @@ export interface LevelupListResult {
   pagesize: number
 }
 
-// 会员关系图节点
-export interface RelationNode {
-  id: number
-  name: string
-  headimg: string
-  realname: string
-  tel: string
-  pid: number
-  levelid: number
-  level_name: string
-  downcount: number
-  downcountall: number
-  deeplevel: number
-  hasMore: boolean
-  children: RelationNode[]
-}
-
 // 海报画布元素（img/text/textarea/head/qrwx/qrmp）
 export interface PosterElement {
   left: string
@@ -137,24 +120,6 @@ export function auditLevelup(data: { id: number; st: number; remark?: string }) 
 // 删除升级申请记录（单条/批量）
 export function deleteLevelup(ids: number[]) {
   return request.post<unknown, { count: number }>('/admin/memberLevelup/delete', { ids })
-}
-
-/* ================= 会员关系图 ================= */
-
-// 关系图主接口（mid 或 keyword 定位根节点）
-export function getRelationChart(params: { mid?: number; keyword?: string; depth?: number }) {
-  return request.get<unknown, { root: RelationNode | null; deeplevel: number }>(
-    '/admin/memberRelation/charts',
-    { params },
-  )
-}
-
-// 懒加载：指定会员的下级子树
-export function getRelationMore(mid: number) {
-  return request.get<unknown, { node: RelationNode; deeplevel: number }>(
-    '/admin/memberRelation/chartsMore',
-    { params: { mid } },
-  )
 }
 
 /* ================= 共享海报 ================= */

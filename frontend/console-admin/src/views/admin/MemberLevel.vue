@@ -6,18 +6,12 @@ import {
   deleteMemberLevel,
   getMemberLevelDetail,
   getMemberLevelList,
-  getMemberLevelRecordList,
   saveMemberLevel,
-  saveMemberLevelRecord,
 } from '../../api/member'
-import { getCategoryList, getGoodsList } from '../../api/goods'
 import { assetUrl } from '../../api/upload'
-import type {
-  MemberLevelItem,
-  MemberLevelRecordItem,
-  MemberLevelSaveParams,
-} from '../../api/types'
+import type { MemberLevelItem, MemberLevelSaveParams } from '../../api/types'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import SimpleRichEditor from '../../components/SimpleRichEditor.vue'
 import { CircleClose } from '@element-plus/icons-vue'
 
 // ============ 列表 / 平铺切换 ============
@@ -37,23 +31,6 @@ async function fetchList() {
   }
 }
 
-// ============ 候选数据（商品/分类） ============
-const goodsOptions = ref<{ id: number; title: string }[]>([])
-const categoryOptions = ref<{ id: number; name: string }[]>([])
-
-async function loadCandidates() {
-  try {
-    const [goods, cats] = await Promise.all([
-      getGoodsList({ page: 1, pagesize: 200 }),
-      getCategoryList({ page: 1, pagesize: 200 }),
-    ])
-    goodsOptions.value = (goods.list || []).map((g) => ({ id: g.id, title: g.name }))
-    categoryOptions.value = (cats.list || []).map((c) => ({ id: c.id, name: c.name }))
-  } catch {
-    // 候选加载失败不阻断页面
-  }
-}
-
 // ============ 表单 ============
 interface LevelForm {
   id: number
@@ -63,74 +40,26 @@ interface LevelForm {
   discount: number
   isdefault: number
   maxnum: number
-  // 申请设置组
-  can_up: number
-  can_apply: number
-  apply_check: number
-  apply_ordermoney: number
-  apply_rechargemoney: number
-  apply_paymoney: number
-  apply_paytxt: string
-  // 升级条件组（金额/人数）
-  up_ordermoney: number
-  up_rechargemoney: number
-  up_wxpaymoney: number
-  up_perpaymoney: number
-  up_orderprice: number
-  up_getmembercard: number
-  up_fxordermoney: number
-  up_fxorderlevelnum: number
-  up_fxorderlevelid: number[]
-  up_fxdowncount: number
-  up_fxdownlevelnum: number
-  up_fxdownlevelid: number[]
-  up_fxdowncount2: number
-  up_fxdownlevelnum2: number
-  up_fxdownlevelid2: number[]
-  up_fxdowncount3: number
-  up_fxdownlevelnum3: number
-  up_fxdownlevelid3: number[]
-  up_proid: number[]
-  up_pronum: number
-  up_catid: number[]
-  up_cat_ordermoney: number
-  gettj: number[]
   // 分销配置组
   can_agent: number
   agent_rule: number
-  commissionset: number
   commissiontype: number
   commission1: number
   commission2: number
   commission3: number
-  commission4: number
-  commission5: number
-  commission6: number
   commission_parent: number
-  commission_parent_pj: number
-  commission_appointlevelid: number[]
-  commission_max: number
-  fx_jinsuo: number
   // 推荐积分
   score1: number
   score2: number
   score3: number
   scoremax: number
-  // 分红配置组
-  fenhong: number
-  fenhong_num: number
-  fenhong_max_money: number
-  teamfenhonglv: number
-  teamfenhongbl: number
-  teamfenhong_money: number
-  areafenhong: number
-  areafenhongbl: number
-  areafenhongmaxnum: number
-  // 升级赠送组
-  up_give_score: number
-  up_give_commission: number
-  up_give_money: number
-  up_give_parent_money: number
+  // 自己拿一级提成 / 我的团队权限
+  commission1own: number
+  team_showtel: number
+  team_givemoney: number
+  team_givescore: number
+  // 特权说明
+  explain: string
 }
 
 function buildEmptyForm(): LevelForm {
@@ -142,85 +71,28 @@ function buildEmptyForm(): LevelForm {
     discount: 10,
     isdefault: 0,
     maxnum: 0,
-    can_up: 0,
-    can_apply: 0,
-    apply_check: 1,
-    apply_ordermoney: 0,
-    apply_rechargemoney: 0,
-    apply_paymoney: 0,
-    apply_paytxt: '升级费用',
-    up_ordermoney: 0,
-    up_rechargemoney: 0,
-    up_wxpaymoney: 0,
-    up_perpaymoney: 0,
-    up_orderprice: 0,
-    up_getmembercard: 0,
-    up_fxordermoney: 0,
-    up_fxorderlevelnum: 0,
-    up_fxorderlevelid: [],
-    up_fxdowncount: 0,
-    up_fxdownlevelnum: 0,
-    up_fxdownlevelid: [],
-    up_fxdowncount2: 0,
-    up_fxdownlevelnum2: 0,
-    up_fxdownlevelid2: [],
-    up_fxdowncount3: 0,
-    up_fxdownlevelnum3: 0,
-    up_fxdownlevelid3: [],
-    up_proid: [],
-    up_pronum: 1,
-    up_catid: [],
-    up_cat_ordermoney: 0,
-    gettj: [],
     can_agent: 0,
     agent_rule: 0,
-    commissionset: 0,
     commissiontype: 0,
     commission1: 0,
     commission2: 0,
     commission3: 0,
-    commission4: 0,
-    commission5: 0,
-    commission6: 0,
     commission_parent: 0,
-    commission_parent_pj: 0,
-    commission_appointlevelid: [],
-    commission_max: 0,
-    fx_jinsuo: 0,
     score1: 0,
     score2: 0,
     score3: 0,
     scoremax: 0,
-    fenhong: 0,
-    fenhong_num: 0,
-    fenhong_max_money: 0,
-    teamfenhonglv: 0,
-    teamfenhongbl: 0,
-    teamfenhong_money: 0,
-    areafenhong: 0,
-    areafenhongbl: 0,
-    areafenhongmaxnum: 0,
-    up_give_score: 0,
-    up_give_commission: 0,
-    up_give_money: 0,
-    up_give_parent_money: 0,
+    commission1own: 0,
+    team_showtel: 0,
+    team_givemoney: 0,
+    team_givescore: 0,
+    explain: '',
   }
-}
-
-// CSV 字符串（逗号分隔ID，0/-1=不限）与数组互转
-function csvToIds(s: string): number[] {
-  return String(s || '')
-    .split(',')
-    .map((x) => parseInt(x.trim(), 10))
-    .filter((x) => Number.isFinite(x) && x > 0)
-}
-function idsToCsv(arr: number[]): string {
-  return (arr || []).filter((x) => x > 0).join(',')
 }
 
 const isEdit = ref(false)
 const detailLoading = ref(false)
-const activeCollapse = ref<string[]>(['base', 'fenxiao'])
+const activeCollapse = ref<string[]>(['base', 'fenxiao', 'other'])
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const form = reactive<LevelForm>(buildEmptyForm())
@@ -255,16 +127,15 @@ function backToList() {
 
 async function openAdd() {
   isEdit.value = false
-  activeCollapse.value = ['base', 'fenxiao']
+  activeCollapse.value = ['base', 'fenxiao', 'other']
   Object.assign(form, buildEmptyForm())
   form.sort = (tableData.value.length || 0) + 1
-  regionRecords.value = []
   viewMode.value = 'form'
 }
 
 async function openEdit(row: MemberLevelItem) {
   isEdit.value = true
-  activeCollapse.value = ['base', 'fenxiao']
+  activeCollapse.value = ['base', 'fenxiao', 'other']
   Object.assign(form, buildEmptyForm())
   viewMode.value = 'form'
   detailLoading.value = true
@@ -278,70 +149,23 @@ async function openEdit(row: MemberLevelItem) {
       discount: d.discount,
       isdefault: d.isdefault,
       maxnum: d.maxnum,
-      can_up: d.can_up,
-      can_apply: d.can_apply,
-      apply_check: d.apply_check,
-      apply_ordermoney: d.apply_ordermoney,
-      apply_rechargemoney: d.apply_rechargemoney,
-      apply_paymoney: d.apply_paymoney,
-      apply_paytxt: d.apply_paytxt || '升级费用',
-      up_ordermoney: d.up_ordermoney,
-      up_rechargemoney: d.up_rechargemoney,
-      up_wxpaymoney: d.up_wxpaymoney,
-      up_perpaymoney: d.up_perpaymoney,
-      up_orderprice: d.up_orderprice,
-      up_getmembercard: d.up_getmembercard,
-      up_fxordermoney: d.up_fxordermoney,
-      up_fxorderlevelnum: parseInt(d.up_fxorderlevelnum, 10) || 0,
-      up_fxorderlevelid: csvToIds(d.up_fxorderlevelid),
-      up_fxdowncount: d.up_fxdowncount,
-      up_fxdownlevelnum: parseInt(d.up_fxdownlevelnum, 10) || 0,
-      up_fxdownlevelid: csvToIds(d.up_fxdownlevelid),
-      up_fxdowncount2: d.up_fxdowncount2,
-      up_fxdownlevelnum2: parseInt(d.up_fxdownlevelnum2, 10) || 0,
-      up_fxdownlevelid2: csvToIds(d.up_fxdownlevelid2),
-      up_fxdowncount3: d.up_fxdowncount3,
-      up_fxdownlevelnum3: parseInt(d.up_fxdownlevelnum3, 10) || 0,
-      up_fxdownlevelid3: csvToIds(d.up_fxdownlevelid3),
-      up_proid: csvToIds(d.up_proid),
-      up_pronum: parseInt(String(d.up_pronum || '1').split(',')[0], 10) || 1,
-      up_catid: csvToIds(d.up_catid),
-      up_cat_ordermoney: d.up_cat_ordermoney,
-      gettj: csvToIds(d.gettj),
       can_agent: d.can_agent,
       agent_rule: d.agent_rule,
-      commissionset: d.commissionset,
       commissiontype: d.commissiontype,
       commission1: d.commission1,
       commission2: d.commission2,
       commission3: d.commission3,
-      commission4: d.commission4,
-      commission5: d.commission5,
-      commission6: d.commission6,
       commission_parent: d.commission_parent,
-      commission_parent_pj: d.commission_parent_pj,
-      commission_appointlevelid: csvToIds(d.commission_appointlevelid),
-      commission_max: d.commission_max,
-      fx_jinsuo: d.fx_jinsuo,
       score1: d.score1,
       score2: d.score2,
       score3: d.score3,
       scoremax: d.scoremax,
-      fenhong: d.fenhong,
-      fenhong_num: d.fenhong_num,
-      fenhong_max_money: d.fenhong_max_money,
-      teamfenhonglv: d.teamfenhonglv,
-      teamfenhongbl: d.teamfenhongbl,
-      teamfenhong_money: d.teamfenhong_money,
-      areafenhong: d.areafenhong,
-      areafenhongbl: d.areafenhongbl,
-      areafenhongmaxnum: d.areafenhongmaxnum,
-      up_give_score: d.up_give_score,
-      up_give_commission: d.up_give_commission,
-      up_give_money: d.up_give_money,
-      up_give_parent_money: d.up_give_parent_money,
+      commission1own: d.commission1own,
+      team_showtel: d.team_showtel,
+      team_givemoney: d.team_givemoney,
+      team_givescore: d.team_givescore,
+      explain: d.explain || '',
     })
-    fetchRegionRecords(row.id)
   } catch {
     // 错误提示已由 axios 拦截器统一弹出
   } finally {
@@ -363,68 +187,22 @@ async function handleSubmit() {
         discount: Number(form.discount),
         isdefault: form.isdefault,
         maxnum: form.maxnum || 0,
-        can_up: form.can_up,
-        can_apply: form.can_apply,
-        apply_check: form.apply_check,
-        apply_ordermoney: Number(form.apply_ordermoney) || 0,
-        apply_rechargemoney: Number(form.apply_rechargemoney) || 0,
-        apply_paymoney: Number(form.apply_paymoney) || 0,
-        apply_paytxt: form.apply_paytxt || '升级费用',
-        up_ordermoney: Number(form.up_ordermoney) || 0,
-        up_rechargemoney: Number(form.up_rechargemoney) || 0,
-        up_wxpaymoney: Number(form.up_wxpaymoney) || 0,
-        up_perpaymoney: Number(form.up_perpaymoney) || 0,
-        up_orderprice: Number(form.up_orderprice) || 0,
-        up_getmembercard: form.up_getmembercard,
-        up_fxordermoney: Number(form.up_fxordermoney) || 0,
-        up_fxorderlevelnum: String(form.up_fxorderlevelnum || 0),
-        up_fxorderlevelid: form.up_fxorderlevelid.length ? idsToCsv(form.up_fxorderlevelid) : '0',
-        up_fxdowncount: Number(form.up_fxdowncount) || 0,
-        up_fxdownlevelnum: String(form.up_fxdownlevelnum || 0),
-        up_fxdownlevelid: form.up_fxdownlevelid.length ? idsToCsv(form.up_fxdownlevelid) : '0',
-        up_fxdowncount2: Number(form.up_fxdowncount2) || 0,
-        up_fxdownlevelnum2: String(form.up_fxdownlevelnum2 || 0),
-        up_fxdownlevelid2: form.up_fxdownlevelid2.length ? idsToCsv(form.up_fxdownlevelid2) : '0',
-        up_fxdowncount3: Number(form.up_fxdowncount3) || 0,
-        up_fxdownlevelnum3: String(form.up_fxdownlevelnum3 || 0),
-        up_fxdownlevelid3: form.up_fxdownlevelid3.length ? idsToCsv(form.up_fxdownlevelid3) : '0',
-        up_proid: idsToCsv(form.up_proid),
-        up_pronum: String(form.up_pronum || 1),
-        up_catid: idsToCsv(form.up_catid),
-        up_cat_ordermoney: Number(form.up_cat_ordermoney) || 0,
-        gettj: form.gettj.length ? idsToCsv(form.gettj) : '-1',
         can_agent: form.can_agent,
         agent_rule: form.agent_rule,
-        commissionset: form.commissionset,
         commissiontype: form.commissiontype,
         commission1: Number(form.commission1) || 0,
         commission2: Number(form.commission2) || 0,
         commission3: Number(form.commission3) || 0,
-        commission4: Number(form.commission4) || 0,
-        commission5: Number(form.commission5) || 0,
-        commission6: Number(form.commission6) || 0,
         commission_parent: Number(form.commission_parent) || 0,
-        commission_parent_pj: Number(form.commission_parent_pj) || 0,
-        commission_appointlevelid: idsToCsv(form.commission_appointlevelid),
-        commission_max: Number(form.commission_max) || 0,
-        fx_jinsuo: form.fx_jinsuo,
         score1: Number(form.score1) || 0,
         score2: Number(form.score2) || 0,
         score3: Number(form.score3) || 0,
         scoremax: Number(form.scoremax) || 0,
-        fenhong: Number(form.fenhong) || 0,
-        fenhong_num: Number(form.fenhong_num) || 0,
-        fenhong_max_money: Number(form.fenhong_max_money) || 0,
-        teamfenhonglv: Number(form.teamfenhonglv) || 0,
-        teamfenhongbl: Number(form.teamfenhongbl) || 0,
-        teamfenhong_money: Number(form.teamfenhong_money) || 0,
-        areafenhong: form.areafenhong,
-        areafenhongbl: Number(form.areafenhongbl) || 0,
-        areafenhongmaxnum: Number(form.areafenhongmaxnum) || 0,
-        up_give_score: Number(form.up_give_score) || 0,
-        up_give_commission: Number(form.up_give_commission) || 0,
-        up_give_money: Number(form.up_give_money) || 0,
-        up_give_parent_money: Number(form.up_give_parent_money) || 0,
+        commission1own: form.commission1own,
+        team_showtel: form.team_showtel,
+        team_givemoney: form.team_givemoney,
+        team_givescore: form.team_givescore,
+        explain: form.explain || '',
       }
       await saveMemberLevel(payload)
       ElMessage.success('保存成功')
@@ -436,38 +214,6 @@ async function handleSubmit() {
       submitting.value = false
     }
   })
-}
-
-// ============ 区域代理归属（member_level_record） ============
-const regionRecords = ref<MemberLevelRecordItem[]>([])
-const regionLoading = ref(false)
-
-async function fetchRegionRecords(levelid: number) {
-  regionLoading.value = true
-  try {
-    const data = await getMemberLevelRecordList(levelid)
-    regionRecords.value = data.list || []
-  } catch {
-    regionRecords.value = []
-  } finally {
-    regionLoading.value = false
-  }
-}
-
-async function handleRecordSave(row: MemberLevelRecordItem) {
-  try {
-    await saveMemberLevelRecord({
-      id: row.id,
-      areafenhong: row.areafenhong,
-      areafenhongbl: Number(row.areafenhongbl) || 0,
-      areafenhong_province: row.areafenhong_province,
-      areafenhong_city: row.areafenhong_city,
-      areafenhong_area: row.areafenhong_area,
-    })
-    ElMessage.success('区域归属已保存')
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  }
 }
 
 // ============ 删除 ============
@@ -494,37 +240,12 @@ function commissionUnit(): string {
   return form.commissiontype === 1 ? '元' : '%'
 }
 
-// 下级人数条件三组动态字段名
-type FxdownCountKey = 'up_fxdowncount' | 'up_fxdowncount2' | 'up_fxdowncount3'
-type FxdownNumKey = 'up_fxdownlevelnum' | 'up_fxdownlevelnum2' | 'up_fxdownlevelnum3'
-type FxdownIdKey = 'up_fxdownlevelid' | 'up_fxdownlevelid2' | 'up_fxdownlevelid3'
-function fxdownCountKey(n: number): FxdownCountKey {
-  return n === 2 ? 'up_fxdowncount2' : n === 3 ? 'up_fxdowncount3' : 'up_fxdowncount'
-}
-function fxdownNumKey(n: number): FxdownNumKey {
-  return n === 2 ? 'up_fxdownlevelnum2' : n === 3 ? 'up_fxdownlevelnum3' : 'up_fxdownlevelnum'
-}
-function fxdownIdKey(n: number): FxdownIdKey {
-  return n === 2 ? 'up_fxdownlevelid2' : n === 3 ? 'up_fxdownlevelid3' : 'up_fxdownlevelid'
-}
-type CommissionKey =
-  | 'commission1'
-  | 'commission2'
-  | 'commission3'
-  | 'commission4'
-  | 'commission5'
-  | 'commission6'
-function commissionKey(n: number): CommissionKey {
-  return `commission${n}` as CommissionKey
-}
-
 function moneyText(v: number): string {
   return `￥${Number(v || 0).toFixed(2)}`
 }
 
 onMounted(() => {
   fetchList()
-  loadCandidates()
 })
 </script>
 
@@ -708,381 +429,37 @@ onMounted(() => {
               </span>
             </el-form-item>
 
-            <!-- 更多分销参数（保留表中已有能力） -->
-            <el-divider content-position="left">更多分销参数</el-divider>
-            <el-form-item label="佣金设置">
-              <el-select v-model="form.commissionset" style="width: 220px">
-                <el-option :value="0" label="按会员等级" />
-                <el-option :value="1" label="按价格比例" />
-                <el-option :value="2" label="固定金额" />
-                <el-option :value="-1" label="不参与分销" />
-              </el-select>
-            </el-form-item>
-            <el-form-item v-for="n in [4, 5, 6]" :key="`commission-${n}`" :label="`${'四五六'[n - 4]}级提成`">
-              <el-input-number
-                v-model="form[commissionKey(n)]"
-                :min="0"
-                :precision="2"
-                style="width: 180px"
-              />
-              <span class="form-tip">{{ commissionUnit() }}（commission{{ n }}）</span>
-            </el-form-item>
-            <el-form-item label="平级奖">
-              <el-input-number v-model="form.commission_parent_pj" :min="0" :precision="2" style="width: 180px" />
-              <span class="form-tip">{{ commissionUnit() }}，下级同级时奖励（commission_parent_pj）</span>
-            </el-form-item>
-            <el-form-item label="指定参与等级">
-              <el-select
-                v-model="form.commission_appointlevelid"
-                multiple
-                filterable
-                clearable
-                placeholder="不选表示不限制"
-                style="width: 360px"
-              >
-                <el-option v-for="lv in tableData" :key="lv.id" :label="lv.name" :value="lv.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="奖励份数上限">
-              <el-input-number v-model="form.commission_max" :min="0" :step="1" style="width: 180px" />
-              <span class="form-tip">达到奖励上限不再发放佣金，0 表示不限制</span>
-            </el-form-item>
-            <el-form-item label="紧缩模式">
-              <el-radio-group v-model="form.fx_jinsuo">
+            <el-form-item label="自己拿一级提成">
+              <el-radio-group v-model="form.commission1own">
                 <el-radio :value="1">开启</el-radio>
                 <el-radio :value="0">关闭</el-radio>
               </el-radio-group>
-              <span class="form-tip">上级无分销权限时佣金向上紧缩</span>
+              <span class="form-tip-block">开启后一级为自己，即自己购买商品自己拿一级佣金</span>
+            </el-form-item>
+
+            <el-form-item label="我的团队权限">
+              <div class="perm-checks">
+                <el-checkbox v-model="form.team_showtel" :true-value="1" :false-value="0">查看下级手机号</el-checkbox>
+                <el-checkbox v-model="form.team_givemoney" :true-value="1" :false-value="0">给下级转余额</el-checkbox>
+                <el-checkbox v-model="form.team_givescore" :true-value="1" :false-value="0">给下级转积分</el-checkbox>
+              </div>
+              <span class="form-tip-block">前端“我的团队”页面权限开关</span>
             </el-form-item>
           </el-collapse-item>
 
-          <!-- ===== 申请设置（折叠） ===== -->
-          <el-collapse-item title="申请设置" name="apply">
-            <el-form-item label="申请升级">
-              <el-radio-group v-model="form.can_apply">
-                <el-radio :value="1">开启</el-radio>
-                <el-radio :value="0">关闭</el-radio>
-              </el-radio-group>
-              <span class="form-tip-block">开启后会员可以主动提交资料申请升为该级别</span>
+          <!-- ===== 其他设置 ===== -->
+          <el-collapse-item title="其他设置" name="other">
+            <el-form-item label="特权说明">
+              <div class="explain-editor">
+                <SimpleRichEditor v-model="form.explain" />
+              </div>
             </el-form-item>
-            <template v-if="form.can_apply === 1">
-              <el-form-item label="申请条件">
-                <div class="num-grid">
-                  <div class="num-cell">
-                    <span class="num-label">订单金额满(元)</span>
-                    <el-input-number v-model="form.apply_ordermoney" :min="0" :precision="2" />
-                  </div>
-                  <span class="or-text">或</span>
-                  <div class="num-cell">
-                    <span class="num-label">充值金额满(元)</span>
-                    <el-input-number v-model="form.apply_rechargemoney" :min="0" :precision="2" />
-                  </div>
-                </div>
-                <span class="form-tip-block">用户申请成为该级别需要满足的条件，不填写（0）则不需要申请条件</span>
-              </el-form-item>
-              <el-form-item label="升级费用">
-                <el-input-number v-model="form.apply_paymoney" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元，提交申请时需要交升级费，0 代表免费申请</span>
-              </el-form-item>
-              <el-form-item label="费用自定义文字">
-                <el-input v-model="form.apply_paytxt" placeholder="升级费用" style="width: 200px" />
-                <span class="form-tip">默认“升级费用”，列表“申请加盟费”列展示该费用</span>
-              </el-form-item>
-              <el-form-item label="申请资料需要审核">
-                <el-radio-group v-model="form.apply_check">
-                  <el-radio :value="1">是</el-radio>
-                  <el-radio :value="0">否</el-radio>
-                </el-radio-group>
-                <span class="form-tip">申请资料是否需要后台审核</span>
-              </el-form-item>
-            </template>
-          </el-collapse-item>
-
-          <!-- ===== 升级条件（折叠） ===== -->
-          <el-collapse-item title="升级条件" name="upgrade">
-            <el-form-item label="自动升级">
-              <el-radio-group v-model="form.can_up">
-                <el-radio :value="1">开启</el-radio>
-                <el-radio :value="0">关闭</el-radio>
-              </el-radio-group>
-              <span class="form-tip-block">开启后会员满足下列任一条件（or 关系）自动升级；默认等级无需升级</span>
-            </el-form-item>
-            <template v-if="form.can_up === 1">
-              <el-alert
-                type="info"
-                :closable="false"
-                show-icon
-                title="以下条件组内为 or 关系：满足任意一项即可升级（0/空表示不启用该条件）。"
-                style="margin-bottom: 14px"
-              />
-              <el-form-item label="累计订单金额满">
-                <el-input-number v-model="form.up_ordermoney" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元（up_ordermoney）</span>
-              </el-form-item>
-              <el-form-item label="累计充值金额满">
-                <el-input-number v-model="form.up_rechargemoney" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元（up_rechargemoney）</span>
-              </el-form-item>
-              <el-form-item label="累计微信支付满">
-                <el-input-number v-model="form.up_wxpaymoney" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元，仅统计微信支付（up_wxpaymoney）</span>
-              </el-form-item>
-              <el-form-item label="单次消费金额满">
-                <el-input-number v-model="form.up_perpaymoney" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元（up_perpaymoney）</span>
-              </el-form-item>
-              <el-form-item label="单次订单金额满">
-                <el-input-number v-model="form.up_orderprice" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元（up_orderprice）</span>
-              </el-form-item>
-              <el-form-item label="领取会员卡">
-                <el-switch v-model="form.up_getmembercard" :active-value="1" :inactive-value="0" />
-                <span class="form-tip">领取会员卡后升级（up_getmembercard）</span>
-              </el-form-item>
-              <el-form-item label="下级订单金额满">
-                <el-input-number v-model="form.up_fxordermoney" :min="0" :precision="2" style="width: 180px" />
-                <span class="form-tip">元，下级不含自己（up_fxordermoney）</span>
-              </el-form-item>
-              <el-form-item label="下级订单统计级数">
-                <el-input-number v-model="form.up_fxorderlevelnum" :min="0" :step="1" style="width: 180px" />
-                <span class="form-tip">统计到下级多少层级（0=不限）</span>
-              </el-form-item>
-              <el-form-item label="下级订单最低等级">
-                <el-select
-                  v-model="form.up_fxorderlevelid"
-                  multiple
-                  filterable
-                  clearable
-                  placeholder="不选表示不限制等级"
-                  style="width: 360px"
-                >
-                  <el-option v-for="lv in tableData" :key="lv.id" :label="lv.name" :value="lv.id" />
-                </el-select>
-              </el-form-item>
-              <el-form-item
-                v-for="(n, idx) in [1, 2, 3]"
-                :key="`fxdown-${n}`"
-                :label="`下级人数条件${n}`"
-              >
-                <div class="fxdown-row">
-                  <span class="fxdown-label" v-if="idx > 0">且</span>
-                  <span class="fxdown-label">人数满</span>
-                  <el-input-number
-                    v-model="form[fxdownCountKey(n)]"
-                    :min="0"
-                    :step="1"
-                    style="width: 130px"
-                  />
-                  <span class="fxdown-label">级数</span>
-                  <el-input-number
-                    v-model="form[fxdownNumKey(n)]"
-                    :min="0"
-                    :step="1"
-                    style="width: 110px"
-                  />
-                  <span class="fxdown-label">最低等级</span>
-                  <el-select
-                    v-model="form[fxdownIdKey(n)]"
-                    multiple
-                    filterable
-                    clearable
-                    placeholder="不限"
-                    style="width: 240px"
-                  >
-                    <el-option v-for="lv in tableData" :key="lv.id" :label="lv.name" :value="lv.id" />
-                  </el-select>
-                </div>
-                <span class="form-tip-block">
-                  {{ idx === 2 ? '三组条件之间为且（and）关系，整组与其他条件为或（or）关系；级数 0=不限层级，等级不选=不限等级' : '' }}
-                </span>
-              </el-form-item>
-              <el-form-item label="购买指定商品">
-                <el-select
-                  v-model="form.up_proid"
-                  multiple
-                  filterable
-                  clearable
-                  placeholder="选择指定商品（不选=不启用）"
-                  style="width: 420px"
-                >
-                  <el-option v-for="g in goodsOptions" :key="g.id" :label="g.title" :value="g.id" />
-                </el-select>
-              </el-form-item>
-              <el-form-item label="购买总数量到达">
-                <el-input-number v-model="form.up_pronum" :min="1" :step="1" style="width: 180px" />
-                <span class="form-tip">件，购买所选商品累计数量达到该件数即满足（up_pronum）</span>
-              </el-form-item>
-              <el-form-item label="指定分类订单满">
-                <el-select
-                  v-model="form.up_catid"
-                  multiple
-                  filterable
-                  clearable
-                  placeholder="选择商品分类"
-                  style="width: 260px"
-                >
-                  <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
-                </el-select>
-                <el-input-number
-                  v-model="form.up_cat_ordermoney"
-                  :min="0"
-                  :precision="2"
-                  style="width: 160px; margin-left: 8px"
-                />
-                <span class="form-tip">元（up_catid + up_cat_ordermoney）</span>
-              </el-form-item>
-              <el-form-item label="前置等级">
-                <el-select
-                  v-model="form.gettj"
-                  multiple
-                  filterable
-                  clearable
-                  placeholder="不选表示不限制前置等级"
-                  style="width: 360px"
-                >
-                  <el-option v-for="lv in tableData" :key="lv.id" :label="lv.name" :value="lv.id" />
-                </el-select>
-                <span class="form-tip-block">gettj：须先达到所选任一等级才可升至本等级</span>
-              </el-form-item>
-            </template>
-          </el-collapse-item>
-
-          <!-- ===== 分红设置（折叠） ===== -->
-          <el-collapse-item title="分红设置" name="fenhong">
-            <div class="group-title">股东分红</div>
-            <el-form-item label="分红比例">
-              <el-input-number v-model="form.fenhong" :min="0" :max="100" :precision="2" style="width: 180px" />
-              <span class="form-tip">%（fenhong，0=不开启）</span>
-            </el-form-item>
-            <el-form-item label="份数上限">
-              <el-input-number v-model="form.fenhong_num" :min="0" :step="1" style="width: 180px" />
-              <span class="form-tip">最多分红份数（0=不限制，fenhong_num）</span>
-            </el-form-item>
-            <el-form-item label="封顶金额">
-              <el-input-number v-model="form.fenhong_max_money" :min="0" :precision="2" style="width: 180px" />
-              <span class="form-tip">元，累计分红封顶（0=不封顶，fenhong_max_money）</span>
-            </el-form-item>
-            <div class="group-title">团队分红</div>
-            <el-form-item label="分红代数">
-              <el-input-number v-model="form.teamfenhonglv" :min="0" :step="1" style="width: 180px" />
-              <span class="form-tip">向下分红几代（0=不开启，teamfenhonglv）</span>
-            </el-form-item>
-            <el-form-item label="比例分红">
-              <el-input-number v-model="form.teamfenhongbl" :min="0" :max="100" :precision="2" style="width: 180px" />
-              <span class="form-tip">%（teamfenhongbl，与固定额二选一）</span>
-            </el-form-item>
-            <el-form-item label="固定额分红">
-              <el-input-number v-model="form.teamfenhong_money" :min="0" :precision="2" style="width: 180px" />
-              <span class="form-tip">元/单（teamfenhong_money，与比例二选一）</span>
-            </el-form-item>
-            <div class="group-title">区域分红（区域代理）</div>
-            <el-form-item label="区域代理类型">
-              <el-select v-model="form.areafenhong" style="width: 220px">
-                <el-option :value="0" label="不开启" />
-                <el-option :value="1" label="省级代理" />
-                <el-option :value="2" label="市级代理" />
-                <el-option :value="3" label="区县代理" />
-              </el-select>
-              <span class="form-tip">areafenhong</span>
-            </el-form-item>
-            <el-form-item label="区域分红比例">
-              <el-input-number v-model="form.areafenhongbl" :min="0" :max="100" :precision="2" style="width: 180px" />
-              <span class="form-tip">%（areafenhongbl）</span>
-            </el-form-item>
-            <el-form-item label="区域名额">
-              <el-input-number v-model="form.areafenhongmaxnum" :min="0" :step="1" style="width: 180px" />
-              <span class="form-tip">每区域最多代理人数（0=不限制，areafenhongmaxnum）</span>
-            </el-form-item>
-          </el-collapse-item>
-
-          <!-- ===== 升级赠送（折叠） ===== -->
-          <el-collapse-item title="升级赠送" name="give">
-            <el-form-item label="赠送积分">
-              <el-input-number v-model="form.up_give_score" :min="0" :step="1" style="width: 180px" />
-              <span class="form-tip">升级赠送会员积分（up_give_score）</span>
-            </el-form-item>
-            <el-form-item label="赠送佣金">
-              <el-input-number v-model="form.up_give_commission" :min="0" :precision="2" style="width: 180px" />
-              <span class="form-tip">元（up_give_commission）</span>
-            </el-form-item>
-            <el-form-item label="赠送余额">
-              <el-input-number v-model="form.up_give_money" :min="0" :precision="2" style="width: 180px" />
-              <span class="form-tip">元（up_give_money）</span>
-            </el-form-item>
-            <el-form-item label="给上级赠送余额">
-              <el-input-number v-model="form.up_give_parent_money" :min="0" :precision="2" style="width: 180px" />
-              <span class="form-tip">元，升级时奖励推荐人（up_give_parent_money）</span>
-            </el-form-item>
-          </el-collapse-item>
-
-          <!-- ===== 区域代理归属（仅编辑） ===== -->
-          <el-collapse-item v-if="isEdit" title="区域代理归属" name="region">
-            <el-alert
-              type="info"
-              :closable="false"
-              show-icon
-              title="区域代理的省市区归属按会员持有记录（member_level_record）配置；升级时由会员选择归属区域，此处可人工调整。"
-              style="margin-bottom: 12px"
-            />
-            <el-table
-              v-loading="regionLoading"
-              :data="regionRecords"
-              border
-              size="small"
-              empty-text="该等级暂无区域代理记录"
-            >
-              <el-table-column prop="id" label="ID" width="60" />
-              <el-table-column label="会员" min-width="120" show-overflow-tooltip>
-                <template #default="{ row }">
-                  {{ row.nickname || row.tel || `#${row.mid}` }}
-                </template>
-              </el-table-column>
-              <el-table-column label="代理开关" width="90">
-                <template #default="{ row }">
-                  <el-switch v-model="row.areafenhong" :active-value="1" :inactive-value="0" />
-                </template>
-              </el-table-column>
-              <el-table-column label="比例%" width="120">
-                <template #default="{ row }">
-                  <el-input-number
-                    v-model="row.areafenhongbl"
-                    :min="0"
-                    :max="100"
-                    :precision="2"
-                    size="small"
-                    controls-position="right"
-                    style="width: 100px"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column label="省" width="130">
-                <template #default="{ row }">
-                  <el-input v-model="row.areafenhong_province" size="small" placeholder="省" />
-                </template>
-              </el-table-column>
-              <el-table-column label="市" width="130">
-                <template #default="{ row }">
-                  <el-input v-model="row.areafenhong_city" size="small" placeholder="市" />
-                </template>
-              </el-table-column>
-              <el-table-column label="区县" width="130">
-                <template #default="{ row }">
-                  <el-input v-model="row.areafenhong_area" size="small" placeholder="区县" />
-                </template>
-              </el-table-column>
-              <el-table-column label="操作" width="80">
-                <template #default="{ row }">
-                  <el-button link type="primary" @click="handleRecordSave(row)">保存</el-button>
-                </template>
-              </el-table-column>
-            </el-table>
           </el-collapse-item>
         </el-collapse>
 
-        <div class="form-footer">
-          <el-button @click="backToList">取消</el-button>
-          <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
-        </div>
+        <el-form-item class="submit-row">
+          <el-button type="success" :loading="submitting" @click="handleSubmit">提 交</el-button>
+        </el-form-item>
       </el-form>
 
       <ImgIconPicker v-model:visible="iconPickerVisible" @pick="onIconPick" />
@@ -1170,24 +547,12 @@ onMounted(() => {
   gap: 6px;
 }
 
-.group-title {
-  margin: 6px 0 12px;
-  padding-left: 8px;
-  border-left: 3px solid #409eff;
-  font-size: 13px;
-  font-weight: 600;
-  color: #303133;
-}
-
-.fxdown-row {
+/* 我的团队权限勾选 */
+.perm-checks {
   display: flex;
   align-items: center;
-  gap: 8px;
   flex-wrap: wrap;
-}
-.fxdown-label {
-  font-size: 13px;
-  color: #606266;
+  gap: 4px 18px;
 }
 
 /* 提成/积分 横排数字输入 */
@@ -1209,11 +574,15 @@ onMounted(() => {
   font-size: 12px;
   color: #606266;
 }
-.or-text {
-  color: #909399;
-  font-size: 12px;
-  align-self: flex-end;
-  padding-bottom: 8px;
+
+/* 特权说明富文本（对齐点大约 400px 高） */
+.explain-editor {
+  width: 100%;
+  max-width: 860px;
+}
+.explain-editor :deep(.sre-editor) {
+  min-height: 380px;
+  max-height: 420px;
 }
 
 /* 等级图标上传 */
@@ -1251,12 +620,14 @@ onMounted(() => {
   color: #f56c6c;
 }
 
-.form-footer {
-  display: flex;
-  justify-content: center;
-  gap: 12px;
-  margin-top: 16px;
+/* 提交按钮行：与输入框左缘对齐 */
+.submit-row {
+  margin-top: 10px;
 }
+.submit-row :deep(.el-form-item__content) {
+  justify-content: flex-start;
+}
+
 /* 让区块说明在控件下方独占整行 */
 .level-collapse :deep(.el-form-item__content) {
   display: flex;
@@ -1264,14 +635,10 @@ onMounted(() => {
   align-items: center;
   row-gap: 6px;
 }
-.level-collapse .num-grid,
-.level-collapse .fxdown-row {
+.level-collapse .num-grid {
   width: 100%;
 }
 .level-collapse .form-tip-block {
-  width: 100%;
-}
-.level-collapse :deep(.el-alert) {
   width: 100%;
 }
 </style>

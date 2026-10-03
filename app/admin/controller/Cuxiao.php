@@ -96,20 +96,28 @@ class Cuxiao extends BaseController
     }
 
     /**
-     * 删除活动（物理删除）
-     * POST /admin/cuxiao/delete {id}
+     * 删除活动（物理删除；兼容单条 id 与批量 ids[]）
+     * POST /admin/cuxiao/delete {id} | {ids[]}
      */
     public function delete()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $id = (int) $this->request->post('id', 0);
+        $ids = (array) $this->request->post('ids', []);
 
-        if ($id <= 0) {
-            throw new BusinessException('缺少活动ID');
+        if (empty($ids)) {
+            $single = (int) $this->request->post('id', 0);
+
+            if ($single <= 0) {
+                throw new BusinessException('缺少活动ID');
+            }
+
+            $ids = [$single];
         }
 
-        $this->cuxiaoService->delete($aid, $id);
+        foreach ($ids as $id) {
+            $this->cuxiaoService->delete($aid, (int) $id);
+        }
 
         return $this->success([], '删除成功');
     }

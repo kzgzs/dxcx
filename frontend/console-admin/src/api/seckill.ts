@@ -121,7 +121,10 @@ export interface SeckillProductSaveParams {
   starttime?: number
   sellpoint?: string
   detail?: string
-  guige?: { id?: number; name: string; sell_price: number; stock: number }[]
+  video?: string
+  cost_price?: number
+  gettj?: string
+  guige?: { id?: number; name: string; market_price?: number; cost_price?: number; sell_price: number; weight?: number; stock: number; givescore?: number; pic?: string }[]
 }
 
 export type SeckillGuigeEdit = Omit<SeckillGuige, 'id'> & { id?: number }
@@ -247,4 +250,134 @@ export function getSeckillOrderList(params: {
 
 export function closeSeckillOrder(id: number) {
   return request.post<unknown, null>('/admin/seckill/order/close', { id })
+}
+
+// 订单详情（含下单会员）
+export function getSeckillOrderDetail(id: number) {
+  return request.get<unknown, { order: Record<string, any>; member: Record<string, any> }>(
+    '/admin/seckill/order/detail',
+    { params: { id } },
+  )
+}
+
+// 删除订单（单 id 或批量 ids[]）
+export function deleteSeckillOrder(id: number | number[]) {
+  const payload = Array.isArray(id) ? { ids: id } : { id }
+  return request.post<unknown, null>('/admin/seckill/order/del', payload)
+}
+
+// 改为已支付（仅未支付）
+export function ispaySeckillOrder(id: number) {
+  return request.post<unknown, null>('/admin/seckill/order/ispay', { id })
+}
+
+// 核销并确认收货（1/2 → 3）
+export function hexiaoSeckillOrder(id: number) {
+  return request.post<unknown, null>('/admin/seckill/order/hexiao', { id })
+}
+
+// 手动发货（已支付→已发货；已发货时更新物流）
+export function shipSeckillOrder(id: number, express_com: string, express_no: string) {
+  return request.post<unknown, null>('/admin/seckill/order/sendExpress', { id, express_com, express_no })
+}
+
+// 快递公司下拉（手动发货）
+export function getSeckillExpressOptions() {
+  return request.get<unknown, { code: string; name: string }[]>('/admin/seckill/order/expressOptions')
+}
+
+// 查物流（快递鸟轨迹）
+export interface SeckillTrace {
+  express_com: string
+  express_no: string
+  send_time: number
+  traces: { time: string; station: string }[]
+}
+export function getSeckillOrderTrace(id: number) {
+  return request.get<unknown, SeckillTrace>('/admin/seckill/order/trace', { params: { id } })
+}
+
+// 送货单（整页打印数据）
+export interface SeckillDeliveryNote {
+  ordernum: string
+  createtime: string
+  proname: string
+  propic: string
+  ggname: string
+  num: number
+  sell_price: number
+  totalprice: number
+  linkman: string
+  tel: string
+  address: string
+  freight_text: string
+  express_com: string
+  express_no: string
+}
+export function getSeckillDeliveryNote(id: number) {
+  return request.get<unknown, SeckillDeliveryNote>('/admin/seckill/order/deliveryNote', { params: { id } })
+}
+
+// 订单导出（blob 下载真实 xlsx）
+export async function exportSeckillOrder(params: Record<string, unknown>) {
+  const res = await request.get('/admin/seckill/order/export', {
+    params,
+    responseType: 'blob',
+    transformResponse: [(data: unknown) => data],
+  })
+  const blob = res instanceof Blob ? res : new Blob([res as unknown as BlobPart])
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `秒杀订单_${new Date().getTime()}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+// ============ 秒杀评价 ============
+
+export interface SeckillCommentItem {
+  id: number
+  mid: number
+  proid: number
+  proname: string
+  propic: string
+  nickname: string
+  headimg: string
+  score: number
+  content: string
+  content_pic: string
+  reply_content: string
+  reply_time: number
+  status: number
+  status_text: string
+  createtime: number
+}
+
+export function getSeckillCommentList(params: {
+  page?: number
+  pagesize?: number
+  status?: number | ''
+  content?: string
+  proid?: number
+  start_date?: string
+  end_date?: string
+}) {
+  return request.get<unknown, PageResult<SeckillCommentItem>>('/admin/seckill/comment/list', { params })
+}
+
+export function setSeckillCommentStatus(id: number | number[], status: number) {
+  const payload = Array.isArray(id) ? { ids: id, status } : { id, status }
+  return request.post<unknown, null>('/admin/seckill/comment/setStatus', payload)
+}
+
+export function replySeckillComment(id: number, content: string) {
+  return request.post<unknown, null>('/admin/seckill/comment/reply', { id, content })
+}
+
+export function deleteSeckillComment(id: number | number[]) {
+  const payload = Array.isArray(id) ? { ids: id } : { id }
+  return request.post<unknown, null>('/admin/seckill/comment/delete', payload)
 }

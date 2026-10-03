@@ -31,6 +31,21 @@ class Kdniao
         $this->set           = $set;
         $this->aid           = $aid;
         $this->bid           = $bid;
+
+        // 打通「扩展·同城配送·快递鸟设置」：电子面单账号未配置时，
+        // 回退读取同城配送 express_set 的 用户ID/API KEY（同一快递鸟商户账号）。
+        // 仅在 ewaybill_set 凭证为空时兜底，不影响已配置电子面单账号的租户。
+        if ('' === (string) $this->accountId || '' === (string) $this->accountSecret) {
+            $kdSet = Db::name('express_set')->where('aid', $aid)->find();
+            if ($kdSet) {
+                if ('' === (string) $this->accountId) {
+                    $this->accountId = (string) ($kdSet['user_id'] ?? '');
+                }
+                if ('' === (string) $this->accountSecret) {
+                    $this->accountSecret = (string) ($kdSet['api_key'] ?? '');
+                }
+            }
+        }
     }
 
     /** mock 开关：.env EWAYBILL.MOCK=1 启用（默认关闭，物流面单组共用） */
@@ -154,6 +169,24 @@ class Kdniao
         $url = 'https://api.kdniao.com/api/EOrderService';
 
         return $this->request($url, $data, '1147');
+    }
+
+    /**
+     * 物流轨迹即时查询（1002）
+     * https://www.yuque.com/kdnjishuzhichi/dfcrg1/wuqsrx
+     *
+     * @return array{status: int, msg: string, data: array}
+     */
+    public function trace(string $shipperCode, string $logisticCode, string $orderCode = ''): array
+    {
+        $data = [
+            'ShipperCode'  => $shipperCode,
+            'LogisticCode' => $logisticCode,
+            'OrderCode'    => $orderCode,
+        ];
+        $url = 'https://api.kdniao.com/Ebusiness/EbusinessOrderHandle.aspx';
+
+        return $this->request($url, $data, '1002');
     }
 
     /**
@@ -543,6 +576,27 @@ class Kdniao
                     'PrintTemplate' => $this->mockPrintTemplate($params, $logisticNo),
                     'SubOrders'     => [],
                     'SubPrintTemplate' => '',
+                ],
+            ];
+        }
+
+        // 1002 物流轨迹即时查询：mock 返回完整四段轨迹（已签收）
+        if ('1002' === $requestType) {
+            $now = time();
+
+            return [
+                'status' => 1,
+                'msg'    => '操作成功',
+                'data'   => [
+                    'ResultCode' => '100',
+                    'Success'    => true,
+                    'State'      => '3',
+                    'Traces'     => [
+                        ['AcceptTime' => date('Y-m-d H:i:s', $now - 86400 * 2), 'AcceptStation' => '【揽收】快件已揽收'],
+                        ['AcceptTime' => date('Y-m-d H:i:s', $now - 86400), 'AcceptStation' => '【运输】快件正在运输中'],
+                        ['AcceptTime' => date('Y-m-d H:i:s', $now - 3600), 'AcceptStation' => '【派送】快件正在派送，请保持电话畅通'],
+                        ['AcceptTime' => date('Y-m-d H:i:s', $now), 'AcceptStation' => '【签收】快件已签收，感谢使用'],
+                    ],
                 ],
             ];
         }

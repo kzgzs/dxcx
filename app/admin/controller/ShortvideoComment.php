@@ -38,7 +38,9 @@ class ShortvideoComment extends BaseController
             (int) $this->request->get('vid', 0),
             trim((string) $this->request->get('content', '')),
             $page,
-            $pageSize
+            $pageSize,
+            trim((string) $this->request->get('createtime', '')),
+            trim((string) $this->request->get('orderby', ''))
         ));
     }
 

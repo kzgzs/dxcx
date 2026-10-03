@@ -80,7 +80,8 @@ class FinanceService
         $timeField = '1' === $status ? 'p.paytime' : 'p.createtime';
 
         $query = ScopeService::queryAs('payorder', $aid, 'p')
-            ->leftJoin('member m', 'm.id = p.mid');
+            ->leftJoin('member m', 'm.id = p.mid')
+            ->leftJoin('business b', 'b.id = p.bid');
 
         if ('' !== $status) {
             $query->where('p.status', (int) $status);
@@ -101,6 +102,12 @@ class FinanceService
         if ('' !== $ordernum) {
             $query->where('p.ordernum', 'like', '%' . $ordernum . '%');
         }
+        if ('' !== trim((string) ($f['bname'] ?? ''))) {
+            $query->where('b.name', 'like', '%' . trim((string) ($f['bname'] ?? '')) . '%');
+        }
+        if ((int) ($f['bid'] ?? 0) > 0) {
+            $query->where('p.bid', (int) ($f['bid'] ?? 0));
+        }
         if (null !== $range) {
             // 已支付视角按支付时间，其余按下单时间
             $query->whereBetween($timeField, $range);
@@ -108,7 +115,7 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('p.id, p.ordernum, p.title, p.money, p.paytype, p.paytypeid, p.paynum, p.paytime, p.type, p.status, p.refund_money, p.createtime, p.mid, m.nickname, m.tel')
+        $rows = $query->field('p.id, p.ordernum, p.title, p.money, p.paytype, p.paytypeid, p.paynum, p.paytime, p.type, p.status, p.refund_money, p.refund_time, p.check_status, p.createtime, p.mid, p.bid, p.issettle, m.nickname, m.headimg, m.tel, b.name as bname')
             ->order('p.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -132,6 +139,10 @@ class FinanceService
             'mid'             => (int) ($row['mid'] ?? 0),
             'nickname'        => (string) ($row['nickname'] ?? ''),
             'tel'             => (string) ($row['tel'] ?? ''),
+            'headimg'         => (string) ($row['headimg'] ?? ''),
+            'bid'             => (int) ($row['bid'] ?? 0),
+            'bname'           => (string) ($row['bname'] ?? ''),
+            'issettle'        => (int) ($row['issettle'] ?? 0),
         ], $rows);
 
         // 顶部统计（已支付口径，按 paytime 时间范围）
@@ -156,6 +167,69 @@ class FinanceService
         ];
     }
 
+    /* ================= 1b. 抖音分账 / 核销（对齐点大 Payorder::datasettle/datapushorder） ================= */
+
+    /**
+     * 抖音（头条）小程序分账（ids[]）
+     * 筛选 aid 隔离、paytypeid=12、status=1、money>0、issettle in (0,2)，逐条调抖音分账接口，成功 issettle=1；失败即返回错误信息
+     *
+     * @param array<int> $ids
+     * @return array{success: int}
+     */
+    public function payorderDatasettle(int $aid, array $ids): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择需要分账的记录');
+        }
+        $list = Db::name('payorder')
+            ->where('aid', $aid)->where('id', 'in', $ids)
+            ->where('paytypeid', 12)->where('status', 1)->where('money', '>', 0)
+            ->where('issettle', 'in', '0,2')
+            ->select()->toArray();
+        $successnum = 0;
+        foreach ($list as $payorder) {
+            $rs = \app\common\Ttpay::settle($aid, $payorder['ordernum']);
+            if (1 === ($rs['status'] ?? 0)) {
+                Db::name('payorder')->where('id', $payorder['id'])->update(['issettle' => 1]);
+                $successnum++;
+            } else {
+                throw new BusinessException((string) ($rs['msg'] ?? '分账失败'));
+            }
+        }
+        return ['success' => $successnum];
+    }
+
+    /**
+     * 抖音（头条）小程序订单核销/推送（ids[]）
+     * 筛选 issettle=0，调抖音订单推送（核销），成功 issettle=2
+     *
+     * @param array<int> $ids
+     * @return array{success: int}
+     */
+    public function payorderDatapushorder(int $aid, array $ids): array
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择需要核销的记录');
+        }
+        $list = Db::name('payorder')
+            ->where('aid', $aid)->where('id', 'in', $ids)
+            ->where('paytypeid', 12)->where('status', 1)->where('money', '>', 0)
+            ->where('issettle', 0)
+            ->select()->toArray();
+        $successnum = 0;
+        foreach ($list as $payorder) {
+            $rs = \app\common\Ttpay::pushorder($aid, $payorder['ordernum']);
+            if (1 === ($rs['status'] ?? 0)) {
+                Db::name('payorder')->where('id', $payorder['id'])->update(['issettle' => 2]);
+                $successnum++;
+            } else {
+                throw new BusinessException((string) ($rs['msg'] ?? '核销失败'));
+            }
+        }
+        return ['success' => $successnum];
+    }
     /* ================= 2. 余额明细 ================= */
 
     /**
@@ -175,13 +249,20 @@ class FinanceService
         $range    = $this->timeRange((string) ($f['start_date'] ?? ''), (string) ($f['end_date'] ?? ''));
 
         $query = ScopeService::queryAs('member_moneylog', $aid, 'l')
-            ->leftJoin('member m', 'm.id = l.mid');
+            ->leftJoin('member m', 'm.id = l.mid')
+            ->leftJoin('admin_user au', 'au.id = l.uid');
 
         if ('' !== $nickname) {
             $query->where('m.nickname', 'like', '%' . $nickname . '%');
         }
         if ($mid > 0) {
             $query->where('l.mid', $mid);
+        }
+        if ('' !== trim((string) ($f['tel'] ?? ''))) {
+            $query->where('m.tel', 'like', '%' . trim((string) ($f['tel'] ?? '')) . '%');
+        }
+        if ('' !== trim((string) ($f['remark'] ?? ''))) {
+            $query->where('l.remark', 'like', '%' . trim((string) ($f['remark'] ?? '')) . '%');
         }
         if (1 === $inout) {
             $query->where('l.money', '>', 0);
@@ -194,7 +275,7 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('l.id, l.mid, l.money, l.after, l.remark, l.paytype, l.uid, l.createtime, m.nickname, m.tel')
+        $rows = $query->field('l.id, l.mid, l.money, l.after, l.remark, l.paytype, l.uid, l.rechargeid, l.createtime, m.nickname, m.headimg, m.tel, au.un as un')
             ->order('l.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -205,11 +286,14 @@ class FinanceService
             'mid'        => (int) ($row['mid'] ?? 0),
             'nickname'   => (string) ($row['nickname'] ?? ''),
             'tel'        => (string) ($row['tel'] ?? ''),
-            'money'      => (float) ($row['money'] ?? 0),
+            'money'      => (float) ($row['money'] ?? $row['totalprice'] ?? 0),
             'after'      => (float) ($row['after'] ?? 0),
             'remark'     => (string) ($row['remark'] ?? ''),
             'paytype'    => (string) ($row['paytype'] ?? ''),
             'uid'        => (int) ($row['uid'] ?? 0),
+            'rechargeid'   => (int) ($row['rechargeid'] ?? 0),
+            'headimg'    => (string) ($row['headimg'] ?? ''),
+            'un'         => (string) ($row['un'] ?? ''),
             'createtime' => (int) ($row['createtime'] ?? 0),
         ], $rows);
 
@@ -274,7 +358,7 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('r.id, r.ordernum, r.money, r.status, r.paytype, r.paytypeid, r.paynum, r.paytime, r.createtime, r.mid, m.nickname, m.tel')
+        $rows = $query->field('r.id, r.ordernum, r.money, r.status, r.paytype, r.paytypeid, r.paynum, r.paytime, r.createtime, r.mid, m.nickname, m.headimg, m.tel')
             ->order('r.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -294,6 +378,7 @@ class FinanceService
             'mid'          => (int) ($row['mid'] ?? 0),
             'nickname'     => (string) ($row['nickname'] ?? ''),
             'tel'          => (string) ($row['tel'] ?? ''),
+            'headimg'      => (string) ($row['headimg'] ?? ''),
         ], $rows);
 
         $stat = ScopeService::query('recharge_order', $aid)
@@ -415,7 +500,7 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('w.*, m.nickname, m.tel')
+        $rows = $query->field('w.*, m.nickname, m.headimg, m.realname, m.usercard, m.tel')
             ->order('w.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -441,6 +526,17 @@ class FinanceService
             'createtime'   => (int) ($row['createtime'] ?? 0),
             'paytime'      => (int) ($row['paytime'] ?? 0),
             'paynum'       => (string) ($row['paynum'] ?? ''),
+            'headimg'       => (string) ($row['headimg'] ?? ''),
+            'realname'      => (string) ($row['realname'] ?? ''),
+            'usercard'       => (string) ($row['usercard'] ?? ''),
+            'wx_transfer_bill_no' => (string) ($row['wx_transfer_bill_no'] ?? ''),
+            'wx_state'      => (string) ($row['wx_state'] ?? ''),
+            // 操作显隐（对齐点大 money/withdrawlog.html）
+            'can_audit'     => 0 === (int) $row['status'],
+            'can_reject'    => in_array((int) $row['status'], [0, 1], true),
+            'can_mark_paid' => 1 === (int) $row['status'],
+            'can_wx_pay'    => 1 === (int) $row['status'] && '微信钱包' === (string) ($row['paytype'] ?? ''),
+            'can_delete'    => in_array((int) $row['status'], [1, 2, 3, 4], true),
         ], $rows);
 
         $statRows = ScopeService::query($table, $aid)
@@ -637,14 +733,18 @@ class FinanceService
         if ('' !== $fhtype) {
             $query->where('c.fhtype', $fhtype);
         }
+        if ('' !== trim((string) ($f['remark'] ?? ''))) {
+            $query->where('c.remark', 'like', '%' . trim((string) ($f['remark'] ?? '')) . '%');
+        }
         if (null !== $range) {
             $query->whereBetween('c.createtime', $range);
         }
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('c.id, c.mid, c.frommid, c.commission, c.after, c.fhtype, c.remark, c.createtime, m.nickname, m.tel, f.nickname as from_nickname')
+        $rows = $query->field('c.id, c.mid, c.frommid, c.commission, c.after, c.fhtype, c.remark, c.uid, c.createtime, m.nickname, m.headimg, m.tel, f.nickname as from_nickname, au.un as un')
             ->leftJoin('member f', 'f.id = c.frommid')
+            ->leftJoin('admin_user au', 'au.id = c.uid')
             ->order('c.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -660,6 +760,9 @@ class FinanceService
             'fhtype'       => (string) ($row['fhtype'] ?? ''),
             'frommid'      => (int) ($row['frommid'] ?? 0),
             'from_nickname' => (string) ($row['from_nickname'] ?? ''),
+            'headimg'       => (string) ($row['headimg'] ?? ''),
+            'uid'           => (int) ($row['uid'] ?? 0),
+            'un'            => (string) ($row['un'] ?? ''),
             'remark'       => (string) ($row['remark'] ?? ''),
             'createtime'   => (int) ($row['createtime'] ?? 0),
         ], $rows);
@@ -696,9 +799,13 @@ class FinanceService
      */
     public function hexiaoList(int $aid, array $f): array
     {
-        $keyword = trim((string) ($f['keyword'] ?? ''));
-        $type    = trim((string) ($f['type'] ?? ''));
-        $page    = max(1, (int) ($f['page'] ?? 1));
+        $keyword  = trim((string) ($f['keyword'] ?? ''));
+        $type     = trim((string) ($f['type'] ?? ''));
+        $hxMid    = trim((string) ($f['mid'] ?? ''));
+        $hxNick   = trim((string) ($f['nickname'] ?? ''));
+        $hxTitle  = trim((string) ($f['title'] ?? ''));
+        $hxRemark = trim((string) ($f['remark'] ?? ''));
+        $page     = max(1, (int) ($f['page'] ?? 1));
         $pageSize = $this->pageSize($f);
         $range   = $this->timeRange((string) ($f['start_date'] ?? ''), (string) ($f['end_date'] ?? ''));
 
@@ -717,13 +824,25 @@ class FinanceService
         if ('' !== $type) {
             $query->where('h.type', $type);
         }
+        if ('' !== $hxMid) {
+            $query->where('h.mid', $hxMid);
+        }
+        if ('' !== $hxNick) {
+            $query->where('m.nickname', 'like', '%' . $hxNick . '%');
+        }
+        if ('' !== $hxTitle) {
+            $query->where('h.title', 'like', '%' . $hxTitle . '%');
+        }
+        if ('' !== $hxRemark) {
+            $query->where('h.remark', 'like', '%' . $hxRemark . '%');
+        }
         if (null !== $range) {
             $query->whereBetween('h.createtime', $range);
         }
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('h.id, h.ordernum, h.title, h.type, h.mid, h.uid, h.mdid, h.remark, h.createtime, m.nickname, m.tel, md.name as mendian_name')
+        $rows = $query->field('h.id, h.ordernum, h.title, h.type, h.mid, h.uid, h.mdid, h.remark, h.createtime, m.nickname, m.tel, m.headimg, md.name as mendian_name')
             ->order('h.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -738,6 +857,7 @@ class FinanceService
             'mid'          => (string) ($row['mid'] ?? ''),
             'nickname'     => (string) ($row['nickname'] ?? ''),
             'tel'          => (string) ($row['tel'] ?? ''),
+            'headimg'      => (string) ($row['headimg'] ?? ''),
             'uid'          => (int) ($row['uid'] ?? 0),
             'mdid'         => (int) ($row['mdid'] ?? 0),
             'mendian_name' => (string) ($row['mendian_name'] ?? ''),
@@ -746,6 +866,37 @@ class FinanceService
         ], $rows);
 
         return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 核销记录导出（筛选口径同列表）
+     *
+     * @param array<string, mixed> $f
+     * @return array{0: array<int, string>, 1: array<int, array<int, mixed>>}
+     */
+    public function hexiaoExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->hexiaoList($aid, $f);
+
+        $titles = ['ID', '会员ID', '会员信息', '订单号', '订单类型', '核销内容', '门店', '核销时间', '备注'];
+        $rows   = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [
+                $v['id'],
+                $v['mid'],
+                ($v['nickname'] ?: '会员' . $v['mid']) . '(会员ID:' . $v['mid'] . ')',
+                ' ' . $v['ordernum'],
+                $v['type_text'],
+                $v['title'],
+                $v['mendian_name'] ?: '无',
+                $v['createtime'] ? date('Y-m-d H:i:s', $v['createtime']) : '',
+                $v['remark'],
+            ];
+        }
+
+        return [$titles, $rows];
     }
 
     /* ================= 7. 发票管理 ================= */
@@ -758,8 +909,10 @@ class FinanceService
      */
     public function invoiceList(int $aid, array $f): array
     {
-        $status  = trim((string) ($f['status'] ?? ''));
-        $keyword = trim((string) ($f['keyword'] ?? ''));
+        $status      = trim((string) ($f['status'] ?? ''));
+        $keyword     = trim((string) ($f['keyword'] ?? ''));
+        $ordernum    = trim((string) ($f['ordernum'] ?? ''));
+        $invoiceName = trim((string) ($f['invoice_name'] ?? ''));
         $page    = max(1, (int) ($f['page'] ?? 1));
         $pageSize = $this->pageSize($f);
         $range   = $this->timeRange((string) ($f['start_date'] ?? ''), (string) ($f['end_date'] ?? ''));
@@ -769,6 +922,12 @@ class FinanceService
 
         if ('' !== $status) {
             $query->where('i.status', (int) $status);
+        }
+        if ('' !== $ordernum) {
+            $query->where('i.ordernum', 'like', '%' . $ordernum . '%');
+        }
+        if ('' !== $invoiceName) {
+            $query->where('i.invoice_name', 'like', '%' . $invoiceName . '%');
         }
         if ('' !== $keyword) {
             $like = '%' . $keyword . '%';
@@ -784,31 +943,36 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('i.id, i.ordernum, i.order_type, i.type, i.invoice_name, i.name_type, i.tax_no, i.address, i.tel, i.mobile, i.email, i.status, i.check_remark, i.create_time, i.check_time, o.totalprice as pay_money')
+        $rows = $query->field('i.id, i.ordernum, i.orderid, i.order_type, i.type, i.invoice_name, i.name_type, i.tax_no, i.address, i.tel, i.mobile, i.email, i.bank_name, i.bank_account, i.status, i.check_remark, i.create_time, i.check_time, o.totalprice as pay_money')
             ->order('i.id', 'desc')
             ->page($page, $pageSize)
             ->select()
             ->toArray();
 
-        $list = array_map(static fn (array $row) => [
-            'id'           => (int) $row['id'],
-            'ordernum'     => (string) ($row['ordernum'] ?? ''),
-            'order_type'   => (string) ($row['order_type'] ?? ''),
-            'type'         => (int) ($row['type'] ?? 1),
-            'type_text'    => 2 === (int) ($row['type'] ?? 1) ? '专票' : '普票',
-            'invoice_name' => (string) ($row['invoice_name'] ?? ''),
-            'name_type'    => (int) ($row['name_type'] ?? 1),
-            'tax_no'       => (string) ($row['tax_no'] ?? ''),
-            'address'      => (string) ($row['address'] ?? ''),
-            'tel'          => (string) ($row['tel'] ?? ''),
-            'mobile'       => (string) ($row['mobile'] ?? ''),
-            'email'        => (string) ($row['email'] ?? ''),
-            'status'       => (int) ($row['status'] ?? 0),
-            'check_remark' => (string) ($row['check_remark'] ?? ''),
-            'create_time'  => (int) ($row['create_time'] ?? 0),
-            'check_time'   => (int) ($row['check_time'] ?? 0),
-            'pay_money'    => (float) ($row['pay_money'] ?? 0),
-        ], $rows);
+        $list = array_map(function (array $row) use ($aid): array {
+            return [
+                'id'           => (int) $row['id'],
+                'ordernum'     => (string) ($row['ordernum'] ?? ''),
+                'orderid'      => (int) ($row['orderid'] ?? 0),
+                'order_type'   => (string) ($row['order_type'] ?? ''),
+                'type'         => (int) ($row['type'] ?? 1),
+                'type_text'    => 2 === (int) ($row['type'] ?? 1) ? '增值税专票' : '普票',
+                'invoice_name' => (string) ($row['invoice_name'] ?? ''),
+                'name_type'    => (int) ($row['name_type'] ?? 1),
+                'tax_no'       => (string) ($row['tax_no'] ?? ''),
+                'address'      => (string) ($row['address'] ?? ''),
+                'tel'          => (string) ($row['tel'] ?? ''),
+                'mobile'       => (string) ($row['mobile'] ?? ''),
+                'email'        => (string) ($row['email'] ?? ''),
+                'bank_name'    => (string) ($row['bank_name'] ?? ''),
+                'bank_account' => (string) ($row['bank_account'] ?? ''),
+                'status'       => (int) ($row['status'] ?? 0),
+                'check_remark' => (string) ($row['check_remark'] ?? ''),
+                'create_time'  => (int) ($row['create_time'] ?? 0),
+                'check_time'   => (int) ($row['check_time'] ?? 0),
+                'pay_money'    => $this->invoicePayMoney($aid, (string) ($row['order_type'] ?? 'shop'), (int) ($row['orderid'] ?? 0), (float) ($row['pay_money'] ?? 0)),
+            ];
+        }, $rows);
 
         $statRows = ScopeService::query('invoice', $aid)
             ->field('status, count(*) as cnt')
@@ -878,6 +1042,50 @@ class FinanceService
             'check_remark' => trim($remark),
             'check_time'   => time(),
         ]);
+    }
+
+    /**
+     * 发票可开票金额（对齐点大：订单总额 - 退款金额，下限 0；按 order_type 回查对应订单表）
+     */
+    protected function invoicePayMoney(int $aid, string $orderType, int $orderid, float $fallback): float
+    {
+        if ($orderid <= 0) {
+            return 0.0;
+        }
+        $allow = ['shop', 'collage', 'seckill', 'tuangou', 'scoreshop', 'kanjia', 'yuyue', 'hotel', 'restaurant', 'restaurant_shop', 'restaurant_takeaway', 'kecheng', 'lipin'];
+        if ('' === $orderType || !in_array($orderType, $allow, true)) {
+            return $fallback;
+        }
+        try {
+            $order = Db::name($orderType . '_order')->where('id', $orderid)->where('aid', $aid)->find();
+        } catch (Throwable $e) {
+            return $fallback;
+        }
+        if (empty($order)) {
+            return 0.0;
+        }
+        $total = (float) ($order['totalprice'] ?? 0) - (float) ($order['refund_money'] ?? 0);
+        if ($total < 0) {
+            $total = 0.0;
+        }
+        return round($total, 2);
+    }
+
+    /**
+     * 发票详情（aid 租户隔离；返回完整字段含可开票金额）
+     */
+    public function invoiceDetail(int $aid, int $id): array
+    {
+        if ($id <= 0) {
+            throw new BusinessException('缺少发票ID');
+        }
+        $row = ScopeService::query('invoice', $aid)->where('id', $id)->find();
+        if (empty($row)) {
+            throw new BusinessException('发票不存在', 404, 404);
+        }
+        $row = is_array($row) ? $row : $row->toArray();
+        $row['pay_money'] = $this->invoicePayMoney($aid, (string) ($row['order_type'] ?? 'shop'), (int) ($row['orderid'] ?? 0), (float) ($row['totalprice'] ?? 0));
+        return $row;
     }
 
     /* ================= 8. 微信支付流水 ================= */
@@ -999,7 +1207,7 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('r.id, r.mid, r.frommid, r.orderid, r.type, r.commission, r.score, r.remark, r.createtime, r.endtime, r.status, m.nickname, m.headimg, f.nickname as from_nickname')
+        $rows = $query->field('r.id, r.mid, r.frommid, r.orderid, r.type, r.commission, r.score, r.remark, r.createtime, r.endtime, r.status, r.levelid, m.nickname, m.headimg, f.nickname as from_nickname, f.headimg as from_headimg')
             ->leftJoin('member f', 'f.id = r.frommid')
             ->order('r.id', 'desc')
             ->page($page, $pageSize)
@@ -1016,6 +1224,9 @@ class FinanceService
                 'headimg'        => (string) ($row['headimg'] ?? ''),
                 'frommid'        => (int) ($row['frommid'] ?? 0),
                 'from_nickname'  => (string) ($row['from_nickname'] ?? ''),
+                'from_headimg'   => (string) ($row['from_headimg'] ?? ''),
+                'levelid'        => (int) ($row['levelid'] ?? 0),
+                'level_text'     => '层级' . (int) ($row['levelid'] ?? 0),
                 'type'           => (string) ($row['type'] ?? ''),
                 'commission'     => (float) ($row['commission'] ?? 0),
                 'score'          => (float) ($row['score'] ?? 0),
@@ -1027,6 +1238,9 @@ class FinanceService
                 'remark'         => (string) ($row['remark'] ?? ''),
                 'createtime'     => (int) ($row['createtime'] ?? 0),
                 'endtime'        => (int) ($row['endtime'] ?? 0),
+                // 操作显隐：查看订单（业务来源可定位订单）、删除
+                'can_view_order' => !in_array((string) $row['type'], ['platform', 'salary', 'levelup', 'money_withdraw', 'commission_withdraw'], true),
+                'can_delete'     => true,
             ];
         }, $rows);
 
@@ -1133,7 +1347,7 @@ class FinanceService
 
         $total = (clone $query)->count();
 
-        $rows = $query->field('r.id, r.mid, r.commission, r.send_commission, r.send_money, r.createtime, r.remark, r.type, r.module, r.ogids, r.status, r.frommid, m.nickname, m.headimg')
+        $rows = $query->field('r.id, r.mid, r.commission, r.send_commission, r.send_money, r.send_score, r.createtime, r.remark, r.type, r.module, r.ogids, r.status, r.frommid, m.nickname, m.headimg')
             ->order('r.id', 'desc')
             ->page($page, $pageSize)
             ->select()
@@ -1151,6 +1365,7 @@ class FinanceService
                 'commission'      => (float) ($row['commission'] ?? 0),
                 'send_commission' => (float) ($row['send_commission'] ?? 0),
                 'send_money'      => (float) ($row['send_money'] ?? 0),
+                'send_score'      => (float) ($row['send_score'] ?? 0),
                 'type'            => (string) ($row['type'] ?? ''),
                 'module'          => $module,
                 'ogids'           => (string) ($row['ogids'] ?? ''),
@@ -1538,4 +1753,307 @@ class FinanceService
 
         return self::$tableCache[$table];
     }
+
+
+    /* ================= 微信转账记录 / 授权记录（对齐点大 Money::wx_transfer_log） ================= */
+
+    /** 微信转账状态码 → 文案 */
+    public const WX_TRANSFER_STATE_TEXT = [
+        'ACCEPTED'        => '转账已受理',
+        'PROCESSING'      => '转账处理中',
+        'WAIT_USER_CONFIRM' => '待收款用户确认',
+        'TRANSFERING'     => '转账结果尚未明确',
+        'SUCCESS'         => '转账成功',
+        'FAIL'            => '转账失败',
+        'CANCELING'       => '撤销中',
+        'CANCELLED'       => '撤销完成',
+    ];
+
+    /** 允许批量删除的日志表（aid 租户隔离） */
+    public const LOG_TABLES = [
+        'payorder'                        => 'payorder',
+        'member_moneylog'                 => 'member_moneylog',
+        'recharge_order'                  => 'recharge_order',
+        'member_withdrawlog'              => 'member_withdrawlog',
+        'member_commissionlog'            => 'member_commissionlog',
+        'member_commission_withdrawlog'  => 'member_commission_withdrawlog',
+        'member_commission_record'        => 'member_commission_record',
+        'member_fenhonglog'                => 'member_fenhonglog',
+        'hexiao_order'                     => 'hexiao_order',
+        'hexiao_shopproduct'               => 'hexiao_shopproduct',
+        'invoice'                          => 'invoice',
+    ];
+
+    /**
+     * 微信转账记录列表（wx_transfer_log：会员提现/佣金提现的微信商家转账单）
+     * 搜索：mid / state / 时间
+     *
+     * @param array<string, mixed> $f
+     * @return array{list: array, total: int, page: int, pagesize: int, stat: array}
+     */
+    public function wxTransferLogList(int $aid, array $f): array
+    {
+        $mid      = (int) ($f['mid'] ?? 0);
+        $state    = trim((string) ($f['state'] ?? ''));
+        $page     = max(1, (int) ($f['page'] ?? 1));
+        $pageSize = $this->pageSize($f);
+        $range    = $this->timeRange((string) ($f['start_date'] ?? ''), (string) ($f['end_date'] ?? ''));
+
+        $query = ScopeService::queryAs('wx_transfer_log', $aid, 'l')
+            ->leftJoin('member m', 'm.id = l.mid');
+
+        if ($mid > 0) {
+            $query->where('l.mid', $mid);
+        }
+        if ('' !== $state) {
+            $query->where('l.state', $state);
+        }
+        if (null !== $range) {
+            $query->whereBetween('l.createtime', $range);
+        }
+
+        $total = (clone $query)->count();
+
+        $rows = $query->field('l.id, l.mid, l.ordernum, l.money, l.desc, l.createtime, l.state, l.transfer_bill_no, l.message, l.status_code, l.data_tbl, l.data_id, m.nickname, m.headimg')
+            ->order('l.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        $list = array_map(static fn (array $row) => [
+            'id'               => (int) $row['id'],
+            'mid'              => (int) ($row['mid'] ?? 0),
+            'nickname'         => (string) ($row['nickname'] ?? ''),
+            'headimg'          => (string) ($row['headimg'] ?? ''),
+            'money'            => (float) ($row['money'] ?? 0),
+            'ordernum'         => (string) ($row['ordernum'] ?? ''),
+            'desc'             => (string) ($row['desc'] ?? ''),
+            'createtime'       => (int) ($row['createtime'] ?? 0),
+            'state'            => (string) ($row['state'] ?? ''),
+            'state_str'        => (string) (self::WX_TRANSFER_STATE_TEXT[(string) ($row['state'] ?? '')] ?? '未知'),
+            'transfer_bill_no' => (string) ($row['transfer_bill_no'] ?? ''),
+            'message'          => (string) ($row['message'] ?? ''),
+            'status_code'      => (string) ($row['status_code'] ?? ''),
+            // 行[提现记录]：按来源定位对应提现单
+            'data_tbl'         => (string) ($row['data_tbl'] ?? ''),
+            'data_id'          => (int) ($row['data_id'] ?? 0),
+        ], $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize, 'stat' => ['count' => $total]];
+    }
+
+    /** 微信转账记录导出 */
+    public function wxTransferLogExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->wxTransferLogList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '转账金额', '平台订单号', '转账备注', '变更时间', '状态', '微信订单号', '错误信息', '状态码'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['money'], $v['ordernum'], $v['desc'], date('Y-m-d H:i:s', $v['createtime']), $v['state_str'], $v['transfer_bill_no'], $v['message'], $v['status_code']];
+        }
+        return [$titles, $rows];
+    }
+
+    /**
+     * 微信转账撤销（对齐点大 Money::wx_transfer_cancel）
+     * 仅 ACCEPTED/PROCESSING/WAIT_USER_CONFIRM 可撤销；更新 state=CANCELING 并同步关联单 wx_state。
+     * 我方未接 WxPayV3 cancel_transfer 真实接口，至少落 state 并返回，不得 500。
+     */
+    public function cancelWxTransfer(int $aid, int $id): array
+    {
+        $info = Db::name('wx_transfer_log')->where('aid', $aid)->where('id', $id)->find();
+        if (!$info) {
+            throw new BusinessException('转账记录不存在');
+        }
+        $cancellable = ['ACCEPTED', 'PROCESSING', 'WAIT_USER_CONFIRM'];
+        if (!in_array($info['state'] ?? '', $cancellable, true)) {
+            throw new BusinessException('该笔记录状态不可撤销');
+        }
+        Db::name('wx_transfer_log')->where('id', $id)->update(['state' => 'CANCELING']);
+        // 同步关联业务单（withdrawlog / commission_withdrawlog 等）的 wx_state
+        $dataTbl = (string) ($info['data_tbl'] ?? '');
+        $dataId  = (int) ($info['data_id'] ?? 0);
+        if ('' !== $dataTbl && $dataId > 0) {
+            try {
+                Db::name($dataTbl)->where('aid', $aid)->where('id', $dataId)->update(['wx_state' => 'CANCELING']);
+            } catch (\Throwable) {
+                // 关联单表可能无 wx_state 字段，忽略
+            }
+        }
+        return ['id' => $id, 'state' => 'CANCELING'];
+    }
+    /**
+     * 微信转账授权记录（新页）
+     * 我方库与点大参考均无 wx_transfer_auth 表/通道，如实返回空列表与字段骨架，不编造数据。
+     *
+     * @return array{list: array, total: int, page: int, pagesize: int, available: bool, stat: array, note: string}
+     */
+    public function wxTransferAuthList(int $aid, array $f): array
+    {
+        $page     = max(1, (int) ($f['page'] ?? 1));
+        $pageSize = $this->pageSize($f);
+        return [
+            'list'      => [],
+            'total'     => 0,
+            'page'      => $page,
+            'pagesize'  => $pageSize,
+            'available' => false,
+            'stat'      => ['count' => 0],
+            'note'      => '微信转账授权记录通道未接入（无 wx_transfer_auth 数据表）',
+        ];
+    }
+
+    /** 微信转账授权记录 行/顶栏[查询]：通道未接入，如实返回 */
+    public function wxTransferAuthQuery(int $aid, array $f): array
+    {
+        return ['available' => false, 'msg' => '微信转账授权记录通道未接入，暂不支持查询'];
+    }
+
+    /**
+     * 佣金记录 查看订单 详情（行操作弹窗）
+     * 复用 recordTypeOrder 定位订单号/状态；业务订单表存在时补金额/时间。
+     */
+    public function commissionRecordOrderDetail(int $aid, string $type, int $orderid): array
+    {
+        $info   = $this->recordTypeOrder($aid, $type, $orderid);
+        $detail = [
+            'type'        => $type,
+            'orderid'     => $orderid,
+            'ordernum'    => $info['ordernum'],
+            'orderstatus' => $info['status'],
+        ];
+
+        $noTableTypes = ['platform', 'salary', 'levelup', 'money_withdraw', 'commission_withdraw'];
+        $table = match ($type) {
+            'car_hailing', 'carhailing' => 'carhailing_order',
+            'luckycollage', 'lucky_collage' => 'lucky_collage_order',
+            default => $type . '_order',
+        };
+
+        if ('' !== $type && $orderid > 0 && !in_array($type, $noTableTypes, true) && $this->tableExists($table)) {
+            $row = ScopeService::query($table, $aid)->where('id', $orderid)->find();
+            if (!empty($row)) {
+                $detail = array_merge($detail, [
+                    'money'      => (float) ($row['money'] ?? $row['totalprice'] ?? 0),
+                    'createtime' => (int) ($row['createtime'] ?? 0),
+                ]);
+            }
+        }
+
+        return $detail;
+    }
+
+    /**
+     * 日志批量删除（入参兼容单 id 与 ids[]；aid 租户隔离，逐条校验存在后删除）
+     *
+     * @param array<int, int|string> $ids
+     */
+    public function deleteLog(int $aid, string $table, array $ids): int
+    {
+        if (!isset(self::LOG_TABLES[$table])) {
+            throw new BusinessException('非法的删除对象');
+        }
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+        $n = 0;
+        foreach ($ids as $id) {
+            $exist = Db::name($table)->where('id', $id)->where('aid', $aid)->find();
+            if (!empty($exist)) {
+                Db::name($table)->where('id', $id)->where('aid', $aid)->delete();
+                ++$n;
+            }
+        }
+        return $n;
+    }
+
+    /* ================= 各日志 EXCEL 导出（复用列表口径） ================= */
+
+    /** 消费明细导出 */
+    public function payorderExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->payorderList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '商户名称', '订单类型', '订单号', '支付项目', '支付金额', '支付方式', '发起时间', '付款时间', '退款金额', '最后退款时间'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['bname'], $v['type_text'], $v['ordernum'], $v['title'], $v['money'], $v['paytype_text'], date('Y-m-d H:i:s', $v['createtime']), $v['paytime'] ? date('Y-m-d H:i:s', $v['paytime']) : '', $v['refund_money'] ?? 0, !empty($v['refund_time']) ? date('Y-m-d H:i:s', $v['refund_time']) : ''];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 余额明细导出 */
+    public function moneylogExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->moneylogList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '变更金额', '变更后金额', '变更时间', '支付方式', '备注', '操作员'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['money'], $v['after'], date('Y-m-d H:i:s', $v['createtime']), $v['paytype'], $v['remark'], $v['un']];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 充值记录导出 */
+    public function rechargeExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->rechargeList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '充值金额', '充值时间', '支付方式', '订单号', '付款单号', '付款时间', '状态'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['money'], date('Y-m-d H:i:s', $v['createtime']), $v['paytype_text'], $v['ordernum'], $v['paynum'], $v['paytime'] ? date('Y-m-d H:i:s', $v['paytime']) : '', $v['status']];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 余额提现导出 */
+    public function withdrawExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->withdrawList($aid, $f, 'member_withdrawlog');
+        $titles        = ['ID', '会员ID', '会员信息', '手机号', '提现金额', '打款金额', '提现方式', '收款账号', '提现时间', '状态'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['tel'], $v['txmoney'], $v['money'], $v['paytype'], $v['aliaccountname'] ?: $v['bankname'], date('Y-m-d H:i:s', $v['createtime']), $v['status_text']];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 佣金明细导出 */
+    public function commissionLogExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->commissionList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '佣金来源', '变更金额', '变更后金额', '变更时间', '备注', '操作员'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['from_nickname'], $v['commission'], $v['after'], date('Y-m-d H:i:s', $v['createtime']), $v['remark'], $v['un']];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 佣金提现导出 */
+    public function commissionWithdrawExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->withdrawList($aid, $f, 'member_commission_withdrawlog');
+        $titles        = ['ID', '会员ID', '会员信息', '手机号', '提现金额', '打款金额', '提现方式', '收款账号', '提现时间', '状态'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['tel'], $v['txmoney'], $v['money'], $v['paytype'], $v['aliaccountname'] ?: $v['bankname'], date('Y-m-d H:i:s', $v['createtime']), $v['status_text']];
+        }
+        return [$titles, $rows];
+    }
 }
+

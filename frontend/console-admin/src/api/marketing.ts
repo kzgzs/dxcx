@@ -186,14 +186,20 @@ export interface ActivityCommentListResult {
 export interface CollectRewardRecordItem {
   id: number
   ordertype: string
+  ordertype_text?: string
+  goods_title?: string
   orderid: number
   ordernum: string
   ordertime: number
   ordertime_text?: string
+  bid: number
+  business?: string
   mid: number
   nickname: string
   headimg: string
+  tel?: string
   reward_type: number
+  reward_type_text?: string
   reward: string
   reward_text?: string
   createtime: number
@@ -202,31 +208,60 @@ export interface CollectRewardRecordItem {
 }
 
 // ----- 营销数据统计 -----
-export interface StatSummaryModule {
-  key: string
+export interface StatXszbItem {
   name: string
-  money: number
-  num: number
-  kedan: number
+  value: number
   percent: number
 }
 
-export interface StatSummaryResult {
-  modules: StatSummaryModule[]
+export interface StatTypeDateItem {
+  name: string
   total_money: number
-  total_num: number
-  total_kedan: number
+  order_num: number
+  member_num: number
+  type_kdj: number
+  z_refund_money: number
+  tkl: number
 }
 
-export interface StatDistResult {
-  labels: string[]
-  values: number[]
+export interface StatSxqsdbItem {
+  name: string
+  type: string
+  data: number[]
 }
 
-export interface StatTrendResult {
-  labels: string[]
-  series: Record<string, { name: string; data: number[] }>
-  total: number[]
+export interface StatMemberDataItem {
+  value: number
+  zb: number
+  totalConsumption: number
+  rjxf: number
+}
+
+export interface StatIndexResult {
+  total_money: number
+  total_order_num: number
+  total_member_num: number
+  total_kdj: number
+  xszb: StatXszbItem[]
+  type_date_arr: StatTypeDateItem[]
+  date_arr: string[]
+  sxqsdb: StatSxqsdbItem[]
+  member_data: StatMemberDataItem[]
+  money_arr: string[]
+}
+
+export interface StatOptionsResult {
+  business: { id: number; name: string }[]
+  freight: { id: number; name: string }[]
+}
+
+export interface StatIndexParams {
+  range: string
+  custom_start?: string
+  custom_end?: string
+  bid?: string
+  freight_id?: string
+  qus?: string
 }
 
 // ============ 口令/谜语游戏 ============
@@ -420,7 +455,12 @@ export function deleteActivityComment(type: CommentType, id: number) {
 
 export function getCollectRewardRecords(params: {
   ordertype?: string
+  reward_type?: number
+  ordernum?: string
+  keyword?: string
   mid?: number
+  ordertime_start?: number
+  ordertime_end?: number
   page?: number
   pagesize?: number
 }) {
@@ -430,22 +470,16 @@ export function getCollectRewardRecords(params: {
   )
 }
 
+export function deleteCollectRewardRecords(ids: number[]) {
+  return request.post<unknown, null>('/admin/orderCollectReward/del', { ids })
+}
+
 // ============ 营销数据统计 ============
 
-export function getStatSummary(range: string) {
-  return request.get<unknown, StatSummaryResult>('/admin/dataStatistics/summary', {
-    params: { range },
-  })
+export function getStatIndex(params: StatIndexParams) {
+  return request.get<unknown, StatIndexResult>('/admin/dataStatistics/index', { params })
 }
 
-export function getStatMoneyDist(range: string) {
-  return request.get<unknown, StatDistResult>('/admin/dataStatistics/moneyDist', {
-    params: { range },
-  })
-}
-
-export function getStatTrend(range: string) {
-  return request.get<unknown, StatTrendResult>('/admin/dataStatistics/trend', {
-    params: { range },
-  })
+export function getStatOptions() {
+  return request.get<unknown, StatOptionsResult>('/admin/dataStatistics/options')
 }

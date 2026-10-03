@@ -228,7 +228,17 @@ class Tuangou extends BaseController
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
         $bid      = trim((string) $this->request->get('bid', ''));
 
-        return $this->success($this->tuangouService->orderList($aid, $status, $keyword, $page, $pageSize, $bid));
+        $filters = [
+            'ordernum'  => trim((string) $this->request->get('ordernum', '')),
+            'linkman'   => trim((string) $this->request->get('linkman', '')),
+            'tel'       => trim((string) $this->request->get('tel', '')),
+            'starttime' => trim((string) $this->request->get('starttime', '')),
+            'endtime'   => trim((string) $this->request->get('endtime', '')),
+            'sortfield' => (string) $this->request->get('sortfield', 'id'),
+            'sortorder' => (string) $this->request->get('sortorder', 'desc'),
+        ];
+
+        return $this->success($this->tuangouService->orderList($aid, $status, $keyword, $page, $pageSize, $bid, $filters));
     }
 
     /**
@@ -347,6 +357,30 @@ class Tuangou extends BaseController
         ], $rows);
     }
 
+
+    /**
+     * 删除订单（单 id 或批量 ids[]）
+     * POST /admin/tuangou/order/del {id | ids[]}
+     */
+    public function orderDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) { $ids = [(int) $this->request->post('id', 0)]; }
+        $this->tuangouService->orderDelete($aid, $ids);
+        return $this->success([], '删除成功');
+    }
+
+    /**
+     * 改为已支付（仅未支付）
+     * POST /admin/tuangou/order/ispay {id}
+     */
+    public function orderIspay()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $this->tuangouService->orderIspay($aid, (int) $this->request->post('id', 0));
+        return $this->success([], '操作成功');
+    }
     /* ================= 团购评价 ================= */
 
     /**
@@ -363,7 +397,14 @@ class Tuangou extends BaseController
         $pageSize = (int) $this->request->get('pagesize', 10);
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
 
-        return $this->success($this->tuangouService->commentList($aid, $status, $proid, $page, $pageSize));
+        $filters = [
+            'content'   => trim((string) $this->request->get('content', '')),
+            'starttime' => trim((string) $this->request->get('starttime', '')),
+            'endtime'   => trim((string) $this->request->get('endtime', '')),
+            'sortorder' => (string) $this->request->get('sortorder', 'desc'),
+        ];
+
+        return $this->success($this->tuangouService->commentList($aid, $status, $proid, $page, $pageSize, $filters));
     }
 
     /**
@@ -494,5 +535,103 @@ class Tuangou extends BaseController
         $ids = (array) $this->request->post('ids/a', []);
 
         return $this->success($this->tuangouService->codelistDelete($aid, array_map('intval', $ids)), '删除成功');
+    }
+
+    /* ================= 扩展：分销等级/快递选项/物流/批量发货/送货单 ================= */
+
+    /**
+     * 可分销会员等级（商品分销设置展开行）
+     * GET /admin/tuangou/agentLevels
+     */
+    public function agentLevels()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        return $this->success($this->tuangouService->agentLevels($aid));
+    }
+
+    /**
+     * 快递公司下拉
+     * GET /admin/tuangou/order/expressOptions
+     */
+    public function orderExpressOptions()
+    {
+        return $this->success($this->tuangouService->expressOptions());
+    }
+
+    /**
+     * 查物流（快递鸟轨迹）
+     * GET /admin/tuangou/order/trace?id=
+     */
+    public function orderTrace()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        return $this->success($this->tuangouService->orderTrace($aid, (int) $this->request->get('id', 0)));
+    }
+
+    /**
+     * 批量发货（上传 Excel：第一列订单号，第二列快递单号）
+     * POST /admin/tuangou/order/batchSend {express_com, file}
+     */
+    public function orderBatchSend()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $expressCom = trim((string) $this->request->post('express_com', ''));
+        if ('' === $expressCom) {
+            return $this->error('请选择快递公司');
+        }
+
+        $file = $this->request->file('file');
+        if (empty($file)) {
+            return $this->error('请上传 Excel 文件');
+        }
+
+        $rows = [];
+        try {
+            $spreadsheet = \PhpOffice\PhpSpreadsheet\IOFactory::load($file->getPathname());
+            $sheet = $spreadsheet->getActiveSheet();
+            foreach ($sheet->getRowIterator() as $rowIdx => $row) {
+                if ($rowIdx === 1) { continue; } // 跳过表头
+                $ordernum = trim((string) $sheet->getCell([1, $rowIdx])->getValue());
+                $expressNo = trim((string) $sheet->getCell([2, $rowIdx])->getValue());
+                if ('' !== $ordernum) { $rows[$ordernum] = $expressNo; }
+            }
+        } catch (\Throwable $e) {
+            return $this->error('Excel 解析失败：' . $e->getMessage());
+        }
+
+        if (empty($rows)) {
+            return $this->error('未解析到有效订单行');
+        }
+
+        return $this->success($this->tuangouService->orderBatchSend($aid, $expressCom, $rows), '批量发货完成');
+    }
+
+    /**
+     * 送货单（整页自动生成，浏览器打印）
+     * GET /admin/tuangou/order/songhuo?ids=1,2,3
+     */
+    public function orderSonghuo()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = (string) $this->request->get('ids', '');
+        $arr = array_filter(explode(',', $ids), static fn($v) => '' !== trim($v));
+        $list = $this->tuangouService->orderSonghuo($aid, array_map('intval', $arr));
+
+        $body = '';
+        foreach ($list as $o) {
+            $body .= '<tr><td>' . htmlspecialchars($o['ordernum']) . '</td>'
+                . '<td>' . htmlspecialchars($o['proname']) . '</td>'
+                . '<td>' . (int) $o['num'] . '</td>'
+                . '<td>' . htmlspecialchars($o['linkman']) . ' ' . htmlspecialchars($o['tel']) . '</td>'
+                . '<td>' . htmlspecialchars($o['address']) . '</td>'
+                . '<td>￥' . number_format($o['totalprice'], 2) . '</td></tr>';
+        }
+        $html = '<html><head><meta charset="utf-8"><title>送货单</title>'
+            . '<style>body{font-family:Microsoft YaHei;padding:20px}h2{text-align:center}table{width:100%;border-collapse:collapse}td,th{border:1px solid #333;padding:8px;font-size:13px}</style>'
+            . '</head><body><h2>团购活动送货单</h2><p>打印时间：' . date('Y-m-d H:i:s') . '</p>'
+            . '<table><tr><th>订单号</th><th>商品</th><th>数量</th><th>收货人</th><th>地址</th><th>金额</th></tr>'
+            . $body . '</table>'
+            . '<script>window.onload=function(){window.print();}</script></body></html>';
+        return response($html);
     }
 }

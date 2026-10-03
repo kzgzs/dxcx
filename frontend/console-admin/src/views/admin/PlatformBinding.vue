@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import {
@@ -342,7 +342,8 @@ onMounted(() => {
       <p>管理各端小程序/公众号的接入配置，微信端支持手动配置与开放平台代授权两种方式。</p>
     </div>
 
-    <el-tabs v-model="activeTab" class="binding-tabs" @tab-change="onTabChange">
+    <!-- 顶部横向 tab 条已隐藏：左侧树菜单已按端独立挂位，按 initialTab 只渲染对应端 -->
+    <el-tabs v-model="activeTab" class="binding-tabs hide-tab-nav" @tab-change="onTabChange">
       <el-tab-pane v-for="tab in TABS" :key="tab.key" :name="tab.key" :label="tab.name">
         <!-- 绑定状态卡 -->
         <div v-loading="loading" class="status-card">
@@ -451,6 +452,8 @@ onMounted(() => {
 </template>
 
 <style scoped>
+/* 隐藏顶部横向 tab 导航条（左侧树菜单已负责导航） */
+.hide-tab-nav :deep(.el-tabs__header) { display: none; }
 .platform-binding {
   padding: 16px;
 }

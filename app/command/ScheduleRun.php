@@ -13,7 +13,6 @@ use app\common\service\HotelService;
 use app\common\service\LuckyCollageService;
 use app\common\service\OrderService;
 use app\common\service\PayService;
-use app\common\service\PrizePoolService;
 use app\common\service\RestaurantOrderService;
 use app\common\service\ScoreshopService;
 use app\common\service\SeckillService;
@@ -46,7 +45,6 @@ use think\console\Output;
  * - SCORESHOP.EXPIRE_CLOSE=1       积分商城未支付超时关单
  * - RESTAURANT.ORDER_SCHED=1       餐饮外卖超时关单与堂食自动完成
  * - RESTAURANT.TAKE_FOOD_EXPIRE=1  餐饮取餐号24小时未取过期
- * - PRIZEPOOL.SEND=1               奖金池发放（利润池每日/区域达标池周月）
  * - FENHONG.SETTLE=1               分红结算（股东/团队/区域三套，og.isfenhong 幂等）
  * - WECHAT.TMPL_SEND=1             微信模板/订阅消息统一发送（消费 wechat_send_tmpl_data）
  */
@@ -236,28 +234,6 @@ class ScheduleRun extends Command
                 $result = app(CommissionSettleService::class)->settleWeekAll();
 
                 return sprintf('佣金周结 扫描%d 入账%d 作废%d', $result['scanned'], $result['settled'], $result['void']);
-            };
-        }
-
-        // 奖金池三任务（P19-6 任务184）：
-        // 利润池每日到 send_time 小时自动发放（当日幂等）；区域池周一结算上周、达标池每月1日结算上月（周期幂等）
-        if ('0' !== (string) env('PRIZEPOOL.SEND', '1')) {
-            $tasks['prizepool.send_profit'] = function (): string {
-                $result = app(PrizePoolService::class)->scheduleProfitSend();
-
-                return sprintf('利润奖金池发放 租户%d 入账%d', $result['tenants'], $result['sent']);
-            };
-
-            $tasks['prizepool.send_area'] = function (): string {
-                $result = app(PrizePoolService::class)->scheduleAreaReachSend(0);
-
-                return sprintf('区域奖金池发放 池%d 入账%d', $result['pools'], $result['sent']);
-            };
-
-            $tasks['prizepool.send_reach'] = function (): string {
-                $result = app(PrizePoolService::class)->scheduleAreaReachSend(1);
-
-                return sprintf('达标奖金池发放 池%d 入账%d', $result['pools'], $result['sent']);
             };
         }
 

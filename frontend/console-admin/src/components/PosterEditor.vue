@@ -11,9 +11,13 @@ type PosterEditorType =
   | 'product'
   | 'index'
   | 'collage'
+  | 'collageteam'
   | 'kanjia'
+  | 'kanjiateam'
   | 'lucky_collage'
+  | 'lucky_collageteam'
   | 'tuangou'
+  | 'tuangouteam'
   | 'scoreshop'
   | 'cycle'
   | 'shortvideo'
@@ -30,10 +34,12 @@ const props = withDefaults(
     platform: PosterPlatform
     posterId?: number
     showGuize?: boolean
-    // 是否展示“商品图片”元素（商品海报使用，对齐参考系统商品海报元素）
+    // 是否展示"商品图片"元素（商品海报使用，对齐参考系统商品海报元素）
     showProductImage?: boolean
+    // 是否始终展示全部二维码元素按钮（拼团海报：网页/微信/支付宝/百度/抖音/QQ 全显示）
+    showAllQr?: boolean
   }>(),
-  { posterId: 0, showGuize: false, showProductImage: false },
+  { posterId: 0, showGuize: false, showProductImage: false, showAllQr: false },
 )
 
 const emit = defineEmits<{
@@ -434,7 +440,14 @@ defineExpose({ reload: load, templateId })
         <div class="panel-title">二维码元素</div>
         <div class="add-row">
           <el-button size="small" @click="addElement('qrmp')">网页二维码</el-button>
-          <el-button v-if="miniQr" size="small" @click="miniQr && addElement(miniQr.type)">{{ miniQr.name }}</el-button>
+          <template v-if="showAllQr">
+            <el-button size="small" @click="addElement('qrwx')">微信小程序码</el-button>
+            <el-button size="small" @click="addElement('qralipay')">支付宝小程序码</el-button>
+            <el-button size="small" @click="addElement('qrbaidu')">百度小程序码</el-button>
+            <el-button size="small" @click="addElement('qrtoutiao')">抖音小程序码</el-button>
+            <el-button size="small" @click="addElement('qrqq')">QQ小程序码</el-button>
+          </template>
+          <el-button v-else-if="miniQr" size="small" @click="miniQr && addElement(miniQr.type)">{{ miniQr.name }}</el-button>
         </div>
       </div>
 

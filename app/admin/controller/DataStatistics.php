@@ -9,10 +9,11 @@ use app\common\service\MarketingStatService;
 use app\common\service\ScopeService;
 
 /**
- * 租户后台 - 营销数据统计（批次4-E 任务190 E2-6）
+ * 租户后台 - 营销数据统计（客户端·营销-数据统计）
  *
- * 六模块聚合：shop/collage/kanjia/seckill/tuangou/yuyue（表不存在的跳过）
- * range：today / 7days / 30days / month
+ * 对齐参考系统 yingxiao/DataStatistics：
+ * 一次返回卡片/商品类型占比/销售趋势对比/会员消费/详细数据列表；
+ * 支持时间范围（本日/近7天/近30天/本月/自定义）、商家、配送方式、趋势指标切换。
  */
 class DataStatistics extends BaseController
 {
@@ -22,41 +23,36 @@ class DataStatistics extends BaseController
     }
 
     /**
-     * 各模块销售汇总（订单额/订单数/占比/客单价）
-     * GET /admin/dataStatistics/summary?range=
+     * 数据统计总览
+     * GET /admin/dataStatistics/index?range=&custom_start=&custom_end=&bid=&freight_id=&qus=
      */
-    public function summary()
+    public function index()
     {
         $aid = ScopeService::aidOf($this->request);
 
         $range = trim((string) $this->request->get('range', 'today'));
 
-        return $this->success($this->service->summary($aid, $range));
+        // 自定义日期（前端传 Y-m-d）
+        $customStart = $this->request->get('custom_start');
+        $customEnd   = $this->request->get('custom_end');
+        $customStart = $customStart ? strtotime((string) $customStart) : null;
+        $customEnd   = $customEnd ? strtotime((string) $customEnd) : null;
+
+        $bid       = (string) $this->request->get('bid', '-1');
+        $freightId = (string) $this->request->get('freight_id', '');
+        $qus       = (string) $this->request->get('qus', 'sales');
+
+        return $this->success($this->service->index($aid, $range, $customStart, $customEnd, $bid, $freightId, $qus));
     }
 
     /**
-     * 金额分布档位
-     * GET /admin/dataStatistics/moneyDist?range=
+     * 筛选项：商家 + 配送方式
+     * GET /admin/dataStatistics/options
      */
-    public function moneyDist()
+    public function options()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $range = trim((string) $this->request->get('range', 'today'));
-
-        return $this->success($this->service->moneyDist($aid, $range));
-    }
-
-    /**
-     * 时间趋势（today 按小时；其余按天）
-     * GET /admin/dataStatistics/trend?range=
-     */
-    public function trend()
-    {
-        $aid = ScopeService::aidOf($this->request);
-
-        $range = trim((string) $this->request->get('range', 'today'));
-
-        return $this->success($this->service->trend($aid, $range));
+        return $this->success($this->service->options($aid));
     }
 }

@@ -39,6 +39,7 @@ import type { DesignerModule } from '../../api/designer'
 import { defaultModule } from './designerModules'
 import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import LinkAddressModal from '../../components/LinkAddressModal.vue'
 
 // ============ 列表 ============
 const loading = ref(false)
@@ -323,20 +324,14 @@ async function submitPrice() {
   }
 }
 
-// 商品链接
+// 商品链接（全站统一 LinkAddressModal）
 const linkVisible = ref(false)
-const goodsLink = ref('')
+const linkPath = ref('')
+const linkName = ref('')
 function handleShowLink(row: GoodsItem) {
-  goodsLink.value = `${window.location.origin}/#/pagesM/goods/detail?id=${row.id}`
+  linkPath.value = `pagesM/goods/detail?id=${row.id}`
+  linkName.value = row.name
   linkVisible.value = true
-}
-async function copyLink() {
-  try {
-    await navigator.clipboard.writeText(goodsLink.value)
-    ElMessage.success('链接已复制')
-  } catch {
-    ElMessage.warning('复制失败，请手动选择复制')
-  }
 }
 
 // ============ 视图切换：列表 / 整页编辑 ============
@@ -1593,14 +1588,8 @@ onMounted(() => {
       </template>
     </el-dialog>
 
-    <!-- 商品链接 -->
-    <el-dialog v-model="linkVisible" title="商品链接" width="520px" append-to-body>
-      <el-input v-model="goodsLink" readonly>
-        <template #append>
-          <el-button @click="copyLink">复制</el-button>
-        </template>
-      </el-input>
-    </el-dialog>
+    <!-- 商品链接（全站统一组件） -->
+    <LinkAddressModal v-model:visible="linkVisible" :name="linkName" :path="linkPath" />
 
     <!-- 库存导入 -->
     <el-dialog v-model="importVisible" title="Excel 库存导入" width="480px">

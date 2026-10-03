@@ -71,6 +71,8 @@ export interface KechengChapterItem {
   sort: number
   status: number
   createtime: number
+  kcname?: string
+  zjtype?: string
 }
 
 // 订单行
@@ -80,20 +82,30 @@ export interface KechengOrderItem {
   ordernum: string
   title: string
   kcid: number
+  pic: string
   totalprice: number
   price: number
   status: number
   paytype: string
   paytime: number
+  platform: string
+  platform_text: string
   createtime: number
   member_tel: string
   member_nickname: string
+  member_headimg: string
   createtime_text: string
   paytime_text: string
   parent1commission: number
   parent2commission: number
   parent3commission: number
   iscommission: number
+}
+
+// 订单详情
+export interface KechengOrderDetail {
+  order: KechengOrderItem & Record<string, any>
+  member: { id: number; nickname: string; headimg: string; tel: string; realname?: string }
 }
 
 // 学习记录行
@@ -103,12 +115,16 @@ export interface KechengStudylogItem {
   kcid: number
   mlid: number
   title: string
+  kecheng_name: string
   status: number
   jindu: string
   currentTime: number
+  platform: string
+  platform_text: string
   createtime: number
   member_tel: string
   member_nickname: string
+  member_headimg: string
   createtime_text: string
 }
 
@@ -147,22 +163,6 @@ export interface KechengTikuItem {
   right_option_text: string
 }
 
-// 讲师行
-export interface KechengLecturerItem {
-  id: number
-  mid: number
-  headimg: string
-  nickname: string
-  realname: string
-  tel: string
-  shortdesc: string
-  checkstatus: number
-  check_reason: string
-  status: number
-  createtime: number
-  updatetime: number
-  course_count: number
-}
 
 export interface KechengListResult<T> {
   list: T[]
@@ -224,18 +224,88 @@ export function setKechengCourseStatus(id: number, status: number) {
 
 /* ================= 章节 ================= */
 
-export function getKechengChapterList(params: { kcid: number; page?: number; pagesize?: number }) {
+export function getKechengChapterList(params: {
+  kcid?: number
+  name?: string
+  status?: string
+  page?: number
+  pagesize?: number
+}) {
   return request.get<unknown, KechengListResult<KechengChapterItem>>('/admin/kechengChapter/list', {
     params,
   })
+}
+
+export function getKechengChapterDetail(id: number) {
+  return request.get<unknown, KechengChapterItem>('/admin/kechengChapter/detail', { params: { id } })
 }
 
 export function saveKechengChapter(data: Record<string, unknown>) {
   return request.post<unknown, { id: number }>('/admin/kechengChapter/save', data)
 }
 
-export function deleteKechengChapter(id: number) {
-  return request.post<unknown, null>('/admin/kechengChapter/delete', { id })
+export function deleteKechengChapter(ids: number[] | number) {
+  return request.post<unknown, null>('/admin/kechengChapter/delete', {
+    ids: Array.isArray(ids) ? ids : [ids],
+  })
+}
+
+export function setKechengChapterStatus(ids: number[], status: number) {
+  return request.post<unknown, null>('/admin/kechengChapter/status', { ids, status })
+}
+
+/* ================= 答题记录 ================= */
+
+// 答题记录行（整卷）
+export interface KechengRecordItem {
+  id: number
+  mid: number
+  kcid: number
+  mlid: number
+  time: number
+  endtime: number
+  score: number
+  ishg: number
+  status: number
+  kcname: string
+  nickname: string
+  headimg: string
+  time_text: string
+  endtime_text: string
+}
+
+// 答题明细行（逐题）
+export interface KechengRecordLogItem {
+  id: number
+  tmid: number
+  title: string
+  ttype: number
+  answer: string
+  status: number
+  score: number
+  time: number
+  time_text: string
+}
+
+export function getKechengRecordList(params: {
+  kcid?: number
+  mid?: number
+  page?: number
+  pagesize?: number
+}) {
+  return request.get<unknown, KechengListResult<KechengRecordItem>>('/admin/kechengRecord/list', {
+    params,
+  })
+}
+
+export function getKechengRecordLogs(params: { rid: number; page?: number; pagesize?: number }) {
+  return request.get<unknown, KechengListResult<KechengRecordLogItem>>('/admin/kechengRecord/logs', {
+    params,
+  })
+}
+
+export function deleteKechengRecord(ids: number[]) {
+  return request.post<unknown, null>('/admin/kechengRecord/delete', { ids })
 }
 
 /* ================= 订单/学习记录 ================= */
@@ -243,7 +313,8 @@ export function deleteKechengChapter(id: number) {
 export function getKechengOrderList(params: {
   page?: number
   pagesize?: number
-  keyword?: string
+  ordernum?: string
+  ctime?: string
   status?: string | number
 }) {
   return request.get<unknown, KechengListResult<KechengOrderItem>>('/admin/kechengOrder/list', {
@@ -251,15 +322,26 @@ export function getKechengOrderList(params: {
   })
 }
 
-export function getKechengStudylogList(params: {
-  page?: number
-  pagesize?: number
-  keyword?: string
-  kcid?: number
-}) {
+export function getKechengOrderDetail(id: number) {
+  return request.get<unknown, KechengOrderDetail>('/admin/kechengOrder/detail', { params: { id } })
+}
+
+export function closeKechengOrder(id: number) {
+  return request.post<unknown, null>('/admin/kechengOrder/close', { id })
+}
+
+export function deleteKechengOrder(id: number) {
+  return request.post<unknown, null>('/admin/kechengOrder/delete', { id })
+}
+
+export function getKechengStudylogList(params: { page?: number; pagesize?: number }) {
   return request.get<unknown, KechengListResult<KechengStudylogItem>>('/admin/kechengStudylog/list', {
     params,
   })
+}
+
+export function deleteKechengStudylog(id: number) {
+  return request.post<unknown, null>('/admin/kechengStudylog/delete', { id })
 }
 
 /* ================= 课程设置 ================= */
@@ -322,27 +404,6 @@ export function exportKechengTiku(params: { kcid?: number; mlid?: number }) {
   }) as Promise<Blob>
 }
 
-/* ================= 讲师审核（批次5-D2） ================= */
-
-export function getKechengLecturerList(params: {
-  page?: number
-  pagesize?: number
-  keyword?: string
-  checkstatus?: string | number
-}) {
-  return request.get<unknown, KechengListResult<KechengLecturerItem>>(
-    '/admin/kechengLecturer/list',
-    { params },
-  )
-}
-
-export function checkKechengLecturer(data: { id: number; checkstatus: number; reason?: string }) {
-  return request.post<unknown, null>('/admin/kechengLecturer/check', data)
-}
-
-export function setKechengLecturerStatus(id: number, status: number) {
-  return request.post<unknown, null>('/admin/kechengLecturer/status', { id, status })
-}
 
 /* ================= 会员等级（分销配置/会员价用） ================= */
 

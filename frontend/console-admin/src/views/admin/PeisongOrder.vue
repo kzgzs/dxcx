@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   delPeisongOrder,
@@ -8,39 +8,64 @@ import {
   setstPeisongOrder,
 } from '../../api/peisong'
 import type { PeisongOrderItem, PsUserOption } from '../../api/peisong'
-import { formatTime } from '../../utils/time'
 
-// 租户后台 - 同城配送·配送单（批次8 任务223；对标参考系统 PeisongOrder）
-// bid prop 由 merchantViewOf 注入（'gt0' 商户过滤视图），缺省不过滤
-const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
+// 租户后台 - 同城配送·配送单（批次8 任务223；对标 canzhao PeisongOrder::index）
+// bid：商户过滤视图注入 'gt0'；psid/embedded：由配送员列表「查看配送记录」平铺嵌入，按配送员过滤
+const props = withDefaults(
+  defineProps<{ bid?: string; psid?: string | number; embedded?: boolean }>(),
+  { bid: '', psid: '', embedded: false },
+)
+const emit = defineEmits<{ (e: 'close'): void }>()
 
 const loading = ref(false)
 const tableData = ref<PeisongOrderItem[]>([])
 const total = ref(0)
-const selection = ref<PeisongOrderItem[]>([])
 const psOptions = ref<PsUserOption[]>([])
 
 const query = reactive({
   page: 1,
   pagesize: 10,
+  mid: '',
+  nickname: '',
   ordernum: '',
   psid: '',
-  status: '',
   pstype: '',
-  nickname: '',
+  status: '',
 })
 
-// 状态 tag 颜色
-const STATUS_TAG: Record<number, 'danger' | 'success' | 'info' | 'warning'> = {
-  0: 'danger',
-  1: 'success',
-  2: 'success',
-  3: 'success',
-  4: 'info',
-  10: 'warning',
+/** 配送状态文字颜色（照 canzhao：0红 / 1,2,3绿 / 4灰 / 10浅灰） */
+const STATUS_COLOR: Record<number, string> = {
+  0: '#f56c6c',
+  1: '#67c23a',
+  2: '#67c23a',
+  3: '#67c23a',
+  4: '#999999',
+  10: '#cccccc',
 }
 
-const isMerchantView = computed(() => props.bid === 'gt0' || props.bid === 'merchant')
+/** 固定配送员（查看配送记录）时隐藏配送员下拉 */
+const fixedPsid = computed(() => props.psid !== '' && props.psid !== undefined && props.psid !== null)
+
+function oi(row: PeisongOrderItem, k: string): string {
+  return String((row.orderinfo as Record<string, unknown>)[k] ?? '')
+}
+interface ProItem {
+  pic?: string
+  name?: string
+  ggname?: string
+  sell_price?: string
+  num?: number | string
+}
+function prolist(row: PeisongOrderItem): ProItem[] {
+  return (row.prolist || []) as unknown as ProItem[]
+}
+function fmtOrderTime(ts?: number | string): string {
+  const t = Number(ts)
+  if (!t) return ''
+  const d = new Date(t * 1000)
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}年${p(d.getMonth() + 1)}月${p(d.getDate())}日 ${p(d.getHours())}:${p(d.getMinutes())}`
+}
 
 async function fetchList() {
   loading.value = true
@@ -48,11 +73,12 @@ async function fetchList() {
     const data = await getPeisongOrderList({
       page: query.page,
       pagesize: query.pagesize,
-      ordernum: query.ordernum || undefined,
-      psid: query.psid === '' ? undefined : query.psid,
-      status: query.status === '' ? undefined : query.status,
-      pstype: query.pstype === '' ? undefined : query.pstype,
+      mid: query.mid || undefined,
       nickname: query.nickname || undefined,
+      ordernum: query.ordernum || undefined,
+      psid: fixedPsid.value ? props.psid : query.psid === '' ? undefined : query.psid,
+      pstype: query.pstype === '' ? undefined : query.pstype,
+      status: query.status === '' ? undefined : query.status,
       bid: props.bid || undefined,
     })
     tableData.value = data.list || []
@@ -65,6 +91,7 @@ async function fetchList() {
 }
 
 async function fetchPsOptions() {
+  if (fixedPsid.value) return
   try {
     const data = await getPeisongUserOptions()
     psOptions.value = data.list || []
@@ -78,59 +105,66 @@ function handleSearch() {
   fetchList()
 }
 
-function handleReset() {
-  query.ordernum = ''
-  query.psid = ''
-  query.status = ''
-  query.pstype = ''
-  query.nickname = ''
-  query.page = 1
-  fetchList()
+/** 行操作是否可完成/取消（status 非 4已完成 非 10已取消） */
+function canOperate(row: PeisongOrderItem): boolean {
+  return row.status !== 4 && row.status !== 10
 }
 
-// 详情弹窗
-const detailVisible = ref(false)
-const detailRow = ref<PeisongOrderItem | null>(null)
-
-function handleDetail(row: PeisongOrderItem) {
-  detailRow.value = row
-  detailVisible.value = true
-}
-
+/** 完成：st=4；取消：st=10（确认弹窗照截图） */
 async function handleSetst(row: PeisongOrderItem, st: number) {
-  if (st === 10) {
-    await ElMessageBox.confirm(`确认取消配送单 ${row.ordernum}？`, '提示', { type: 'warning' })
-  }
+  const text = st === 10 ? '确定要取消吗？' : '确定要完成配送单吗？'
+  await ElMessageBox.confirm(text, '操作确认', {
+    type: 'warning',
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+  })
   await setstPeisongOrder({ ids: [row.id], st, bid: props.bid || undefined })
   ElMessage.success('操作成功')
   fetchList()
 }
 
-async function handleBatchSetst(st: number) {
-  const ids = selection.value.map((v) => v.id)
-  if (!ids.length) return ElMessage.warning('请先选择配送单')
-  await setstPeisongOrder({ ids, st, bid: props.bid || undefined })
-  ElMessage.success('操作成功')
-  fetchList()
-}
-
-async function handleDel(row?: PeisongOrderItem) {
-  const ids = row ? [row.id] : selection.value.map((v) => v.id)
-  if (!ids.length) return ElMessage.warning('请先选择配送单')
-  await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条配送记录？`, '提示', { type: 'warning' })
-  await delPeisongOrder(ids, props.bid || undefined)
+async function handleDel(row: PeisongOrderItem) {
+  await ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '操作确认', {
+    type: 'warning',
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+  })
+  await delPeisongOrder([row.id], props.bid || undefined)
   ElMessage.success('删除成功')
   fetchList()
 }
 
-// 商户视图切换时重查
-watch(
-  () => props.bid,
-  () => {
-    query.page = 1
-    fetchList()
-  },
-)
+/** 导出EXCEL：当前已加载的过滤结果导出 CSV（照截图保留按钮） */
+function handleExport() {
+  const head = ['ID', '所属商家', '配送类型', '配送提成', '配送状态', '配送员', '配送员电话', '下单人', '订单号', '总价', '实付款', '收货地址', '支付方式']
+  const lines = tableData.value.map((r) => {
+    const addr = [oi(r, 'linkman'), oi(r, 'tel'), oi(r, 'area'), oi(r, 'address')].filter(Boolean).join(' ')
+    return [
+      r.id,
+      (r.binfo as Record<string, unknown>).name ?? '',
+      r.pstype,
+      r.ticheng,
+      r.status_name,
+      r.psuser.realname,
+      r.psuser.tel,
+      r.member.nickname || `会员${r.member.id}`,
+      oi(r, 'ordernum'),
+      oi(r, 'product_price'),
+      oi(r, 'totalprice'),
+      addr,
+      oi(r, 'paytype'),
+    ]
+      .map((c) => `"${String(c).replace(/"/g, '""')}"`)
+      .join(',')
+  })
+  const csv = '﻿' + head.join(',') + '\n' + lines.join('\n')
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
+  const a = document.createElement('a')
+  a.href = URL.createObjectURL(blob)
+  a.download = '配送记录.csv'
+  a.click()
+  URL.revokeObjectURL(a.href)
+}
 
 onMounted(() => {
   fetchList()
@@ -139,15 +173,46 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
-    <!-- 搜索工具栏 -->
+  <div class="peisong-order-page">
+    <!-- 平铺嵌入（查看配送记录）时的标题条 + 右上 X -->
+    <div v-if="embedded" class="page-head-bar">
+      <span class="page-title"><span class="title-bar">≡</span>配送记录</span>
+      <el-button class="edit-close" circle @click="emit('close')">
+        <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M764.288 214.595 512 466.883 259.712 214.595a32 32 0 0 0-45.248 45.248L466.752 512 214.464 764.288a32 32 0 1 0 45.248 45.248L512 557.117l252.288 252.419a32 32 0 0 0 45.248-45.248L557.248 512l252.288-252.157a32 32 0 0 0-45.248-45.248z" /></svg>
+      </el-button>
+    </div>
+
+    <!-- 工具栏：导出按钮左 + 搜索右（同行不换行，框收窄） -->
     <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="订单号">
-          <el-input v-model="query.ordernum" placeholder="配送单号" clearable style="width: 160px" @keyup.enter="handleSearch" />
+      <div class="toolbar-left">
+        <el-button @click="handleExport">导出EXCEL</el-button>
+      </div>
+      <el-form inline class="toolbar-search" @submit.prevent>
+        <el-form-item label="下单人ID">
+          <el-input v-model="query.mid" clearable style="width: 90px" @keyup.enter="handleSearch" />
         </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px">
+        <el-form-item label="关键字">
+          <el-input v-model="query.nickname" placeholder="下单人昵称/姓名/手机号" clearable style="width: 130px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="订单号">
+          <el-input v-model="query.ordernum" clearable style="width: 110px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item v-if="!fixedPsid" label="配送员">
+          <el-select v-model="query.psid" placeholder="全部" clearable style="width: 100px">
+            <el-option label="全部" value="" />
+            <el-option v-for="u in psOptions" :key="u.id" :label="u.realname" :value="String(u.id)" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="配送类型">
+          <el-select v-model="query.pstype" placeholder="全部" clearable style="width: 95px">
+            <el-option label="全部" value="" />
+            <el-option label="系统配送" value="1" />
+            <el-option label="码科配送" value="2" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="配送状态">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 95px">
+            <el-option label="全部" value="" />
             <el-option label="待接单" value="0" />
             <el-option label="已接单" value="1" />
             <el-option label="已到店" value="2" />
@@ -156,181 +221,266 @@ onMounted(() => {
             <el-option label="已取消" value="10" />
           </el-select>
         </el-form-item>
-        <el-form-item label="配送员">
-          <el-select v-model="query.psid" placeholder="全部" clearable filterable style="width: 150px">
-            <el-option v-for="u in psOptions" :key="u.id" :label="`${u.realname}（${u.tel}）`" :value="String(u.id)" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="配送类型">
-          <el-select v-model="query.pstype" placeholder="全部" clearable style="width: 120px">
-            <el-option label="系统配送" value="1" />
-            <el-option label="码科配送" value="2" />
-            <el-option label="已拒绝" value="3" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="下单人">
-          <el-input v-model="query.nickname" placeholder="昵称/手机号" clearable style="width: 130px" @keyup.enter="handleSearch" />
-        </el-form-item>
         <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
+          <el-button type="success" class="search-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
+          </el-button>
         </el-form-item>
       </el-form>
     </el-card>
 
-    <!-- 列表 -->
+    <!-- 配送单表格（无 fixed，表头 #e6e6e6，内容居左） -->
     <el-card shadow="never">
-      <div v-if="!isMerchantView" class="op-row">
-        <el-button @click="handleBatchSetst(4)">批量完成</el-button>
-        <el-button @click="handleBatchSetst(10)">批量取消</el-button>
-        <el-button type="danger" plain @click="handleDel()">批量删除</el-button>
-      </div>
-
-      <el-table v-loading="loading" :data="tableData" stripe border size="small" @selection-change="(rows: PeisongOrderItem[]) => (selection = rows)">
-        <el-table-column type="selection" width="42" />
-        <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-        <el-table-column label="订单号" min-width="150" show-overflow-tooltip>
+      <el-table
+        v-loading="loading"
+        :data="tableData"
+        border
+        :header-cell-style="{ background: '#e6e6e6' }"
+      >
+        <el-table-column prop="id" label="ID" width="70" align="left" header-align="left" />
+        <el-table-column label="所属商家" width="120" align="left" header-align="left">
           <template #default="{ row }">
-            {{ row.ordernum }}
-            <div v-if="row.make_ordernum" class="sub-text">码科：{{ row.make_ordernum }}</div>
+            {{ (row.binfo && row.binfo.name) || '-' }}
           </template>
         </el-table-column>
-        <el-table-column label="下单人" min-width="100" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.member.nickname || `会员${row.member.id}` }}</template>
-        </el-table-column>
-        <el-table-column label="商家" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ (row.binfo && (row.binfo as Record<string, unknown>).name) || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="84" class-name="compact-col">
+        <el-table-column label="配送信息" width="190" align="left" header-align="left">
           <template #default="{ row }">
-            <el-tag :type="STATUS_TAG[row.status] || 'info'" size="small">{{ row.status_name }}</el-tag>
+            <div class="psinfo-line">配送类型：{{ row.pstype || '-' }}</div>
+            <div class="psinfo-line">配送提成：{{ row.ticheng }}</div>
+            <div class="psinfo-line">
+              配送状态：<span :style="{ color: STATUS_COLOR[row.status] || '#606266' }">{{ row.status_name }}</span>
+            </div>
+            <div class="psinfo-line">配送员：{{ row.psuser.realname || '-' }}</div>
+            <div class="psinfo-line">配送员电话：{{ row.psuser.tel || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="配送员" min-width="110" show-overflow-tooltip>
+        <el-table-column label="下单人" width="150" align="left" header-align="left">
           <template #default="{ row }">
-            <span v-if="row.psid === -2" class="sub-text">已拒绝</span>
-            <span v-else-if="row.psuser.realname">
-              {{ row.psuser.realname }}
-              <span class="sub-text">{{ row.psuser.tel }}</span>
-            </span>
-            <span v-else class="sub-text">待接单</span>
+            <div class="member-cell">
+              <img v-if="row.member.headimg" :src="row.member.headimg" class="member-img" />
+              <div v-else class="member-img member-img-empty">
+                <svg viewBox="0 0 1024 1024" width="22" height="22" fill="#c0c4cc"><path d="M512 512a192 192 0 1 0 0-384 192 192 0 0 0 0 384zm0 64c-120 0-224 67-256 166a32 32 0 0 0 30 42h452a32 32 0 0 0 30-42c-32-99-136-166-256-166z"/></svg>
+              </div>
+              <div class="member-meta">
+                <div>{{ row.member.nickname || 'null' }}</div>
+                <div class="sub-text">(ID:{{ row.member.id }})</div>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="提成" width="84" class-name="compact-col">
-          <template #default="{ row }">￥{{ Number(row.ticheng).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="配送费" width="84" class-name="compact-col">
-          <template #default="{ row }">￥{{ Number(row.psfee).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="类型" width="86" class-name="compact-col">
-          <template #default="{ row }">{{ row.pstype || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="下单时间" width="88" class-name="compact-col">
+        <el-table-column label="商品信息" width="240" align="left" header-align="left">
           <template #default="{ row }">
-            <el-tooltip v-if="row.createtime" :content="formatTime(row.createtime)" placement="top">
-              <span>{{ formatTime(row.createtime).slice(2, 10) }}</span>
-            </el-tooltip>
-            <span v-else>-</span>
+            <div v-for="(g, i) in prolist(row)" :key="i" class="goods-cell">
+              <img v-if="g.pic" :src="g.pic" class="goods-pic" />
+              <div v-else class="goods-pic goods-pic-empty"></div>
+              <div class="goods-meta">
+                <div class="goods-name">{{ g.name }}</div>
+                <div v-if="g.ggname" class="goods-gg">{{ g.ggname }}</div>
+                <div class="goods-price">￥{{ g.sell_price }} × {{ g.num }}</div>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right" class-name="compact-col">
+        <el-table-column label="商品总价/实付款" width="110" align="left" header-align="left">
           <template #default="{ row }">
-            <el-button link type="primary" size="small" @click="handleDetail(row)">详情</el-button>
-            <el-button v-if="row.status < 4" link type="warning" size="small" @click="handleSetst(row, 10)">取消</el-button>
-            <el-button v-if="!isMerchantView" link type="danger" size="small" @click="handleDel(row)">删除</el-button>
+            <div>总价：￥{{ oi(row, 'product_price') || '0' }}</div>
+            <div class="strong">实付：￥{{ oi(row, 'totalprice') || '0' }}</div>
           </template>
         </el-table-column>
+        <el-table-column label="订单号/下单时间" width="150" align="left" header-align="left">
+          <template #default="{ row }">
+            <div>{{ row.ordernum || oi(row, 'ordernum') || '-' }}</div>
+            <div class="order-time">{{ fmtOrderTime(Number(row.createtime) || Number(oi(row, 'createtime'))) }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="收货地址" width="200" align="left" header-align="left">
+          <template #default="{ row }">
+            <div class="strong">{{ oi(row, 'linkman') }} {{ oi(row, 'tel') }}</div>
+            <div class="addr">{{ oi(row, 'area') }} {{ oi(row, 'address') }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="支付方式" width="90" align="left" header-align="left">
+          <template #default="{ row }">{{ oi(row, 'paytype') || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="110" align="left" header-align="left">
+          <template #default="{ row }">
+            <div class="row-ops">
+              <template v-if="canOperate(row)">
+                <el-button link type="primary" size="small" @click="handleSetst(row, 4)">完成</el-button>
+                <el-button link type="primary" size="small" @click="handleSetst(row, 10)">取消</el-button>
+              </template>
+              <el-button v-else link type="primary" size="small" @click="handleDel(row)">删除</el-button>
+            </div>
+          </template>
+        </el-table-column>
+        <template #empty>暂无数据</template>
       </el-table>
 
       <el-pagination
-        class="pagination"
-        background
-        layout="total, sizes, prev, pager, next, jumper"
+        v-model:current-page="query.page"
+        v-model:page-size="query.pagesize"
         :total="total"
-        :current-page="query.page"
-        :page-size="query.pagesize"
-        :page-sizes="[10, 20, 50, 100]"
-        @current-change="(p: number) => { query.page = p; fetchList() }"
-        @size-change="(s: number) => { query.pagesize = s; query.page = 1; fetchList() }"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next, jumper"
+        class="pagination"
+        @change="fetchList"
       />
     </el-card>
-
-    <!-- 详情弹窗 -->
-    <el-dialog v-model="detailVisible" title="配送单详情" width="640px" destroy-on-close>
-      <template v-if="detailRow">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="订单号">{{ detailRow.ordernum }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ detailRow.status_name }}</el-descriptions-item>
-          <el-descriptions-item label="下单人">{{ detailRow.member.nickname || `会员${detailRow.member.id}` }}</el-descriptions-item>
-          <el-descriptions-item label="配送员">{{ detailRow.psuser.realname || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="提成">￥{{ Number(detailRow.ticheng).toFixed(2) }}</el-descriptions-item>
-          <el-descriptions-item label="配送费">￥{{ Number(detailRow.psfee).toFixed(2) }}</el-descriptions-item>
-          <el-descriptions-item label="下单时间">{{ detailRow.createtime ? formatTime(detailRow.createtime) : '-' }}</el-descriptions-item>
-          <el-descriptions-item label="完成时间">{{ detailRow.endtime ? formatTime(detailRow.endtime) : '-' }}</el-descriptions-item>
-          <el-descriptions-item label="收货信息" :span="2">
-            {{ ((detailRow.orderinfo as Record<string, unknown>).linkman || '') as string }}
-            {{ ((detailRow.orderinfo as Record<string, unknown>).tel || '') as string }}
-            {{ ((detailRow.orderinfo as Record<string, unknown>).address || '') as string }}
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <div v-if="detailRow.prolist && detailRow.prolist.length" class="prolist">
-          <div class="prolist-title">商品信息</div>
-          <div v-for="(g, i) in detailRow.prolist" :key="i" class="pro-item">
-            <span>{{ (g as Record<string, unknown>).name }}</span>
-            <span v-if="(g as Record<string, unknown>).ggname" class="sub-text">{{ (g as Record<string, unknown>).ggname }}</span>
-            <span class="pro-num">× {{ (g as Record<string, unknown>).num }}</span>
-          </div>
-        </div>
-      </template>
-      <template #footer>
-        <el-button @click="detailVisible = false">关闭</el-button>
-      </template>
-    </el-dialog>
   </div>
 </template>
 
 <style scoped>
+.peisong-order-page {
+  display: block;
+}
+.page-head-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 2px 8px;
+}
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.title-bar {
+  margin-right: 4px;
+}
+.edit-close {
+  border: none;
+  background: transparent;
+  color: #909399;
+}
+.edit-close:hover {
+  color: #409eff;
+  background: transparent;
+}
 .toolbar-card {
-  margin-bottom: 12px;
+  margin-bottom: 3px;
 }
-
-.op-row {
-  margin-bottom: 12px;
+.toolbar-card :deep(.el-card__body) {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
 }
-
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.toolbar-left .el-button {
+  margin: 0;
+}
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  margin: 0;
+  min-width: 0;
+}
+.toolbar-search :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 6px;
+  flex-shrink: 0;
+}
+.toolbar-search :deep(.el-form-item:last-child) {
+  margin-right: 0;
+}
+.toolbar-search :deep(.el-form-item__label) {
+  font-size: 12px;
+}
+.search-btn {
+  padding: 8px 14px;
+}
+.search-btn svg {
+  display: block;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+.psinfo-line {
+  line-height: 18px;
+  font-size: 12px;
+}
+.member-cell {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.member-img {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: #f5f7fa;
+}
+.member-img-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.member-meta {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 18px;
+}
 .sub-text {
   color: #909399;
   font-size: 12px;
-  margin-left: 4px;
 }
-
-.prolist {
-  margin-top: 14px;
+.goods-cell {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 4px;
 }
-
-.prolist-title {
+.goods-pic {
+  width: 44px;
+  height: 44px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  background: #f5f7fa;
+}
+.goods-pic-empty {
+  background: #f5f7fa;
+}
+.goods-meta {
+  min-width: 0;
+  font-size: 12px;
+  line-height: 16px;
+}
+.goods-name {
+  color: #303133;
+}
+.goods-gg {
+  color: #888;
+}
+.goods-price {
+  color: #f60;
+}
+.strong {
   font-weight: 600;
-  margin-bottom: 8px;
 }
-
-.pro-item {
-  font-size: 13px;
-  line-height: 24px;
+.order-time {
+  color: #080;
+  font-size: 12px;
 }
-
-.pro-num {
-  color: #f56c6c;
-  margin-left: 8px;
+.addr {
+  font-size: 12px;
+  color: #606266;
+  line-height: 18px;
 }
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
+.row-ops {
+  display: flex;
+  gap: 10px;
 }
-
-:deep(.compact-col .cell) {
-  padding-left: 6px;
-  padding-right: 6px;
+.row-ops .el-button {
+  margin: 0;
 }
 </style>

@@ -58,8 +58,31 @@ class SignReward extends BaseController
         $page      = max(1, (int) $this->request->get('page', 1));
         $pageSize  = (int) $this->request->get('pagesize', 10);
         $pageSize  = $pageSize > 0 ? min($pageSize, 100) : 10;
+        $field     = trim((string) $this->request->get('field', ''));
+        $order     = strtolower((string) $this->request->get('order', 'desc'));
 
-        return $this->success($this->service->signRecords($aid, $mid, $nickname, $startTime, $endTime, $page, $pageSize));
+        return $this->success($this->service->signRecords($aid, $mid, $nickname, $startTime, $endTime, $page, $pageSize, $field, $order));
+    }
+
+    /**
+     * 导出签到记录 CSV（与列表同过滤条件）
+     * GET /admin/sign/recordExport?mid&nickname&start_time&end_time
+     */
+    public function signRecordExport()
+    {
+        $aid       = ScopeService::aidOf($this->request);
+        $mid       = (int) $this->request->get('mid', 0);
+        $nickname  = trim((string) $this->request->get('nickname', ''));
+        $startTime = (int) $this->request->get('start_time', 0);
+        $endTime   = (int) $this->request->get('end_time', 0);
+
+        $csv = $this->service->exportSignRecords($aid, $mid, $nickname, $startTime, $endTime);
+
+        return \think\Response::create($csv, 'html', 200)
+            ->header([
+                'Content-Type'        => 'text/csv; charset=utf-8',
+                'Content-Disposition' => 'attachment; filename="sign_record_' . date('Ymd_His') . '.csv"',
+            ]);
     }
 
     /**

@@ -1,12 +1,13 @@
 <script setup lang="ts">
-// 文章评论管理（批次5-A 任务194）：列表/审核/删除/后台回复
+// 文章评论（对齐点大「扩展→文章管理→评论列表」截图）
+// 工具栏一行：左 删除/通过/驳回 批量；右 回复(关键词) + 时间区间 + 搜索；行操作仅 删除
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deleteArticlePinglun,
   getArticlePinglunList,
-  replyArticlePinglun,
   setArticlePinglunSt,
+  type ArticleListQuery,
   type ArticlePinglunItem,
 } from '../../api/article'
 import { formatTime } from '../../utils/time'
@@ -15,12 +16,28 @@ const loading = ref(false)
 const list = ref<ArticlePinglunItem[]>([])
 const total = ref(0)
 const selected = ref<ArticlePinglunItem[]>([])
-const query = reactive({ page: 1, pagesize: 10, keyword: '', status: '' })
+const query = reactive({
+  page: 1,
+  pagesize: 10,
+  keyword: '',
+  status: '',
+  timeRange: [] as number[] | string[],
+})
 
 async function load() {
   loading.value = true
   try {
-    const res = await getArticlePinglunList({ ...query })
+    const params: ArticleListQuery = {
+      page: query.page,
+      pagesize: query.pagesize,
+      keyword: query.keyword,
+    }
+    const range = query.timeRange as number[]
+    if (range && range.length === 2 && range[0] && range[1]) {
+      params.start_time = Math.floor(new Date(Number(range[0])).getTime() / 1000)
+      params.end_time = Math.floor(new Date(Number(range[1])).getTime() / 1000)
+    }
+    const res = await getArticlePinglunList(params)
     list.value = res.list || []
     total.value = res.total || 0
   } finally {
@@ -32,46 +49,28 @@ function handleSearch() {
   load()
 }
 
-// 审核（st 1通过 0驳回待审）
-async function handleSetst(rows: ArticlePinglunItem[], st: number) {
-  if (!rows.length) return
-  await setArticlePinglunSt(rows.map((r) => r.id), st)
+async function handleBatchSt(st: number) {
+  if (!selected.value.length) {
+    ElMessage.warning('请选择数据')
+    return
+  }
+  await setArticlePinglunSt(
+    selected.value.map((r) => r.id),
+    st,
+  )
   ElMessage.success(st === 1 ? '已通过' : '已驳回')
   load()
 }
 async function handleDelete(rows: ArticlePinglunItem[]) {
-  if (!rows.length) return
-  await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 条评论？其回评将一并删除`, '提示', { type: 'warning' })
-  await deleteArticlePinglun(rows.map((r) => r.id))
-  ElMessage.success('删除成功')
-  load()
-}
-
-// 后台回复
-const replyVisible = ref(false)
-const replyTarget = ref<ArticlePinglunItem | null>(null)
-const replyContent = ref('')
-const replySaving = ref(false)
-function openReply(row: ArticlePinglunItem) {
-  replyTarget.value = row
-  replyContent.value = ''
-  replyVisible.value = true
-}
-async function handleReplySave() {
-  if (!replyTarget.value) return
-  if (!replyContent.value.trim()) {
-    ElMessage.warning('回复内容不能为空')
+  if (!rows.length) {
+    ElMessage.warning('请选择数据')
     return
   }
-  replySaving.value = true
-  try {
-    await replyArticlePinglun(replyTarget.value.id, replyContent.value.trim())
-    ElMessage.success('回复成功')
-    replyVisible.value = false
-    load()
-  } finally {
-    replySaving.value = false
-  }
+  await ElMessageBox.confirm(`确定删除选中的 ${rows.length} 条评论？其回评将一并删除`, '删除确认', { type: 'warning' })
+  await deleteArticlePinglun(rows.map((r) => r.id))
+  ElMessage.success('删除成功')
+  selected.value = []
+  load()
 }
 
 onMounted(load)
@@ -79,96 +78,160 @@ onMounted(load)
 
 <template>
   <div class="article-pinglun">
-    <div class="toolbar">
-      <el-input v-model="query.keyword" placeholder="评论内容" clearable style="width: 200px" @keyup.enter="handleSearch" />
-      <el-select v-model="query.status" placeholder="状态" clearable style="width: 120px">
-        <el-option label="待审核" value="0" />
-        <el-option label="已通过" value="1" />
-      </el-select>
-      <el-button type="primary" @click="handleSearch">搜索</el-button>
-      <div class="toolbar-right">
-        <el-button type="success" @click="handleSetst(selected, 1)" :disabled="!selected.length">批量通过</el-button>
-        <el-button @click="handleSetst(selected, 0)" :disabled="!selected.length">批量驳回</el-button>
-        <el-button type="danger" @click="handleDelete(selected)" :disabled="!selected.length">批量删除</el-button>
+    <div class="page-title">文章评论</div>
+    <el-card shadow="never" class="toolbar-card">
+      <div class="toolbar-left">
+        <el-button @click="handleDelete(selected)">删除</el-button>
+        <el-button @click="handleBatchSt(1)">通过</el-button>
+        <el-button @click="handleBatchSt(0)">驳回</el-button>
       </div>
-    </div>
+      <el-form inline class="toolbar-search" @submit.prevent>
+        <el-form-item label="回复">
+          <el-input v-model="query.keyword" clearable style="width: 160px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="时间">
+          <el-date-picker
+            v-model="query.timeRange"
+            type="datetimerange"
+            range-separator="至"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            value-format="x"
+            style="width: 300px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="success" class="search-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
 
-    <el-table v-loading="loading" :data="list" border stripe @selection-change="(rows: ArticlePinglunItem[]) => (selected = rows)">
-      <el-table-column type="selection" width="42" />
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column label="会员" width="150">
-        <template #default="{ row }">
-          <div style="display: flex; align-items: center; gap: 6px">
-            <el-avatar v-if="row.headimg" :src="row.headimg" :size="28" />
-            <span>{{ row.nickname || `会员${row.mid}` }}</span>
-          </div>
-        </template>
-      </el-table-column>
-      <el-table-column prop="content" label="评论内容" min-width="200" show-overflow-tooltip />
-      <el-table-column prop="title" label="所属文章" min-width="140" show-overflow-tooltip />
-      <el-table-column prop="replycount" label="回评数" width="80" />
-      <el-table-column prop="zan" label="点赞" width="70" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-tag v-if="row.status === 1" type="success">已通过</el-tag>
-          <el-tag v-else type="warning">待审核</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column label="时间" width="150">
-        <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
-      </el-table-column>
-      <el-table-column label="操作" width="220" fixed="right">
-        <template #default="{ row }">
-          <el-button v-if="row.status !== 1" link type="success" @click="handleSetst([row], 1)">通过</el-button>
-          <el-button v-else link @click="handleSetst([row], 0)">驳回</el-button>
-          <el-button link type="primary" @click="openReply(row)">回复</el-button>
-          <el-button link type="danger" @click="handleDelete([row])">删除</el-button>
-        </template>
-      </el-table-column>
-      <template #empty>暂无数据</template>
-    </el-table>
+    <el-card shadow="never">
+      <el-table
+        v-loading="loading"
+        :data="list"
+        border
+        :header-cell-style="{ background: '#e6e6e6' }"
+        @selection-change="(rows: ArticlePinglunItem[]) => (selected = rows)"
+      >
+        <el-table-column type="selection" width="45" />
+        <el-table-column prop="id" label="ID" width="70" align="left" header-align="left" />
+        <el-table-column label="用户信息" width="180" align="left" header-align="left">
+          <template #default="{ row }">
+            <div class="user-cell">
+              <el-avatar :size="34" :src="row.headimg">
+                {{ (row.nickname || '周').slice(0, 1) }}
+              </el-avatar>
+              <span class="user-name">{{ row.nickname || (row.mid ? `会员${row.mid}` : '微信用户') }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="title" label="标题" min-width="160" show-overflow-tooltip align="left" header-align="left" />
+        <el-table-column prop="content" label="内容" min-width="160" show-overflow-tooltip align="left" header-align="left" />
+        <el-table-column prop="replycount" label="回复数" width="90" align="left" header-align="left" />
+        <el-table-column label="发布时间" width="160" align="left" header-align="left">
+          <template #default="{ row }">{{ row.createtime ? formatTime(Number(row.createtime)) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90" align="left" header-align="left">
+          <template #default="{ row }">
+            <span v-if="row.status === 1" class="st-pass">已审核</span>
+            <span v-else class="st-reject">已驳回</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="90" align="left" header-align="left">
+          <template #default="{ row }">
+            <el-button link type="danger" @click="handleDelete([row])">删除</el-button>
+          </template>
+        </el-table-column>
+        <template #empty>暂无数据</template>
+      </el-table>
 
-    <el-pagination
-      v-model:current-page="query.page"
-      v-model:page-size="query.pagesize"
-      :total="total"
-      :page-sizes="[10, 20, 50]"
-      layout="total, sizes, prev, pager, next"
-      style="margin-top: 12px; justify-content: flex-end"
-      @change="load"
-    />
-
-    <el-dialog v-model="replyVisible" title="后台回复" width="520px" destroy-on-close>
-      <div class="reply-origin">原评论：{{ replyTarget?.content }}</div>
-      <el-input v-model="replyContent" type="textarea" :rows="4" maxlength="500" show-word-limit placeholder="以平台身份回复，回复后直接显示" />
-      <template #footer>
-        <el-button @click="replyVisible = false">取消</el-button>
-        <el-button type="primary" :loading="replySaving" @click="handleReplySave">回复</el-button>
-      </template>
-    </el-dialog>
+      <el-pagination
+        v-model:current-page="query.page"
+        v-model:page-size="query.pagesize"
+        :total="total"
+        :page-sizes="[10, 20, 50]"
+        layout="total, sizes, prev, pager, next"
+        class="pagination"
+        @change="load"
+      />
+    </el-card>
   </div>
 </template>
 
 <style scoped>
 .article-pinglun {
-  padding: 12px;
+  padding: 3px;
 }
-.toolbar {
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  padding: 4px 2px 8px;
+}
+.toolbar-card {
+  margin-bottom: 3px;
+}
+.toolbar-card :deep(.el-card__body) {
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: nowrap;
+}
+.toolbar-left {
+  display: flex;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+.toolbar-left .el-button {
+  margin: 0;
+}
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  flex: 1 1 auto;
+  justify-content: flex-end;
+  flex-wrap: nowrap;
+  margin: 0;
+}
+.toolbar-search :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
+}
+.toolbar-search :deep(.el-form-item:last-child) {
+  margin-right: 0;
+}
+.search-btn {
+  padding: 8px 14px;
+}
+.search-btn svg {
+  display: block;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+.user-cell {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 12px;
 }
-.toolbar-right {
-  margin-left: auto;
-  display: flex;
-  gap: 8px;
+.user-name {
+  font-size: 13px;
+  color: #303133;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.reply-origin {
-  margin-bottom: 12px;
-  padding: 8px 12px;
-  background: #f5f7fa;
-  border-radius: 4px;
-  color: #606266;
+.st-pass {
+  color: #67c23a;
+}
+.st-reject {
+  color: #f56c6c;
+  text-decoration: line-through;
 }
 </style>

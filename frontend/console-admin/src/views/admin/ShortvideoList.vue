@@ -21,9 +21,10 @@ import {
   type ShortvideoCommentItem,
   type ShortvideoItem,
 } from '../../api/shortvideo'
-import { getGoodsList } from '../../api/goods'
+import { getGoodsList, uploadFile } from '../../api/goods'
 import type { GoodsItem } from '../../api/types'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import LinkPicker from '../../components/LinkPicker.vue'
 import { formatTime } from '../../utils/time'
 
 const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
@@ -47,7 +48,24 @@ const query = reactive({
   cid: 0 as number,
   createtime: '' as string,
 })
+/** 创建时间范围（[开始,结束]），提交时拼成 start,end */
+const dateRange = ref<[string, string] | null>(null)
+/** 列排序："field|dir"，默认 sort desc */
+const orderby = ref('')
 const selected = ref<ShortvideoItem[]>([])
+
+function buildCreatetime(): string {
+  if (!dateRange.value || dateRange.value.length < 2) return ''
+  const [s, e] = dateRange.value
+  if (!s || !e) return s || ''
+  return `${s},${e}`
+}
+
+async function onSortChange({ prop, order }: { prop?: string; order?: 'ascending' | 'descending' | null }) {
+  orderby.value = prop && order ? `${prop}|${order === 'ascending' ? 'asc' : 'desc'}` : ''
+  query.page = 1
+  load()
+}
 
 const filterCategories = ref<Array<{ id: number; name: string }>>([])
 const editCategories = ref<Array<{ id: number; name: string }>>([])
@@ -70,7 +88,8 @@ async function load() {
       status: query.status,
       cid: query.cid || undefined,
       bid: props.bid,
-      createtime: query.createtime || undefined,
+      createtime: buildCreatetime() || undefined,
+      orderby: orderby.value || undefined,
     })
     list.value = res.list || []
     total.value = res.total || 0
@@ -199,6 +218,21 @@ function onVideoLoaded(e: Event) {
   const v = e.target as HTMLVideoElement
   if (v && v.duration && isFinite(v.duration)) {
     form.video_duration = Math.round(v.duration * 100) / 100
+  }
+}
+
+/** 上传视频文件（复用 /admin/upload，返回 mp4 源链接） */
+const uploadingVideo = ref(false)
+async function onVideoUpload(options: { file: File }) {
+  uploadingVideo.value = true
+  try {
+    const res = await uploadFile(options.file)
+    if (res?.url) {
+      form.url = res.url
+      ElMessage.success('视频上传成功')
+    }
+  } finally {
+    uploadingVideo.value = false
   }
 }
 
@@ -422,11 +456,13 @@ onMounted(() => {
           </el-form-item>
           <el-form-item label="创建时间">
             <el-date-picker
-              v-model="query.createtime"
-              type="date"
+              v-model="dateRange"
+              type="daterange"
               value-format="YYYY-MM-DD"
-              placeholder="选择日期"
-              style="width: 130px"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              style="width: 240px"
               @change="handleSearch"
             />
           </el-form-item>
@@ -439,13 +475,13 @@ onMounted(() => {
       </el-card>
 
       <el-card shadow="never">
-        <el-table v-loading="loading" :data="list" border @selection-change="(rows: ShortvideoItem[]) => (selected = rows)">
+        <el-table v-loading="loading" :data="list" border @selection-change="(rows: ShortvideoItem[]) => (selected = rows)" @sort-change="onSortChange">
           <el-table-column type="selection" width="42" align="center" />
-          <el-table-column prop="id" label="ID" width="64" align="center" header-align="center" />
+          <el-table-column prop="id" label="ID" width="64" />
           <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="120" show-overflow-tooltip>
             <template #default="{ row }">{{ row.bname || '-' }}</template>
           </el-table-column>
-          <el-table-column v-else label="发布人" width="110">
+          <el-table-column v-else label="发布人" width="130">
             <template #default="{ row }">
               <div v-if="row.mid > 0" class="publisher">
                 <el-image v-if="row.headimg" :src="row.headimg" class="publisher-img" fit="cover" />
@@ -458,7 +494,7 @@ onMounted(() => {
             <template #default="{ row }">{{ row.cname || '-' }}</template>
           </el-table-column>
           <el-table-column prop="name" label="名称" min-width="150" show-overflow-tooltip />
-          <el-table-column label="封面图" width="72" align="center">
+          <el-table-column label="封面图" width="72">
             <template #default="{ row }">
               <el-image
                 v-if="row.coverimg"
@@ -471,14 +507,14 @@ onMounted(() => {
               <span v-else class="text-muted">-</span>
             </template>
           </el-table-column>
-          <el-table-column label="创建时间" width="150" align="center" header-align="center">
+          <el-table-column prop="createtime" label="创建时间" width="150" sortable="custom">
             <template #default="{ row }">{{ row.createtime ? formatTime(Number(row.createtime)) : '-' }}</template>
           </el-table-column>
-          <el-table-column prop="view_num" label="播放数" width="80" align="center" header-align="center" />
-          <el-table-column prop="zan_num" label="点赞数" width="80" align="center" header-align="center" />
-          <el-table-column prop="comment_num" label="评论数" width="70" align="center" header-align="center" />
-          <el-table-column prop="sort" label="序号" width="64" align="center" header-align="center" />
-          <el-table-column label="状态" width="92" align="center" header-align="center">
+          <el-table-column prop="view_num" label="播放数" width="80" sortable="custom" />
+          <el-table-column prop="zan_num" label="点赞数" width="80" sortable="custom" />
+          <el-table-column prop="comment_num" label="评论数" width="70" />
+          <el-table-column prop="sort" label="序号" width="64" sortable="custom" />
+          <el-table-column label="状态" width="92">
             <template #default="{ row }">
               <el-tooltip v-if="row.status === 2 && row.reason" :content="`驳回原因：${row.reason}`" placement="top">
                 <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
@@ -486,7 +522,7 @@ onMounted(() => {
               <el-tag v-else :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
             </template>
           </el-table-column>
-          <el-table-column label="操作" width="320">
+          <el-table-column label="操作" width="120">
             <template #default="{ row }">
               <div class="row-ops">
                 <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
@@ -518,6 +554,7 @@ onMounted(() => {
     <!-- ============ 整页编辑（平铺主区域，右上角 X 关闭，非弹窗） ============ -->
     <div v-else class="goods-edit">
       <div class="ge-head">
+        <div class="ge-title">＋ {{ form.id ? '编辑短视频' : '添加短视频' }}</div>
         <el-button class="ge-close" circle @click="backToList">
           <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M764.288 214.595 512 466.883 259.712 214.595a32 32 0 0 0-45.248 45.248L466.752 512 214.464 764.288a32 32 0 1 0 45.248 45.248L512 557.117l252.288 252.419a32 32 0 0 0 45.248-45.248L557.248 512l252.288-252.157a32 32 0 0 0-45.248-45.248z" /></svg>
         </el-button>
@@ -546,8 +583,13 @@ onMounted(() => {
           </div>
         </el-form-item>
         <el-form-item label="视频">
-          <el-input v-model="form.url" placeholder="请输入视频地址" style="width: 500px" />
-          <div class="ge-hint-block">视频链接必须为 mp4 格式源链接，视频大小须在 50MB 以内</div>
+          <div class="ge-video-row">
+            <el-input v-model="form.url" placeholder="填写视频链接或上传视频" style="width: 380px" />
+            <el-upload :show-file-list="false" :http-request="onVideoUpload" accept="video/mp4">
+              <el-button :loading="uploadingVideo">上传视频</el-button>
+            </el-upload>
+          </div>
+          <div class="ge-hint-block">填写视频链接或上传视频，视频链接必须为 mp4 格式的源链接，视频大小须在 50MB 以内</div>
           <video v-if="form.url" :src="form.url" controls class="video-preview" @loadedmetadata="onVideoLoaded" />
         </el-form-item>
 
@@ -566,10 +608,11 @@ onMounted(() => {
         </el-form-item>
 
         <el-form-item label="关联链接">
-          <el-input v-model="form.linkurl" placeholder="点击视频跳转的链接（可空）" style="width: 500px" />
-        </el-form-item>
-        <el-form-item label="链接文本">
-          <el-input v-model="form.linkname" placeholder="前往查看" style="width: 240px" />
+          <div class="ge-link-row">
+            <LinkPicker v-model="form.linkurl" pick-text="选择链接" placeholder="点击视频跳转的链接（可空）" @pick="(_url, name) => { if (name && !form.linkname) form.linkname = name }" />
+            <span class="ge-link-label">链接文本：</span>
+            <el-input v-model="form.linkname" placeholder="前往查看" style="width: 160px" />
+          </div>
         </el-form-item>
         <el-form-item label="播放数">
           <el-input-number v-model="form.view_num" :min="0" :controls="false" style="width: 200px" />
@@ -748,12 +791,14 @@ onMounted(() => {
   border-radius: 4px;
   cursor: pointer;
 }
-/* 行操作竖排（对标点大） */
+/* 行操作横排（对标点大） */
 .row-ops {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
   line-height: 1.5;
 }
 .row-ops .el-button {
@@ -772,8 +817,13 @@ onMounted(() => {
 .ge-head {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
+  justify-content: space-between;
   margin-bottom: 12px;
+}
+.ge-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #303133;
 }
 .ge-close {
   border: none;
@@ -803,6 +853,25 @@ onMounted(() => {
   align-items: center;
   gap: 10px;
   margin-bottom: 8px;
+}
+.ge-video-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.ge-link-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+}
+.ge-link-row :deep(.link-picker) {
+  width: 320px;
+}
+.ge-link-label {
+  color: #606266;
+  font-size: 14px;
+  white-space: nowrap;
 }
 .cover-preview {
   width: 140px;
@@ -840,5 +909,12 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   margin-bottom: 12px;
+}
+/* 表头 #e6e6e6 */
+:deep(.el-table__header th) {
+  background: #e6e6e6 !important;
+}
+:deep(.el-table .cell) {
+  text-align: left;
 }
 </style>

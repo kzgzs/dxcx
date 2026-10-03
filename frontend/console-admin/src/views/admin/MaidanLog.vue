@@ -1,88 +1,174 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { ElMessage } from 'element-plus'
-import { mdExport, mdList, mdRefund, type MaidanListQuery, type MaidanOrderRow } from '../../api/maidan'
+function onAvatarError(e: Event) { (e.target as HTMLImageElement).style.visibility = 'hidden' }
+
+import { computed, onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { mdDelete, mdExport, mdList, mdRefund, type MaidanListQuery, type MaidanOrderRow } from '../../api/maidan'
 import { getStoreList } from '../../api/store'
+import { assetUrl } from '../../api/upload'
+import { formatTime } from '../../utils/time'
 
 const loading = ref(false)
 const exporting = ref(false)
-
-const filters = reactive({
-  ordernum: '',
-  nickname: '',
-  mdid: '' as number | '',
-  status: '' as number | '',
-  range: [] as string[],
-})
+const total = ref(0)
+const tableData = ref<MaidanOrderRow[]>([])
+const selectedRows = ref<MaidanOrderRow[]>([])
 
 const stores = ref<{ id: number; name: string }[]>([])
 
-const list = ref<MaidanOrderRow[]>([])
-const total = ref(0)
-const page = ref(1)
-const pagesize = ref(10)
+const query = reactive({
+  page: 1,
+  pagesize: 10,
+  mid: '',
+  nickname: '',
+  ordernum: '',
+  mdid: '' as number | '',
+  timeRange: [] as string[],
+})
 
-// 退款弹窗
+const pageStat = computed(() => {
+  let money = 0
+  let paymoney = 0
+  let refund = 0
+  for (const r of tableData.value) {
+    money += Number(r.money) || 0
+    paymoney += Number(r.paymoney) || 0
+    refund += Number(r.refund_money) || 0
+  }
+  return {
+    money: money.toFixed(2),
+    paymoney: paymoney.toFixed(2),
+    refund: refund.toFixed(2),
+  }
+})
+
+function buildParams(): MaidanListQuery {
+  return {
+    page: query.page,
+    pagesize: query.pagesize,
+    mid: query.mid ? Number(query.mid) : undefined,
+    nickname: query.nickname || undefined,
+    ordernum: query.ordernum || undefined,
+    mdid: query.mdid === '' ? undefined : Number(query.mdid),
+    starttime: query.timeRange?.[0] || undefined,
+    endtime: query.timeRange?.[1] || undefined,
+  }
+}
+
+async function fetchList() {
+  loading.value = true
+  try {
+    const data = await mdList(buildParams())
+    tableData.value = data.list || []
+    total.value = data.total || 0
+  } catch {
+    // 错误提示已由拦截器弹出
+  } finally {
+    loading.value = false
+  }
+}
+
+async function loadStores() {
+  try {
+    const result = await getStoreList({ page: 1, pagesize: 100 })
+    stores.value = (result.list || []).map((s) => ({ id: s.id, name: s.name }))
+  } catch {
+    stores.value = []
+  }
+}
+
+function handleSearch() {
+  query.page = 1
+  fetchList()
+}
+
+function handlePageChange(page: number) {
+  query.page = page
+  fetchList()
+}
+
+function handleSizeChange(size: number) {
+  query.pagesize = size
+  query.page = 1
+  fetchList()
+}
+
+function handleSelectionChange(rows: MaidanOrderRow[]) {
+  selectedRows.value = rows
+}
+
+function downloadBlob(blob: Blob, fileName: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = fileName
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
+async function handleExport() {
+  exporting.value = true
+  try {
+    const blob = await mdExport({ ...buildParams(), page: undefined, pagesize: undefined })
+    downloadBlob(blob, `买单记录_${new Date().toISOString().slice(0, 19).replace(/[-:T]/g, '')}.xlsx`)
+  } catch {
+    // 错误提示已由拦截器弹出
+  } finally {
+    exporting.value = false
+  }
+}
+
+async function handleBatchDelete() {
+  if (selectedRows.value.length === 0) {
+    ElMessage.warning('请先勾选要删除的记录')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(
+      `确认删除选中的 ${selectedRows.value.length} 条买单记录？删除后无法恢复！`,
+      '删除确认',
+      { type: 'warning', confirmButtonText: '确定删除', cancelButtonText: '取消' },
+    )
+  } catch {
+    return
+  }
+  try {
+    await mdDelete(selectedRows.value.map((r) => r.id))
+    ElMessage.success('删除成功')
+    fetchList()
+  } catch {
+    // 错误提示已由拦截器弹出
+  }
+}
+
+async function handleRowDelete(row: MaidanOrderRow) {
+  try {
+    await ElMessageBox.confirm('确定要删除该条买单记录吗？删除后无法恢复！', '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确定删除',
+      cancelButtonText: '取消',
+    })
+  } catch {
+    return
+  }
+  try {
+    await mdDelete([row.id])
+    ElMessage.success('删除成功')
+    fetchList()
+  } catch {
+    // 错误提示已由拦截器弹出
+  }
+}
+
+// ============ 退款 ============
 const refundVisible = ref(false)
 const refundTarget = ref<MaidanOrderRow | null>(null)
 const refundMoney = ref(0)
 const refundReason = ref('')
 const refunding = ref(false)
 
-function buildQuery(): MaidanListQuery {
-  return {
-    page: page.value,
-    pagesize: pagesize.value,
-    ordernum: filters.ordernum.trim(),
-    nickname: filters.nickname.trim(),
-    mdid: filters.mdid === '' ? undefined : Number(filters.mdid),
-    status: filters.status === '' ? undefined : Number(filters.status),
-    starttime: filters.range?.[0] || '',
-    endtime: filters.range?.[1] || '',
-  }
-}
-
-async function loadData() {
-  loading.value = true
-  try {
-    const result = await mdList(buildQuery())
-    list.value = result.list || []
-    total.value = result.total || 0
-  } catch {
-    // 错误提示由 axios 拦截器统一处理
-  } finally {
-    loading.value = false
-  }
-}
-
-function handleSearch() {
-  page.value = 1
-  loadData()
-}
-
-function handleReset() {
-  filters.ordernum = ''
-  filters.nickname = ''
-  filters.mdid = ''
-  filters.status = ''
-  filters.range = []
-  handleSearch()
-}
-
-function formatTime(ts: number) {
-  if (!ts) return '—'
-  const d = new Date(ts * 1000)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-}
-
-function statusText(row: MaidanOrderRow) {
-  if (Number(row.refund_money) >= Number(row.paymoney) && Number(row.paymoney) > 0) return '已全额退款'
-  if (Number(row.refund_money) > 0) return '部分退款'
-  return '已付款'
-}
-
-// ============ 退款 ============
 function openRefund(row: MaidanOrderRow) {
   refundTarget.value = row
   refundMoney.value = Number(row.can_refund_money) || 0
@@ -108,165 +194,156 @@ async function handleRefund() {
     await mdRefund({ id: target.id, money: amount, reason: refundReason.value.trim() })
     ElMessage.success('退款成功，余额已原路退回')
     refundVisible.value = false
-    await loadData()
+    await fetchList()
   } catch {
-    // 错误提示由 axios 拦截器统一处理
+    // 错误提示已由拦截器弹出
   } finally {
     refunding.value = false
   }
 }
 
-// ============ 导出 ============
-async function handleExport() {
-  exporting.value = true
-  try {
-    const blob = await mdExport({ ...buildQuery(), page: undefined, pagesize: undefined })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `买单记录_${new Date().toISOString().slice(0, 10)}.xlsx`
-    a.click()
-    URL.revokeObjectURL(url)
-  } catch {
-    ElMessage.error('导出失败')
-  } finally {
-    exporting.value = false
-  }
-}
-
-async function loadStores() {
-  try {
-    const result = await getStoreList({ page: 1, pagesize: 100 })
-    stores.value = (result.list || []).map((s) => ({ id: s.id, name: s.name }))
-  } catch {
-    stores.value = []
-  }
-}
-
 onMounted(() => {
-  loadData()
+  fetchList()
   loadStores()
 })
 </script>
 
 <template>
-  <div class="maidan-log-page">
-    <div class="page-card">
-      <div class="card-title">买单记录</div>
+  <div>
+    <el-card shadow="never" class="toolbar-card">
+      <el-form inline @submit.prevent>
+        <el-form-item>
+          <el-button :disabled="selectedRows.length === 0" @click="handleBatchDelete">删除</el-button>
+          <el-button :loading="exporting" @click="handleExport">导出EXCEL</el-button>
+        </el-form-item>
+        <el-form-item label="会员ID">
+          <el-input v-model="query.mid" placeholder="ID" clearable style="width: 80px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="昵称">
+          <el-input v-model="query.nickname" placeholder="昵称" clearable style="width: 105px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="订单号">
+          <el-input v-model="query.ordernum" placeholder="订单号" clearable style="width: 145px" @keyup.enter="handleSearch" />
+        </el-form-item>
+        <el-form-item label="所属门店">
+          <el-select v-model="query.mdid" placeholder="全部" clearable style="width: 130px">
+            <el-option label="全部" :value="''" />
+            <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="付款时间">
+          <el-date-picker
+            v-model="query.timeRange"
+            type="datetimerange"
+            range-separator="~"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            style="width: 260px"
+          />
+        </el-form-item>
+        <el-form-item>
+          <el-button type="success" class="search-icon-btn" @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z"/></svg>
+          </el-button>
+        </el-form-item>
+      </el-form>
+    </el-card>
 
-      <!-- 筛选区 -->
-      <div class="filter-bar">
-        <el-input
-          v-model="filters.ordernum"
-          placeholder="订单号"
-          clearable
-          style="width: 190px"
-          @keyup.enter="handleSearch"
-        />
-        <el-input
-          v-model="filters.nickname"
-          placeholder="会员昵称"
-          clearable
-          style="width: 150px"
-          @keyup.enter="handleSearch"
-        />
-        <el-select v-model="filters.mdid" placeholder="门店" clearable style="width: 150px">
-          <el-option v-for="s in stores" :key="s.id" :label="s.name" :value="s.id" />
-        </el-select>
-        <el-select v-model="filters.status" placeholder="状态" clearable style="width: 130px">
-          <el-option label="已付款" :value="1" />
-          <el-option label="已退款" :value="2" />
-        </el-select>
-        <el-date-picker
-          v-model="filters.range"
-          type="datetimerange"
-          value-format="YYYY-MM-DD HH:mm:ss"
-          start-placeholder="开始时间"
-          end-placeholder="结束时间"
-          style="width: 340px"
-        />
-        <el-button type="primary" @click="handleSearch">查询</el-button>
-        <el-button @click="handleReset">重置</el-button>
-        <el-button :loading="exporting" @click="handleExport">导出</el-button>
+    <el-card shadow="never" class="table-card">
+      <div class="stat-inline">
+        <span class="stat-inline-item">本页消费：<b>￥{{ pageStat.money }}</b></span>
+        <span class="stat-inline-item">本页实付：<b>￥{{ pageStat.paymoney }}</b></span>
+        <span class="stat-inline-item">本页退款：<b>￥{{ pageStat.refund }}</b></span>
       </div>
-
-      <!-- 列表 -->
-      <el-table :data="list" v-loading="loading" border stripe style="width: 100%; margin-top: 12px">
-        <el-table-column prop="ordernum" label="单号" min-width="160" show-overflow-tooltip />
-        <el-table-column label="会员" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.nickname || '—' }}</template>
+      <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="ID" width="80" />
+        <el-table-column prop="ordernum" label="订单号" min-width="160" show-overflow-tooltip />
+        <el-table-column label="所属门店" min-width="110" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.mdname || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="money" label="消费金额" width="100" align="right">
-          <template #default="{ row }">¥{{ Number(row.money).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column label="优惠" width="150" align="right">
+        <el-table-column prop="mid" label="会员ID" width="80" />
+        <el-table-column label="会员信息" min-width="150">
           <template #default="{ row }">
-            <span v-if="Number(row.disprice) > 0">折{{ Number(row.disprice).toFixed(2) }} </span>
-            <span v-if="Number(row.couponmoney) > 0">券{{ Number(row.couponmoney).toFixed(2) }} </span>
-            <span v-if="Number(row.scoredk) > 0">分{{ Number(row.scoredk).toFixed(2) }}</span>
-            <span v-if="Number(row.disprice) <= 0 && Number(row.couponmoney) <= 0 && Number(row.scoredk) <= 0">—</span>
+            <div class="member-cell">
+              <img v-if="row.headimg" :src="assetUrl(row.headimg)" class="member-avatar" @error="onAvatarError" />
+              <span>{{ row.nickname || ('会员' + row.mid) }}</span>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="paymoney" label="实付" width="90" align="right">
-          <template #default="{ row }">¥{{ Number(row.paymoney).toFixed(2) }}</template>
+        <el-table-column label="付款金额" width="100">
+          <template #default="{ row }">￥{{ Number(row.money).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column label="已退" width="90" align="right">
+        <el-table-column label="实付金额" min-width="130">
           <template #default="{ row }">
-            <span :class="{ 'refund-text': Number(row.refund_money) > 0 }">
-              ¥{{ Number(row.refund_money).toFixed(2) }}
-            </span>
+            <div class="paymoney-cell">
+              <span class="paymoney-text">￥{{ Number(row.paymoney).toFixed(2) }}</span>
+              <template v-if="Number(row.refund_money) > 0">
+                <span class="refund-text">退款:￥{{ Number(row.refund_money).toFixed(2) }}</span>
+                <span v-if="row.refund_reason" class="refund-text">原因:{{ row.refund_reason }}</span>
+              </template>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column prop="paytype" label="支付方式" width="100" />
-        <el-table-column prop="mdname" label="门店" min-width="110" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.mdname || '—' }}</template>
+        <el-table-column label="会员折扣" width="90">
+          <template #default="{ row }">￥{{ Number(row.disprice).toFixed(2) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="100">
+        <el-table-column label="积分抵扣" width="90">
+          <template #default="{ row }">￥{{ Number(row.scoredk).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="优惠券抵扣" width="90">
+          <template #default="{ row }">￥{{ Number(row.couponmoney).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column label="付款时间" width="150">
           <template #default="{ row }">
-            <el-tag size="small" :type="statusText(row) === '已付款' ? 'success' : 'warning'">
-              {{ statusText(row) }}
-            </el-tag>
+            <el-tooltip v-if="row.paytime" :content="formatTime(row.paytime)" placement="top">
+              <span>{{ formatTime(row.paytime) }}</span>
+            </el-tooltip>
+            <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="收款时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
+        <el-table-column prop="paytype" label="付款方式" width="100" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.paytype || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="un" label="操作员" width="100" show-overflow-tooltip />
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.remark || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="操作员" width="120" show-overflow-tooltip>
           <template #default="{ row }">
-            <el-button
-              v-if="Number(row.can_refund_money) > 0"
-              link
-              type="danger"
-              @click="openRefund(row)"
-            >
-              退款
-            </el-button>
-            <span v-else class="no-op">—</span>
+            <span v-if="row.un">{{ row.un }}(操作员ID:{{ row.uid }})</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100">
+          <template #default="{ row }">
+            <div class="row-ops">
+              <el-button v-if="Number(row.can_refund_money) > 0" link type="warning" @click="openRefund(row)">退款</el-button>
+              <el-button link type="danger" @click="handleRowDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
-
-      <div class="pager">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pagesize"
-          :total="total"
-          :page-sizes="[10, 20, 50, 100]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @size-change="handleSearch"
-          @current-change="loadData"
-        />
-      </div>
-    </div>
+      <el-pagination
+        class="pagination"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        :current-page="query.page"
+        :page-size="query.pagesize"
+        :page-sizes="[10, 20, 50, 100]"
+        @current-change="handlePageChange"
+        @size-change="handleSizeChange"
+      />
+    </el-card>
 
     <!-- 退款弹窗 -->
-    <el-dialog v-model="refundVisible" title="买单退款" width="440px" :close-on-click-modal="false">
+    <el-dialog v-model="refundVisible" title="退款" width="480px" :close-on-click-modal="false">
       <template v-if="refundTarget">
         <el-descriptions :column="1" size="small" border style="margin-bottom: 14px">
-          <el-descriptions-item label="单号">{{ refundTarget.ordernum }}</el-descriptions-item>
-          <el-descriptions-item label="实付金额">¥{{ Number(refundTarget.paymoney).toFixed(2) }}</el-descriptions-item>
-          <el-descriptions-item label="可退金额">¥{{ Number(refundTarget.can_refund_money).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="订单号">{{ refundTarget.ordernum }}</el-descriptions-item>
+          <el-descriptions-item label="实付金额">￥{{ Number(refundTarget.paymoney).toFixed(2) }}</el-descriptions-item>
+          <el-descriptions-item label="可退金额">￥{{ Number(refundTarget.can_refund_money).toFixed(2) }}</el-descriptions-item>
         </el-descriptions>
         <el-form label-width="90px">
           <el-form-item label="退款金额">
@@ -276,67 +353,118 @@ onMounted(() => {
               :max="Number(refundTarget.can_refund_money)"
               :precision="2"
               :step="1"
-              style="width: 180px"
+              style="width: 200px"
             />
+            <span style="margin-left: 8px; color: #909399; font-size: 12px">元</span>
           </el-form-item>
           <el-form-item label="退款原因">
             <el-input
               v-model="refundReason"
               type="textarea"
-              :rows="2"
+              :rows="3"
               maxlength="200"
-              show-word-limit
-              placeholder="选填"
+              placeholder="请输入退款原因"
             />
           </el-form-item>
         </el-form>
-        <div class="refund-note">退款金额原路退回会员余额；全额退款时自动返还抵扣积分并释放使用的优惠券。</div>
       </template>
       <template #footer>
         <el-button @click="refundVisible = false">取消</el-button>
-        <el-button type="danger" :loading="refunding" @click="handleRefund">确认退款</el-button>
+        <el-button type="primary" :loading="refunding" @click="handleRefund">确定</el-button>
       </template>
     </el-dialog>
   </div>
 </template>
 
 <style scoped>
-.maidan-log-page {
-  padding: 12px;
+.toolbar-card {
+  margin-bottom: 8px;
 }
-.page-card {
-  background: #fff;
-  border-radius: 4px;
-  padding: 16px 20px;
+.toolbar-card :deep(.el-card__body) {
+  padding: 8px 12px;
 }
-.card-title {
-  font-size: 15px;
-  font-weight: 600;
-  color: #303133;
-  padding-bottom: 12px;
-  margin-bottom: 16px;
-  border-bottom: 1px solid #ebeef5;
+.toolbar-card :deep(.el-form-item) {
+  margin-bottom: 0;
+  margin-right: 8px;
 }
-.filter-bar {
+.toolbar-card :deep(.el-form-item__label) {
+  padding-right: 6px;
+}
+.search-icon-btn {
+  padding: 8px 14px;
+}
+.search-icon-btn svg {
+  display: block;
+}
+.table-card :deep(.el-card__body) {
+  padding: 5px;
+}
+.table-card :deep(.el-table__header-wrapper th.el-table__cell) {
+  background: #e6e6e6;
+}
+.table-card :deep(.el-table .cell) {
+  text-align: left;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+.table-card :deep(.el-table td.el-table__cell) {
+  padding: 3px 0;
+}
+.stat-inline {
   display: flex;
+  justify-content: flex-end;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px 18px;
+  padding: 2px 6px 6px;
+  font-size: 13px;
+  color: #606266;
+}
+.stat-inline b {
+  color: #303133;
+  font-weight: 700;
+}
+.member-cell {
+  display: flex;
   align-items: center;
+  gap: 6px;
+}
+.member-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid #ebeef5;
+  flex-shrink: 0;
+}
+.paymoney-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.paymoney-text {
+  color: #f55555;
+  font-weight: 600;
 }
 .refund-text {
   color: #f56c6c;
-}
-.no-op {
-  color: #c0c4cc;
-}
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-.refund-note {
   font-size: 12px;
-  color: #909399;
-  line-height: 1.7;
+}
+.row-ops {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  white-space: nowrap;
+  align-items: center;
+}
+.row-ops :deep(.el-button) {
+  height: auto;
+  padding: 0;
+  margin: 0;
+  font-size: 12px;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
 }
 </style>

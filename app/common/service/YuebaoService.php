@@ -817,6 +817,81 @@ class YuebaoService
             }
         }
 
-        return $client;
+
+    /* ================= 后台：批量删除 / 导出（任务对齐） ================= */
+
+    }
+
+    /**
+     * 余额宝明细批量删除（aid 租户隔离逐条校验）
+     *
+     * @param array<int, int|string> $ids
+     */
+    public function deleteMoneylog(int $aid, array $ids): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+        $n = 0;
+        foreach ($ids as $id) {
+            $exist = Db::name('member_yuebao_moneylog')->where('id', $id)->where('aid', $aid)->find();
+            if (!empty($exist)) {
+                Db::name('member_yuebao_moneylog')->where('id', $id)->where('aid', $aid)->delete();
+                ++$n;
+            }
+        }
+        return $n;
+    }
+
+    /**
+     * 余额宝提现批量删除（aid 租户隔离逐条校验）
+     *
+     * @param array<int, int|string> $ids
+     */
+    public function deleteWithdraw(int $aid, array $ids): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+        $n = 0;
+        foreach ($ids as $id) {
+            $exist = Db::name('member_yuebao_withdrawlog')->where('id', $id)->where('aid', $aid)->find();
+            if (!empty($exist)) {
+                Db::name('member_yuebao_withdrawlog')->where('id', $id)->where('aid', $aid)->delete();
+                ++$n;
+            }
+        }
+        return $n;
+    }
+
+    /** 余额宝明细导出 */
+    public function moneylogExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->adminMoneylogList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '变更金额', '变更后金额', '类型', '变更时间', '备注'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['money'], $v['after'], $v['type_text'], date('Y-m-d H:i:s', $v['createtime']), $v['remark']];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 余额宝提现导出 */
+    public function withdrawExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->adminWithdrawList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '手机号', '提现金额', '打款金额', '提现方式', '收款账号', '提现时间', '状态'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['tel'], $v['money'], $v['txmoney'], $v['paytype'], $v['aliaccountname'] ?: $v['bankname'], date('Y-m-d H:i:s', $v['createtime']), $v['status_text']];
+        }
+        return [$titles, $rows];
     }
 }
+

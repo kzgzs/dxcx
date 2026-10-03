@@ -41,6 +41,16 @@ export function deleteCouponManage(id: number) {
   return request.post<unknown, null>('/admin/couponManage/delete', { id })
 }
 
+// 批量删除（兼容 ids[]）
+export function deleteCouponManageBatch(ids: number[]) {
+  return request.post<unknown, null>('/admin/couponManage/delete', { ids })
+}
+
+// 导出真实 xlsx
+export function exportCouponManage(params: { type?: number | string; status?: number | string; keyword?: string }) {
+  return request.get<unknown, Blob>('/admin/couponManage/export', { params, responseType: 'blob', timeout: 180000 })
+}
+
 // 启用/停用
 export function setCouponManageStatus(id: number, status: number) {
   return request.post<unknown, null>('/admin/couponManage/status', { id, status })
@@ -59,6 +69,11 @@ export function getCouponManageRecords(params: CouponManageRecordQuery) {
 // 批量发放（事务 + 行锁防超发）
 export function sendCoupon(data: CouponSendParams) {
   return request.post<unknown, CouponSendResult>('/admin/couponManage/send', data)
+}
+
+// 删除领取记录
+export function deleteCouponManageRecords(ids: number[]) {
+  return request.post<unknown, null>('/admin/couponManage/recordDelete', { ids })
 }
 
 // 记录手工核销/反核销（计次券禁止）
@@ -93,6 +108,11 @@ export function getSignRecords(params: SignRecordQuery) {
 
 export function deleteSignRecords(ids: number[]) {
   return request.post<unknown, null>('/admin/sign/recordDelete', { ids })
+}
+
+// 导出签到记录 CSV
+export function exportSignRecords(params: SignRecordQuery) {
+  return request.get<unknown, Blob>('/admin/sign/recordExport', { params, responseType: 'blob', timeout: 180000 })
 }
 
 // ============ 赠送奖励设置 ============

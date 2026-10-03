@@ -25,10 +25,13 @@ use think\facade\Db;
  */
 class CuxiaoService
 {
-    public const TYPE_SHOW    = 0; // 仅显示
-    public const TYPE_MANJIAN = 1; // 满减
-    public const TYPE_MANZENG = 2; // 满赠
-    public const TYPE_HUANGOU = 3; // 换购
+    public const TYPE_SHOW                = 0; // 无（仅显示活动名称到商品详情）
+    public const TYPE_MANJIAN             = 1; // 满额立减
+    public const TYPE_MANZENG             = 2; // 满额赠送
+    public const TYPE_HUANGOU             = 3; // 加价换购
+    public const TYPE_MANJIAN_ZHEKOU      = 4; // 满额打折
+    public const TYPE_MANJIAN_DISCOUNT    = 5; // 满件打折
+    public const TYPE_MANJIAN_LIJIAN      = 6; // 满件立减
 
     /* ================= admin 租户后台侧 ================= */
 
@@ -359,7 +362,17 @@ class CuxiaoService
 
         $type = (int) ($data['type'] ?? 1);
 
-        if (!in_array($type, [self::TYPE_SHOW, self::TYPE_MANJIAN, self::TYPE_MANZENG, self::TYPE_HUANGOU], true)) {
+        $allowedTypes = [
+            self::TYPE_SHOW,
+            self::TYPE_MANJIAN,
+            self::TYPE_MANZENG,
+            self::TYPE_HUANGOU,
+            self::TYPE_MANJIAN_ZHEKOU,
+            self::TYPE_MANJIAN_DISCOUNT,
+            self::TYPE_MANJIAN_LIJIAN,
+        ];
+
+        if (!in_array($type, $allowedTypes, true)) {
             throw new BusinessException('活动类型无效');
         }
 
@@ -399,8 +412,13 @@ class CuxiaoService
         $minprice = round((float) ($data['minprice'] ?? 0), 2);
         $minnum   = max(0, (int) ($data['minnum'] ?? 1));
         $money    = round((float) ($data['money'] ?? 0), 2);
+        $zhekou   = round((float) ($data['zhekou'] ?? 0), 2);
         $proid    = (int) ($data['proid'] ?? 0);
         $ggid     = (int) ($data['ggid'] ?? 0);
+
+        // 指定商品单独折扣/单独件数（逗号字符串，与 productids 顺序对齐）
+        $prozk  = trim((string) ($data['prozk'] ?? ''));
+        $pronum = trim((string) ($data['pronum'] ?? ''));
 
         if (self::TYPE_MANJIAN === $type) {
             if ($minprice <= 0) {
@@ -432,10 +450,43 @@ class CuxiaoService
             if ($money < 0) {
                 throw new BusinessException('换购加价金额不能为负数');
             }
-        } else {
-            // 仅显示：无算价参数
+        } elseif (self::TYPE_MANJIAN_ZHEKOU === $type) {
+            if ($minprice <= 0) {
+                throw new BusinessException('满额打折活动必须填写满额门槛');
+            }
+            if ($zhekou <= 0 || $zhekou > 9.99) {
+                throw new BusinessException('折扣须为0.01~9.99的数字');
+            }
+            $money = 0.0;
+            $proid = 0;
+            $ggid  = 0;
+        } elseif (self::TYPE_MANJIAN_DISCOUNT === $type) {
+            if ($minnum <= 0) {
+                throw new BusinessException('满件打折活动必须填写最低购买件数');
+            }
+            if ($zhekou <= 0 || $zhekou > 9.99) {
+                throw new BusinessException('折扣须为0.01~9.99的数字');
+            }
             $minprice = 0.0;
             $money    = 0.0;
+            $proid    = 0;
+            $ggid     = 0;
+        } elseif (self::TYPE_MANJIAN_LIJIAN === $type) {
+            if ($minnum <= 0) {
+                throw new BusinessException('满件立减活动必须填写最低购买件数');
+            }
+            if ($money <= 0) {
+                throw new BusinessException('满件立减活动必须填写立减金额');
+            }
+            $minprice = 0.0;
+            $proid    = 0;
+            $ggid     = 0;
+        } else {
+            // 无：仅显示活动名称，无算价参数
+            $minprice = 0.0;
+            $minnum   = 0;
+            $money    = 0.0;
+            $zhekou   = 0.0;
             $proid    = 0;
             $ggid     = 0;
         }
@@ -451,8 +502,11 @@ class CuxiaoService
             'minprice'    => $minprice,
             'minnum'      => $minnum,
             'money'       => $money,
+            'zhekou'      => $zhekou,
             'proid'       => $proid,
             'ggid'        => $ggid,
+            'prozk'       => $prozk,
+            'pronum'      => $pronum,
             'starttime'   => date('Y-m-d H:i:s', $startTs),
             'endtime'     => date('Y-m-d H:i:s', $endTs),
             'sort'        => (int) ($data['sort'] ?? 0),
@@ -506,9 +560,12 @@ class CuxiaoService
             'minprice'    => (float) ($row['minprice'] ?? 0),
             'minnum'      => (int) ($row['minnum'] ?? 1),
             'money'       => (float) ($row['money'] ?? 0),
+            'zhekou'      => (float) ($row['zhekou'] ?? 0),
             'proid'       => $proid,
             'ggid'        => (int) ($row['ggid'] ?? 0),
             'proname'     => $proName,
+            'prozk'       => (string) ($row['prozk'] ?? ''),
+            'pronum'      => (string) ($row['pronum'] ?? ''),
             'starttime'   => (string) ($row['starttime'] ?? ''),
             'endtime'     => (string) ($row['endtime'] ?? ''),
             'sort'        => (int) ($row['sort'] ?? 0),

@@ -79,6 +79,7 @@ class TuangouService
             'comment'       => (int) ($info['comment'] ?? 1),
             'comment_check' => (int) ($info['comment_check'] ?? 1),
             'showjd'        => (int) ($info['showjd'] ?? 1),
+            'vipdiscount'   => (int) ($info['vipdiscount'] ?? 1),
         ];
     }
 
@@ -101,7 +102,7 @@ class TuangouService
             $update['autoshdays'] = max(1, (int) $data['autoshdays']);
         }
 
-        foreach (['comment', 'comment_check', 'showjd'] as $key) {
+        foreach (['comment', 'comment_check', 'showjd', 'vipdiscount'] as $key) {
             if (isset($data[$key])) {
                 $update[$key] = (int) $data[$key] === 1 ? 1 : 0;
             }
@@ -349,9 +350,48 @@ class TuangouService
 
         $freighttype = (int) ($data['freighttype'] ?? 1);
 
-        if (!in_array($freighttype, [0, 1, 2, 3, 4], true)) {
+        if (!in_array($freighttype, [0, 1, 3, 4], true)) {
             throw new BusinessException('非法的配送方式');
         }
+
+        // 显示/购买条件：前端传数组，-1=所有人
+        $showtjIn = $data['showtj'] ?? '';
+        $gettjIn  = $data['gettj'] ?? '';
+        if (is_array($showtjIn)) {
+            $showtj = in_array('-1', $showtjIn, true) ? '-1' : implode(',', array_values(array_filter($showtjIn, fn($v) => '' !== (string) $v)));
+        } else {
+            $showtj = trim((string) $showtjIn);
+        }
+        if (is_array($gettjIn)) {
+            $gettj = in_array('-1', $gettjIn, true) ? '-1' : implode(',', array_values(array_filter($gettjIn, fn($v) => '' !== (string) $v)));
+        } else {
+            $gettj = trim((string) $gettjIn);
+        }
+
+        // 积分抵扣模式：0跟随系统 1单独比例 2单独金额 -1不可用
+        $scoredkmaxset = (int) ($data['scoredkmaxset'] ?? 0);
+        if (!in_array($scoredkmaxset, [-1, 0, 1, 2], true)) { $scoredkmaxset = 0; }
+
+        // 分销设置：0按会员等级 1单独比例 2单独金额 3送积分 -1不参与
+        $commissionset = (int) ($data['commissionset'] ?? 0);
+        if (!in_array($commissionset, [-1, 0, 1, 2, 3], true)) { $commissionset = 0; }
+
+        $jsonEncodeArr = static function ($v): string {
+            if (is_array($v)) {
+                $clean = [];
+                foreach ($v as $k => $row) {
+                    if (is_array($row)) {
+                        $row = array_filter($row, static fn($x) => '' !== (string) $x);
+                        if (!empty($row)) { $clean[(string) $k] = $row; }
+                    }
+                }
+                return json_encode($clean, JSON_UNESCAPED_UNICODE);
+            }
+            return is_string($v) && '' !== $v ? $v : '{}';
+        };
+
+        $vipdiscount = (int) ($data['vipdiscount'] ?? 0);
+        if (!in_array($vipdiscount, [0, 1, 2], true)) { $vipdiscount = 0; }
 
         $update = [
             'name'          => $name,
@@ -373,14 +413,24 @@ class TuangouService
             'pricedata'     => json_encode($pricedata, JSON_UNESCAPED_UNICODE),
             'starttime'     => $starttime,
             'endtime'       => $endtime,
-            'showtj'        => trim((string) ($data['showtj'] ?? '')),
-            'gettj'         => trim((string) ($data['gettj'] ?? '')),
+            'showtj'        => $showtj,
+            'gettj'         => $gettj,
             'freighttype'   => $freighttype,
             'freightdata'   => trim((string) ($data['freightdata'] ?? '')),
-            'scoredkmaxset' => (int) ($data['scoredkmaxset'] ?? 0) === 1 ? 1 : 0,
+            'freightcontent' => trim((string) ($data['freightcontent'] ?? '')),
+            'scoredkmaxset' => $scoredkmaxset,
             'scoredkmaxval' => max(0, (float) ($data['scoredkmaxval'] ?? 0)),
             'contact_require' => (int) ($data['contact_require'] ?? 0) === 1 ? 1 : 0,
+            'commissionset' => $commissionset,
+            'commissiondata1' => $jsonEncodeArr($data['commissiondata1'] ?? []),
+            'commissiondata2' => $jsonEncodeArr($data['commissiondata2'] ?? []),
+            'commissiondata3' => $jsonEncodeArr($data['commissiondata3'] ?? []),
+            'vipdiscount'   => $vipdiscount,
         ];
+
+        if (isset($data['sales'])) {
+            $update['sales'] = max(0, (int) $data['sales']);
+        }
 
         $id = (int) ($data['id'] ?? 0);
 
@@ -545,13 +595,25 @@ class TuangouService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function orderList(int $aid, string $status, string $keyword, int $page, int $pageSize, string $bid = ''): array
+    public function orderList(int $aid, string $status, string $keyword, int $page, int $pageSize, string $bid = '', array $filters = []): array
     {
         $query = ScopeService::query('tuangou_order', $aid);
 
         ScopeService::applyBid($query, $bid, 'bid');
 
         $this->applyOrderStatusFilter($query, $status);
+
+        // 分项筛选：订单号 / 收货人 / 手机号 / 下单时间范围（截图要求独立搜索项）
+        $ordernum = trim((string) ($filters['ordernum'] ?? ''));
+        if ('' !== $ordernum) { $query->whereLike('ordernum', '%' . $ordernum . '%'); }
+        $linkman = trim((string) ($filters['linkman'] ?? ''));
+        if ('' !== $linkman) { $query->whereLike('linkman', '%' . $linkman . '%'); }
+        $tel = trim((string) ($filters['tel'] ?? ''));
+        if ('' !== $tel) { $query->whereLike('tel', '%' . $tel . '%'); }
+        $starttime = trim((string) ($filters['starttime'] ?? ''));
+        if ('' !== $starttime) { $query->where('createtime', '>=', strtotime($starttime)); }
+        $endtime = trim((string) ($filters['endtime'] ?? ''));
+        if ('' !== $endtime) { $query->where('createtime', '<', strtotime($endtime) + 86400); }
 
         if ('' !== trim($keyword)) {
             $like = '%' . trim($keyword) . '%';
@@ -565,7 +627,12 @@ class TuangouService
 
         $total = (clone $query)->count();
 
-        $rows = $query->order('id', 'desc')
+        // 排序：id / ordernum / createtime，白名单
+        $sortField = (string) ($filters['sortfield'] ?? 'id');
+        $sortOrder = (('asc' === strtolower((string) ($filters['sortorder'] ?? 'desc'))) ? 'asc' : 'desc');
+        if (!in_array($sortField, ['id', 'ordernum', 'createtime'], true)) { $sortField = 'id'; }
+
+        $rows = $query->order($sortField, $sortOrder)
             ->page($page, $pageSize)
             ->select()
             ->toArray();
@@ -773,6 +840,148 @@ class TuangouService
     }
 
     /**
+     * 快递公司下拉（手动发货/批量发货用，取快递鸟字典）
+     *
+     * @return array<int, array{code:string, name:string}>
+     */
+    public function expressOptions(): array
+    {
+        $list = [];
+        foreach (\app\common\Kdniao::expressData() as $code => $info) {
+            $list[] = ['code' => (string) $code, 'name' => (string) ($info['name'] ?? $code)];
+        }
+        return $list;
+    }
+
+    /**
+     * 物流轨迹查询（真实对接快递鸟，MOCK 时返回演示轨迹）
+     *
+     * @return array{express_com:string, express_no:string, traces:array}
+     */
+    public function orderTrace(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+        $expressNo  = trim((string) ($order['express_no'] ?? ''));
+        $expressCom = trim((string) ($order['express_com'] ?? ''));
+        if ('' === $expressNo) {
+            throw new BusinessException('该订单尚未发货，暂无物流轨迹');
+        }
+        $shipperCode = '';
+        foreach (\app\common\Kdniao::expressData() as $code => $info) {
+            if ('' !== $expressCom && (string) ($info['name'] ?? '') === $expressCom) {
+                $shipperCode = (string) $code;
+                break;
+            }
+        }
+        if ('' === $shipperCode) { $shipperCode = $expressCom; }
+
+        $kdniao = new \app\common\Kdniao($aid, 0);
+        $res    = $kdniao->trace($shipperCode, $expressNo, (string) ($order['ordernum'] ?? ''));
+
+        $traces = [];
+        if (1 === (int) ($res['status'] ?? 0)) {
+            foreach ((array) ($res['data']['Traces'] ?? []) as $t) {
+                $traces[] = [
+                    'time'    => (string) ($t['AcceptTime'] ?? ''),
+                    'station' => (string) ($t['AcceptStation'] ?? ''),
+                ];
+            }
+        } else {
+            $traces[] = ['time' => date('Y-m-d H:i:s'), 'station' => (string) ($res['message'] ?? '暂无轨迹')];
+        }
+
+        return [
+            'express_com' => $expressCom,
+            'express_no'   => $expressNo,
+            'traces'       => $traces,
+        ];
+    }
+
+    /**
+     * 批量发货（Excel 导入：订单号 + 快递单号；统一快递公司）
+     *
+     * @param array<string, string> $rows  ordernum => express_no
+     * @return array{success:int, fail:int, fail_list:array}
+     */
+    public function orderBatchSend(int $aid, string $expressCom, array $rows): array
+    {
+        $success = 0;
+        $failList = [];
+        foreach ($rows as $ordernum => $expressNo) {
+            $ordernum   = trim((string) $ordernum);
+            $expressNo  = trim((string) $expressNo);
+            if ('' === $ordernum || '' === $expressNo) { continue; }
+            $order = ScopeService::query('tuangou_order', $aid)->where('ordernum', $ordernum)->find();
+            if (empty($order)) { $failList[] = $ordernum . '：订单不存在'; continue; }
+            if ((int) $order['status'] !== self::ORDER_PAID) {
+                $failList[] = $ordernum . '：仅已支付订单可发货';
+                continue;
+            }
+            if (in_array((int) $order['freight_type'], [1, 3, 4], true)) {
+                $failList[] = $ordernum . '：自提/虚拟商品无需快递发货';
+                continue;
+            }
+            ScopeService::query('tuangou_order', $aid)->where('id', (int) $order['id'])->update([
+                'express_com' => $expressCom,
+                'express_no'  => $expressNo,
+                'send_time'   => time(),
+                'status'      => self::ORDER_SHIPPED,
+            ]);
+            $success++;
+        }
+        return ['success' => $success, 'fail' => count($failList), 'fail_list' => $failList];
+    }
+
+    /**
+     * 送货单数据（整页打印用）
+     *
+     * @param array<int,int> $orderIds
+     * @return array<int, array<string,mixed>>
+     */
+    public function orderSonghuo(int $aid, array $orderIds): array
+    {
+        $orderIds = array_values(array_filter(array_map('intval', $orderIds)));
+        if (empty($orderIds)) { throw new BusinessException('请选择订单'); }
+        $rows = ScopeService::query('tuangou_order', $aid)
+            ->whereIn('id', $orderIds)
+            ->select()->toArray();
+        return array_map(static function (array $o): array {
+            return [
+                'ordernum'    => (string) $o['ordernum'],
+                'proname'     => (string) $o['proname'],
+                'num'         => (int) $o['num'],
+                'linkman'     => (string) $o['linkman'],
+                'tel'         => (string) $o['tel'],
+                'address'     => trim((string) $o['area'] . (string) $o['address']),
+                'totalprice'  => (float) $o['totalprice'],
+                'express_com' => (string) ($o['express_com'] ?? ''),
+                'express_no'  => (string) ($o['express_no'] ?? ''),
+                'createtime'  => (int) $o['createtime'],
+            ];
+        }, $rows);
+    }
+
+    /**
+     * 可分销会员等级（商品分销设置展开行用）：can_agent>0
+     *
+     * @return array<int, array{id:int, name:string, can_agent:int}>
+     */
+    public function agentLevels(int $aid): array
+    {
+        $rows = Db::name('member_level')
+            ->where('aid', $aid)
+            ->where('can_agent', '>', 0)
+            ->order('sort', 'asc')->order('id', 'asc')
+            ->field('id, name, can_agent')
+            ->select()->toArray();
+        return array_map(static fn(array $r): array => [
+            'id' => (int) $r['id'],
+            'name' => (string) $r['name'],
+            'can_agent' => (int) $r['can_agent'],
+        ], $rows);
+    }
+
+    /**
      * 到店核销并确认收货（status in 1,2 �?freight_type=1 �?3；写 hexiao_order 记录�?
      */
     public function orderHexiao(int $aid, int $orderId): void
@@ -864,6 +1073,38 @@ class TuangouService
         }, $rows);
     }
 
+
+    /**
+     * 删除订单（单 id 或批量 ids[]；aid 租户隔离）
+     *
+     * @param array<int, int> $ids
+     */
+    public function orderDelete(int $aid, array $ids): void
+    {
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的订单');
+        }
+        ScopeService::query('tuangou_order', $aid)->whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * 改为已支付（仅未支付）
+     */
+    public function orderIspay(int $aid, int $orderId): void
+    {
+        $order = ScopeService::query('tuangou_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        if (0 !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改为已支付');
+        }
+        ScopeService::query('tuangou_order', $aid)->where('id', $orderId)->update([
+            'status'  => 1,
+            'paytime' => time(),
+            'paytype' => '后台支付',
+        ]);
+    }
     /* ================= 团购评价 ================= */
 
     /**
@@ -871,7 +1112,7 @@ class TuangouService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function commentList(int $aid, string $status, int $proid, int $page, int $pageSize): array
+    public function commentList(int $aid, string $status, int $proid, int $page, int $pageSize, array $filters = []): array
     {
         $query = ScopeService::query('tuangou_comment', $aid);
 
@@ -883,9 +1124,18 @@ class TuangouService
             $query->where('proid', $proid);
         }
 
+        $content = trim((string) ($filters['content'] ?? ''));
+        if ('' !== $content) { $query->whereLike('content', '%' . $content . '%'); }
+        $starttime = trim((string) ($filters['starttime'] ?? ''));
+        if ('' !== $starttime) { $query->where('createtime', '>=', strtotime($starttime)); }
+        $endtime = trim((string) ($filters['endtime'] ?? ''));
+        if ('' !== $endtime) { $query->where('createtime', '<', strtotime($endtime) + 86400); }
+
         $total = (clone $query)->count();
 
-        $rows = $query->order('id', 'desc')
+        $sortOrder = ('asc' === strtolower((string) ($filters['sortorder'] ?? 'desc'))) ? 'asc' : 'desc';
+
+        $rows = $query->order('createtime', $sortOrder)
             ->page($page, $pageSize)
             ->select()
             ->toArray();
@@ -2018,11 +2268,20 @@ class TuangouService
         $detail['weight']            = (int) ($row['weight'] ?? 0);
         $detail['showtj']            = (string) ($row['showtj'] ?? '');
         $detail['gettj']             = (string) ($row['gettj'] ?? '');
+        $detail['showtj_arr']        = ('' !== (string) ($row['showtj'] ?? '') && '-1' !== (string) ($row['showtj'] ?? '')) ? explode(',', (string) $row['showtj']) : ['-1'];
+        $detail['gettj_arr']         = ('' !== (string) ($row['gettj'] ?? '') && '-1' !== (string) ($row['gettj'] ?? '')) ? explode(',', (string) $row['gettj']) : ['-1'];
         $detail['freighttype']       = (int) ($row['freighttype'] ?? 1);
         $detail['freightdata']       = (string) ($row['freightdata'] ?? '');
+        $detail['freightcontent']    = (string) ($row['freightcontent'] ?? '');
         $detail['scoredkmaxset']     = (int) ($row['scoredkmaxset'] ?? 0);
         $detail['scoredkmaxval']     = (float) ($row['scoredkmaxval'] ?? 0);
         $detail['contact_require']   = (int) ($row['contact_require'] ?? 0);
+        $detail['commissionset']     = (int) ($row['commissionset'] ?? 0);
+        $detail['commissiondata1']   = json_decode((string) ($row['commissiondata1'] ?? ''), true) ?: new \stdClass();
+        $detail['commissiondata2']   = json_decode((string) ($row['commissiondata2'] ?? ''), true) ?: new \stdClass();
+        $detail['commissiondata3']   = json_decode((string) ($row['commissiondata3'] ?? ''), true) ?: new \stdClass();
+        $detail['vipdiscount']       = (int) ($row['vipdiscount'] ?? 0);
+        $detail['sales']             = (int) ($row['sales'] ?? 0);
         $detail['ischecked']         = (int) ($row['ischecked'] ?? 1);
         $detail['check_reason']      = (string) ($row['check_reason'] ?? '');
         $detail['comment_score']     = (float) ($row['comment_score'] ?? 5);
@@ -2114,6 +2373,9 @@ class TuangouService
             'hexiao_code'       => (string) ($row['hexiao_code'] ?? ''),
             'iscomment'         => (int) ($row['iscomment'] ?? 0),
             'paytype'           => (string) ($row['paytype'] ?? ''),
+            'paytype_text'      => $this->paytypeText((string) ($row['paytype'] ?? ''), (int) ($row['paytypeid'] ?? 0)),
+            'platform'          => (string) ($row['platform'] ?? ''),
+            'platform_text'     => $this->platformName((string) ($row['platform'] ?? '')),
             'paytime'           => (int) ($row['paytime'] ?? 0),
             'send_time'         => (int) ($row['send_time'] ?? 0),
             'collect_time'      => (int) ($row['collect_time'] ?? 0),
@@ -2155,6 +2417,38 @@ class TuangouService
      * @param array<string, mixed> $order
      * @return array{mid: int, nickname: string, headimg: string}
      */
+    /** 来源平台文案（对标 getplatformname） */
+    protected function platformName(string $platform): string
+    {
+        return match ($platform) {
+            'mp'        => '微信公众号',
+            'wx'        => '微信小程序',
+            'alipay'    => '支付宝小程序',
+            'baidu'     => '百度小程序',
+            'toutiao'   => '抖音小程序',
+            'qq'        => 'QQ小程序',
+            'h5'        => '手机H5',
+            'app'       => '手机APP',
+            default     => '' !== $platform ? $platform : '-',
+        };
+    }
+
+    /** 支付方式文案 */
+    protected function paytypeText(string $paytype, int $paytypeid): string
+    {
+        if ('' !== $paytype) {
+            return match ($paytype) {
+                'wechat'  => '微信支付',
+                'alipay'  => '支付宝支付',
+                'balance' => '余额支付',
+                'offline' => '货到付款',
+                'cash'    => '货到付款',
+                default   => $paytype,
+            };
+        }
+        if (1 === $paytypeid) { return '微信支付'; }
+        return '未支付';
+    }
     protected function buyerOf(int $aid, array $order): array
     {
         $member = Db::name('member')

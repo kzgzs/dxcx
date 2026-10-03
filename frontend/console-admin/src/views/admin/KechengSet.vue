@@ -3,17 +3,28 @@ import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { getKechengSysset, saveKechengSysset } from '../../api/kecheng'
 
+// 课程设置（对齐点大 扩展-知识付费-课程设置：详情页推荐/学习人数/iOS购买 + 详情页显示(佣金/升级优惠/文案)）
 const loading = ref(false)
 const submitting = ref(false)
 
-const form = reactive({
-  details_rec: 1,
-  showcommission: 0,
-  show_lvupsavemoney: 0,
+// 升级优惠文字默认文案（与后端 KechengService::DEFAULT_UPGRADE_TEXT 对齐；[等级名称]/[优惠金额] 为C端动态占位符）
+const DEFAULT_UPGRADE_TEXT = '升级到[等级名称]，优惠[优惠金额]元'
+
+// 空串 / 历史 mojibake（含 ? 且无中文字符）时回退默认文案
+function normalizeUpgradeText(v: unknown): string {
+  const s = String(v ?? '').trim()
+  if (!s || (s.includes('?') && !/[\u4e00-\u9fa5]/.test(s))) return DEFAULT_UPGRADE_TEXT
+  return s
+}
+
+const form = reactive<Record<string, number | string>>({
+  details_rec: 0,
   show_join_num: 1,
-  show_buyed_kecheng_price: 1,
-  upgrade_text: '',
   ios_canbuy: 1,
+  showcommission: 1,
+  show_lvupsavemoney: 1,
+  upgrade_text: '',
+  show_buyed_kecheng_price: 1,
   send_score_num: 0,
   give_score_num: 0,
   lecturer_open: 0,
@@ -24,19 +35,19 @@ async function fetchConfig() {
   try {
     const data = await getKechengSysset()
     Object.assign(form, {
-      details_rec: Number(data.details_rec ?? 1),
-      showcommission: Number(data.showcommission ?? 0),
-      show_lvupsavemoney: Number(data.show_lvupsavemoney ?? 0),
+      details_rec: Number(data.details_rec ?? 0),
       show_join_num: Number(data.show_join_num ?? 1),
-      show_buyed_kecheng_price: Number(data.show_buyed_kecheng_price ?? 1),
-      upgrade_text: String(data.upgrade_text ?? ''),
       ios_canbuy: Number(data.ios_canbuy ?? 1),
+      showcommission: Number(data.showcommission ?? 1),
+      show_lvupsavemoney: Number(data.show_lvupsavemoney ?? 1),
+      upgrade_text: normalizeUpgradeText(data.upgrade_text),
+      show_buyed_kecheng_price: Number(data.show_buyed_kecheng_price ?? 1),
       send_score_num: Number(data.send_score_num ?? 0),
       give_score_num: Number(data.give_score_num ?? 0),
       lecturer_open: Number(data.lecturer_open ?? 0),
     })
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     loading.value = false
   }
@@ -48,7 +59,7 @@ async function handleSave() {
     await saveKechengSysset({ ...form })
     ElMessage.success('保存成功')
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     submitting.value = false
   }
@@ -58,68 +69,114 @@ onMounted(fetchConfig)
 </script>
 
 <template>
-  <div v-loading="loading">
-    <el-card shadow="never">
-      <div class="list-title">课程设置</div>
-      <el-form label-width="170px" label-position="left" style="max-width: 640px">
-        <el-form-item label="详情页显示推荐课程">
-          <el-switch v-model="form.details_rec" :active-value="1" :inactive-value="0" />
-        </el-form-item>
-        <el-form-item label="显示分销佣金">
-          <el-switch v-model="form.showcommission" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">开启后课程详情向可分销会员展示预计返佣</span>
-        </el-form-item>
-        <el-form-item label="显示升级省钱金额">
-          <el-switch v-model="form.show_lvupsavemoney" :active-value="1" :inactive-value="0" />
-        </el-form-item>
-        <el-form-item label="显示学习人数">
-          <el-switch v-model="form.show_join_num" :active-value="1" :inactive-value="0" />
-        </el-form-item>
-        <el-form-item label="显示已购课程价格">
-          <el-switch v-model="form.show_buyed_kecheng_price" :active-value="1" :inactive-value="0" />
-        </el-form-item>
-        <el-form-item label="升级提示文案">
-          <el-input
-            v-model="form.upgrade_text"
-            type="textarea"
-            :rows="3"
-            placeholder="引导会员升级的提示文案（可选）"
-          />
-        </el-form-item>
-        <el-form-item label="iOS 允许购买">
-          <el-switch v-model="form.ios_canbuy" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">关闭后 iOS 端不展示支付入口（规避苹果内购审核）</span>
-        </el-form-item>
-        <el-form-item label="答题积分仅首次发放">
-          <el-switch v-model="form.send_score_num" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">开启后同一题目仅首次答对计分，重复答对不再计分</span>
-        </el-form-item>
-        <el-form-item label="答题送积分仅首次">
-          <el-switch v-model="form.give_score_num" :active-value="0" :inactive-value="1" />
-          <span class="form-tip">开启（首次）后同一题目答对送积分仅发放一次，关闭则每次答对都发放</span>
-        </el-form-item>
-        <el-form-item label="讲师体系">
-          <el-switch v-model="form.lecturer_open" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">开启后 C 端可申请讲师、讲师可自建课程，后台可审核</span>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="submitting" @click="handleSave">保存设置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+  <div v-loading="loading" class="kecheng-set">
+    <div class="card">
+      <div class="card-head"><i class="el-icon-setting" /> 课程设置</div>
+
+      <div class="form-item">
+        <span class="fi-label">详情页推荐：</span>
+        <el-radio-group v-model="form.details_rec">
+          <el-radio :value="1">开启</el-radio>
+          <el-radio :value="0">关闭</el-radio>
+        </el-radio-group>
+        <span class="fi-aux">开启详情页显示为您推荐</span>
+      </div>
+
+      <div class="form-item">
+        <span class="fi-label">是否显示学习人数：</span>
+        <el-radio-group v-model="form.show_join_num">
+          <el-radio :value="1">显示</el-radio>
+          <el-radio :value="0">不显示</el-radio>
+        </el-radio-group>
+        <span class="fi-aux">列表页和详情页是否显示学习人数</span>
+      </div>
+
+      <div class="form-item">
+        <span class="fi-label">iOS端购买：</span>
+        <el-radio-group v-model="form.ios_canbuy">
+          <el-radio :value="1">开启</el-radio>
+          <el-radio :value="0">关闭</el-radio>
+        </el-radio-group>
+        <span class="fi-aux">关闭后前端点击购买会提示“iOS端不支持虚拟商品销售”</span>
+      </div>
+
+      <div class="fieldset-title">详情页显示</div>
+
+      <div class="form-item">
+        <span class="fi-label">是否显示佣金：</span>
+        <el-radio-group v-model="form.showcommission">
+          <el-radio :value="1">显示</el-radio>
+          <el-radio :value="0">不显示</el-radio>
+        </el-radio-group>
+        <span class="fi-aux">开启后商品详情页显示分销佣金</span>
+      </div>
+
+      <div class="form-item">
+        <span class="fi-label">是否显示升级优惠：</span>
+        <el-radio-group v-model="form.show_lvupsavemoney">
+          <el-radio :value="1">显示</el-radio>
+          <el-radio :value="0">不显示</el-radio>
+        </el-radio-group>
+        <span class="fi-aux">商品详情页是否显示升级到下一级可节省多少元</span>
+      </div>
+
+      <div class="form-item">
+        <span class="fi-label">升级优惠文字：</span>
+        <el-input v-model="form.upgrade_text" class="w400" placeholder="升级到[等级名称]，优惠[优惠金额]元" />
+        <span class="fi-aux">[等级名称],[优惠金额]可自动替换</span>
+      </div>
+
+      <div class="form-item">
+        <el-button type="primary" :loading="submitting" @click="handleSave">提 交</el-button>
+      </div>
+    </div>
   </div>
 </template>
 
 <style scoped>
-.list-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 20px;
+.kecheng-set {
+  margin: 3px;
 }
 
-.form-tip {
-  margin-left: 12px;
-  color: #909399;
+.card {
+  background: #fff;
+  padding: 20px 24px;
+}
+
+.card-head {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 18px;
+}
+
+.form-item {
+  display: flex;
+  align-items: center;
+  line-height: 36px;
+}
+
+.fi-label {
+  width: 150px;
+  color: #333;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.fi-aux {
+  margin-left: 14px;
+  color: #999;
   font-size: 12px;
+}
+
+.w400 {
+  width: 400px;
+}
+
+.fieldset-title {
+  border-top: 1px solid #e4e7ed;
+  margin: 18px 0 12px;
+  padding-top: 14px;
+  color: #333;
+  font-size: 13px;
 }
 </style>

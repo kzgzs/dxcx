@@ -921,6 +921,7 @@ class MemberAdminService
             'can_up', 'can_apply', 'apply_check', 'score1', 'score2', 'score3', 'scoremax',
             'up_fxdowncount', 'up_fxdowncount2', 'up_fxdowncount3',
             'fenhong_num', 'teamfenhonglv', 'areafenhong', 'areafenhongmaxnum', 'up_give_score',
+            'commission1own', 'team_showtel', 'team_givemoney', 'team_givescore',
         ];
         // ID/级数 CSV 字段（逗号分隔字符串）
         $csvFields = [
@@ -935,6 +936,7 @@ class MemberAdminService
             'name'         => (string) ($row['name'] ?? ''),
             'icon'         => (string) ($row['icon'] ?? ''),
             'apply_paytxt' => (string) ($row['apply_paytxt'] ?? ''),
+            'explain'      => (string) ($row['explain'] ?? ''),
         ];
         foreach ($floatFields as $f) {
             $detail[$f] = (float) ($row[$f] ?? 0);
@@ -1098,6 +1100,13 @@ class MemberAdminService
             'up_give_commission'   => $floatOf($data['up_give_commission'] ?? 0),
             'up_give_money'        => $floatOf($data['up_give_money'] ?? 0),
             'up_give_parent_money' => $floatOf($data['up_give_parent_money'] ?? 0),
+
+            // ---- 自己拿一级提成 / 我的团队权限 / 特权说明（对齐点大等级编辑第二部分） ----
+            'commission1own' => $flagOf($data['commission1own'] ?? 0),
+            'team_showtel'   => $flagOf($data['team_showtel'] ?? 0),
+            'team_givemoney' => $flagOf($data['team_givemoney'] ?? 0),
+            'team_givescore' => $flagOf($data['team_givescore'] ?? 0),
+            'explain'        => trim((string) ($data['explain'] ?? '')),
         ];
 
         Db::transaction(function () use ($aid, $id, $update) {

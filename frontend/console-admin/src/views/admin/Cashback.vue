@@ -1,40 +1,46 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Close, Search } from '@element-plus/icons-vue'
 import {
   addCashback,
   deleteCashback,
+  deleteCashbackBatch,
   editCashback,
   getCashbackDetail,
   getCashbackList,
   getCashbackMemberList,
   getCashbackMemberLogList,
-  setCashbackStatus,
   type CashbackItem,
   type CashbackMemberLogRow,
   type CashbackMemberRow,
 } from '../../api/cashback'
+import { getCategoryList, getGoodsList } from '../../api/goods'
+import { getMemberLevelList } from '../../api/member'
+import type { CategoryItem, GoodsItem, MemberLevelItem } from '../../api/types'
 
 const BACK_TYPE_OPTIONS = [
-  { value: 1, label: '返余额' },
-  { value: 2, label: '返佣金' },
-  { value: 3, label: '返积分' },
+  { value: 1, label: '余额' },
+  { value: 2, label: '佣金' },
+  { value: 3, label: '积分' },
 ]
 const BACK_TYPE_TEXT: Record<number, string> = { 1: '余额', 2: '佣金', 3: '积分' }
 
-function formatTs(ts: number) {
-  if (!ts) return '-'
-  const d = new Date(ts * 1000)
-  const p = (n: number) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}:${p(d.getSeconds())}`
-}
+// ============ 视图切换：list / edit / record ============
+const viewMode = ref<'list' | 'edit' | 'record'>('list')
 
 // ============ 规则列表 ============
 const loading = ref(false)
 const list = ref<CashbackItem[]>([])
 const total = ref(0)
-const query = reactive({ page: 1, pagesize: 10, keyword: '', status: '' })
+const selected = ref<CashbackItem[]>([])
+const query = reactive({ page: 1, pagesize: 10, keyword: '' })
+
+function fmtTs(ts: number | string): string {
+  if (!ts) return '-'
+  const n = typeof ts === 'number' ? ts * 1000 : new Date(String(ts).replace(' ', 'T')).getTime()
+  return new Date(n).toLocaleString('zh-CN', { hour12: false })
+}
 
 async function fetchList() {
   loading.value = true
@@ -43,7 +49,7 @@ async function fetchList() {
     list.value = d.list || []
     total.value = d.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     loading.value = false
   }
@@ -54,110 +60,231 @@ function handleSearch() {
   fetchList()
 }
 
-async function handleStatus(row: CashbackItem, status: number) {
-  try {
-    await setCashbackStatus(row.id, status)
-    ElMessage.success(status === 1 ? '已启用' : '已停用')
-    fetchList()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  }
+function handleSelectionChange(rows: CashbackItem[]) {
+  selected.value = rows
 }
 
-async function handleDelete(row: CashbackItem) {
-  try {
-    await ElMessageBox.confirm(`确定删除规则「${row.name}」？`, '提示', { type: 'warning' })
-    await deleteCashback(row.id)
-    ElMessage.success('删除成功')
-    fetchList()
-  } catch {
-    // 取消/已有参与记录后端会拒绝
-  }
+function handlePageChange(p: number) {
+  query.page = p
+  fetchList()
 }
 
-// ============ 表单弹窗 ============
-const dialogVisible = ref(false)
+function handleSizeChange(s: number) {
+  query.pagesize = s
+  query.page = 1
+  fetchList()
+}
+
+function handleDelete(row: CashbackItem) {
+  ElMessageBox.confirm(`确定删除规则「${row.name}」？`, '提示', { type: 'warning' })
+    .then(async () => {
+      await deleteCashback(row.id)
+      ElMessage.success('删除成功')
+      fetchList()
+    })
+    .catch(() => {})
+}
+
+function handleBatchDelete() {
+  if (selected.value.length === 0) {
+    ElMessage.warning('请先勾选要删除的规则')
+    return
+  }
+  ElMessageBox.confirm(`确定删除选中的 ${selected.value.length} 个规则？`, '批量删除', { type: 'warning' })
+    .then(async () => {
+      await deleteCashbackBatch(selected.value.map((r) => r.id))
+      ElMessage.success('删除成功')
+      fetchList()
+    })
+    .catch(() => {})
+}
+
+function statusLabel(row: CashbackItem): { text: string; type: 'info' | 'success' | 'danger' } {
+  const now = Date.now() / 1000
+  if (row.starttime && now < row.starttime) return { text: '未开始', type: 'info' }
+  if (row.endtime && now > row.endtime) return { text: '已结束', type: 'info' }
+  return { text: '进行中', type: 'success' }
+}
+
+// ============ 编辑表单 ============
 const saving = ref(false)
 const isEdit = ref(false)
+
+interface CategoryRow {
+  id: number
+  name: string
+}
+interface ProductRow {
+  id: number
+  name: string
+}
 
 const form = reactive({
   id: 0,
   name: '',
   back_ratio: 0,
   back_type: 1,
-  receiver_type: 1,
-  goods_multiple_max: 0,
-  gettj: '-1',
   fwtype: 0,
-  categoryids: '',
-  productids: '',
-  minprice: 0,
+  categoryRows: [] as CategoryRow[],
+  productRows: [] as ProductRow[],
+  gettjArr: ['-1'] as string[],
+  starttime: '',
+  endtime: '',
   sort: 0,
   shuoming: '',
 })
-const timeRange = ref<[Date, Date] | null>(null)
 
-function openAdd() {
-  isEdit.value = false
+const levelOptions = ref<MemberLevelItem[]>([])
+const categoryOptions = ref<CategoryItem[]>([])
+const goodsOptions = ref<GoodsItem[]>([])
+
+function onGettjChange(val: string[]) {
+  if (val.includes('-1')) form.gettjArr = ['-1']
+}
+
+async function loadCandidates() {
+  try {
+    const [cats, goods, levels] = await Promise.all([
+      getCategoryList({ page: 1, pagesize: 200 }),
+      getGoodsList({ page: 1, pagesize: 200 }),
+      getMemberLevelList(),
+    ])
+    categoryOptions.value = cats.list || []
+    goodsOptions.value = goods.list || []
+    levelOptions.value = levels.list || []
+  } catch {
+    // 候选加载失败不阻断
+  }
+}
+
+function resetForm() {
   Object.assign(form, {
     id: 0,
     name: '',
     back_ratio: 0,
     back_type: 1,
-    receiver_type: 1,
-    goods_multiple_max: 0,
-    gettj: '-1',
     fwtype: 0,
-    categoryids: '',
-    productids: '',
-    minprice: 0,
+    categoryRows: [],
+    productRows: [],
+    gettjArr: ['-1'],
+    starttime: '',
+    endtime: '',
     sort: 0,
     shuoming: '',
   })
-  timeRange.value = null
-  dialogVisible.value = true
+}
+
+function openAdd() {
+  isEdit.value = false
+  resetForm()
+  viewMode.value = 'edit'
 }
 
 async function openEdit(row: CashbackItem) {
   isEdit.value = true
   try {
     const d = await getCashbackDetail(row.id)
+    const cids = d.categoryids ? d.categoryids.split(',').filter(Boolean).map(Number) : []
+    const pids = d.productids ? d.productids.split(',').filter(Boolean).map(Number) : []
     Object.assign(form, {
       id: d.id,
       name: d.name,
       back_ratio: d.back_ratio,
       back_type: d.back_type,
-      receiver_type: d.receiver_type,
-      goods_multiple_max: d.goods_multiple_max,
-      gettj: d.gettj || '-1',
       fwtype: d.fwtype,
-      categoryids: d.categoryids,
-      productids: d.productids,
-      minprice: d.minprice,
+      categoryRows: cids.map((id) => ({ id, name: categoryOptions.value.find((x) => x.id === id)?.name || '' })),
+      productRows: pids.map((id) => ({ id, name: goodsOptions.value.find((x) => x.id === id)?.name || '' })),
+      gettjArr: d.gettj ? d.gettj.split(',') : ['-1'],
+      starttime: d.starttime ? fmtTs(d.starttime) : '',
+      endtime: d.endtime ? fmtTs(d.endtime) : '',
       sort: d.sort,
       shuoming: d.shuoming || '',
     })
-    timeRange.value =
-      d.starttime && d.endtime ? [new Date(d.starttime * 1000), new Date(d.endtime * 1000)] : null
-    dialogVisible.value = true
+    viewMode.value = 'edit'
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   }
+}
+
+function handleCancelEdit() {
+  viewMode.value = 'list'
+}
+
+// ============ 选择器弹窗 ============
+const catPickerVisible = ref(false)
+const catChecked = ref<number[]>([])
+const proPickerVisible = ref(false)
+const proChecked = ref<number[]>([])
+const catTableRef = ref<{ toggleRowSelection: (row: CategoryItem, selected?: boolean) => void } | null>(null)
+const proTableRef = ref<{ toggleRowSelection: (row: GoodsItem, selected?: boolean) => void } | null>(null)
+
+function openCatPicker() {
+  catChecked.value = form.categoryRows.map((r) => r.id)
+  catPickerVisible.value = true
+  nextTick(() => {
+    categoryOptions.value.forEach((c) => {
+      if (catChecked.value.includes(c.id)) catTableRef.value?.toggleRowSelection(c, true)
+    })
+  })
+}
+function onCatSelectionChange(rows: CategoryItem[]) {
+  catChecked.value = rows.map((x) => x.id)
+}
+function confirmCatPicker() {
+  form.categoryRows = catChecked.value.map((id) => ({ id, name: categoryOptions.value.find((x) => x.id === id)?.name || '' }))
+  catPickerVisible.value = false
+}
+function removeCategoryRow(id: number) {
+  form.categoryRows = form.categoryRows.filter((r) => r.id !== id)
+}
+
+function openProPicker() {
+  proChecked.value = form.productRows.map((r) => r.id)
+  proPickerVisible.value = true
+  nextTick(() => {
+    goodsOptions.value.forEach((g) => {
+      if (proChecked.value.includes(g.id)) proTableRef.value?.toggleRowSelection(g, true)
+    })
+  })
+}
+function onProSelectionChange(rows: GoodsItem[]) {
+  proChecked.value = rows.map((x) => x.id)
+}
+function confirmProPicker() {
+  form.productRows = proChecked.value.map((id) => ({ id, name: goodsOptions.value.find((x) => x.id === id)?.name || '' }))
+  proPickerVisible.value = false
+}
+function removeProductRow(id: number) {
+  form.productRows = form.productRows.filter((r) => r.id !== id)
+}
+
+function toTs(s: string): number {
+  if (!s) return 0
+  return Math.floor(new Date(s.replace(' ', 'T')).getTime() / 1000)
 }
 
 async function handleSave() {
   if (!form.name) {
-    ElMessage.warning('请填写规则名称')
+    ElMessage.warning('请填写活动名称')
     return
   }
-  if (form.back_ratio <= 0 || form.back_ratio > 100) {
-    ElMessage.warning('返现比例必须在 0-100 之间')
+  if (!form.starttime || !form.endtime) {
+    ElMessage.warning('请选择活动起止时间')
     return
   }
-  const payload: Partial<CashbackItem> = {
-    ...form,
-    starttime: timeRange.value && timeRange.value[0] ? Math.floor(timeRange.value[0].getTime() / 1000) : 0,
-    endtime: timeRange.value && timeRange.value[1] ? Math.floor(timeRange.value[1].getTime() / 1000) : 0,
+  const payload = {
+    id: form.id,
+    name: form.name,
+    back_ratio: form.back_ratio,
+    back_type: form.back_type,
+    gettj: form.gettjArr.includes('-1') ? '-1' : form.gettjArr.join(','),
+    fwtype: form.fwtype,
+    categoryids: form.categoryRows.map((r) => r.id).join(','),
+    productids: form.productRows.map((r) => r.id).join(','),
+    starttime: toTs(form.starttime),
+    endtime: toTs(form.endtime),
+    sort: form.sort,
+    shuoming: form.shuoming,
   }
   saving.value = true
   try {
@@ -167,243 +294,435 @@ async function handleSave() {
       await addCashback(payload)
     }
     ElMessage.success('保存成功')
-    dialogVisible.value = false
+    viewMode.value = 'list'
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     saving.value = false
   }
 }
 
-// ============ 参与记录 ============
-const recordVisible = ref(false)
-const recordTab = ref<'member' | 'log'>('member')
-const recordTitle = ref('')
+// ============ 参与人列表（平铺页） ============
 const recordLoading = ref(false)
-const memberRows = ref<CashbackMemberRow[]>([])
-const logRows = ref<CashbackMemberLogRow[]>([])
+const recordRows = ref<CashbackMemberRow[]>([])
 const recordTotal = ref(0)
-const recordPage = ref(1)
+const recordQuery = reactive({ page: 1, pagesize: 10, mid: '', nickname: '', ctime: '' })
+const ctimeRange = ref<[string, string] | null>(null)
 const recordCashbackId = ref(0)
+const recordName = ref('')
 
-async function openRecords(row: CashbackItem) {
+async function openRecord(row: CashbackItem) {
   recordCashbackId.value = row.id
-  recordTitle.value = `参与记录 - ${row.name}`
-  recordTab.value = 'member'
-  recordPage.value = 1
-  recordVisible.value = true
-  fetchRecords()
+  recordName.value = row.name
+  recordQuery.page = 1
+  recordQuery.mid = ''
+  recordQuery.nickname = ''
+  recordQuery.ctime = ''
+  ctimeRange.value = null
+  viewMode.value = 'record'
+  await fetchRecords()
 }
 
 async function fetchRecords() {
   recordLoading.value = true
   try {
-    if (recordTab.value === 'member') {
-      const d = await getCashbackMemberList({ cashback_id: recordCashbackId.value, page: recordPage.value, pagesize: 10 })
-      memberRows.value = d.list || []
-      recordTotal.value = d.total || 0
-    } else {
-      const d = await getCashbackMemberLogList({ cashback_id: recordCashbackId.value, page: recordPage.value, pagesize: 10 })
-      logRows.value = d.list || []
-      recordTotal.value = d.total || 0
-    }
+    const d = await getCashbackMemberList({
+      cashback_id: recordCashbackId.value,
+      page: recordQuery.page,
+      pagesize: recordQuery.pagesize,
+      mid: recordQuery.mid,
+      nickname: recordQuery.nickname,
+      ctime: recordQuery.ctime,
+    })
+    recordRows.value = d.list || []
+    recordTotal.value = d.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     recordLoading.value = false
   }
 }
 
+function handleRecordSearch() {
+  recordQuery.page = 1
+  recordQuery.ctime = ctimeRange.value ? ctimeRange.value.join('~') : ''
+  fetchRecords()
+}
+
+function handleRecordPageChange(p: number) {
+  recordQuery.page = p
+  fetchRecords()
+}
+
+function handleRecordSizeChange(s: number) {
+  recordQuery.pagesize = s
+  recordQuery.page = 1
+  fetchRecords()
+}
+
+function quotaText(row: CashbackMemberRow): string {
+  if (!row.cashback_money_max || row.cashback_money_max <= 0) return '不限'
+  return String(row.cashback_money_max)
+}
+
+// 返现记录（流水）弹窗
+const logVisible = ref(false)
+const logLoading = ref(false)
+const logRows = ref<CashbackMemberLogRow[]>([])
+const logTitle = ref('')
+
+async function openLog(row: CashbackMemberRow) {
+  logTitle.value = `返现记录 - ${row.nickname}(ID:${row.mid})`
+  logVisible.value = true
+  logLoading.value = true
+  try {
+    const d = await getCashbackMemberLogList({
+      cashback_id: recordCashbackId.value,
+      page: 1,
+      pagesize: 50,
+    })
+    // 按 会员+商品 过滤
+    logRows.value = (d.list || []).filter((l) => l.mid === row.mid && l.pro_id === row.pro_id)
+  } catch {
+    // 拦截器统一提示
+  } finally {
+    logLoading.value = false
+  }
+}
+
 onMounted(() => {
   fetchList()
+  loadCandidates()
 })
 </script>
 
 <template>
-  <el-card shadow="never">
-    <template #header>
-      <div class="card-header">
-        <div class="toolbar">
-          <el-input
-            v-model="query.keyword"
-            placeholder="规则名称"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-          <el-select v-model="query.status" placeholder="状态" clearable style="width: 110px">
-            <el-option label="启用" value="1" />
-            <el-option label="停用" value="0" />
-          </el-select>
-          <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
+  <div class="page-wrap">
+    <!-- ============ 规则列表 ============ -->
+    <template v-if="viewMode === 'list'">
+      <el-card shadow="never" class="toolbar-card">
+        <div class="toolbar-row">
+          <div class="toolbar-left">
+            <el-button type="success" @click="openAdd">添加</el-button>
+            <el-button @click="handleBatchDelete">删除</el-button>
+          </div>
+          <div class="toolbar-right">
+            <span class="label">活动名称</span>
+            <el-input v-model="query.keyword" clearable class="w-keyword" @keyup.enter="handleSearch" />
+            <el-button circle type="success" :icon="Search" @click="handleSearch" />
+          </div>
         </div>
-        <el-button type="primary" :icon="Plus" @click="openAdd">新建规则</el-button>
-      </div>
+      </el-card>
+
+      <el-card shadow="never" class="table-card">
+        <el-table
+          v-loading="loading"
+          :data="list"
+          :header-cell-style="{ background: '#e6e6e6' }"
+          :cell-style="{ textAlign: 'left' }"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="42" />
+          <el-table-column prop="id" label="ID" width="70" sortable />
+          <el-table-column prop="name" label="活动名称" min-width="140" show-overflow-tooltip />
+          <el-table-column label="返现比例(%)" width="110">
+            <template #default="{ row }">{{ row.back_ratio }}</template>
+          </el-table-column>
+          <el-table-column label="返现类型" width="90">
+            <template #default="{ row }">{{ BACK_TYPE_TEXT[row.back_type] || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="活动时间" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ fmtTs(row.starttime) }} ~ {{ fmtTs(row.endtime) }}</template>
+          </el-table-column>
+          <el-table-column label="创建时间" width="150">
+            <template #default="{ row }">{{ fmtTs(row.create_time) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="statusLabel(row).type" size="small">{{ statusLabel(row).text }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="180">
+            <template #default="{ row }">
+              <div class="op-flex">
+                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+                <el-button link type="primary" @click="openRecord(row)">参与人列表</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-pagination
+          class="pagination"
+          background
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          :current-page="query.page"
+          :page-size="query.pagesize"
+          :page-sizes="[10, 20, 50, 100]"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </el-card>
     </template>
 
-    <el-table v-loading="loading" :data="list" border>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="name" label="规则名称" min-width="140" />
-      <el-table-column label="返现比例" width="100">
-        <template #default="{ row }">{{ row.back_ratio }}%</template>
-      </el-table-column>
-      <el-table-column label="返现方式" width="90">
-        <template #default="{ row }">{{ BACK_TYPE_TEXT[row.back_type] || '-' }}</template>
-      </el-table-column>
-      <el-table-column label="限额倍数" width="100">
-        <template #default="{ row }">{{ row.goods_multiple_max > 0 ? row.goods_multiple_max + '倍' : '不限' }}</template>
-      </el-table-column>
-      <el-table-column label="活动时间" min-width="220">
-        <template #default="{ row }">{{ formatTs(row.starttime) }} ~ {{ formatTs(row.endtime) }}</template>
-      </el-table-column>
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.status"
-            :active-value="1"
-            :inactive-value="0"
-            @change="(v: number) => handleStatus(row, v)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="190" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openRecords(row)">参与记录</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <!-- ============ 添加/编辑 ============ -->
+    <el-card v-else-if="viewMode === 'edit'" shadow="never" class="edit-card">
+      <template #header>
+        <div class="edit-header">
+          <span>{{ isEdit ? '编辑购物返现' : '添加购物返现' }}</span>
+          <el-button link :icon="Close" @click="handleCancelEdit" />
+        </div>
+      </template>
 
-    <el-pagination
-      v-model:current-page="query.page"
-      v-model:page-size="query.pagesize"
-      :total="total"
-      layout="total, prev, pager, next, sizes"
-      style="margin-top: 12px"
-      @current-change="fetchList"
-      @size-change="handleSearch"
-    />
+      <el-form label-width="110px" class="compact-form">
+        <el-form-item label="活动名称：">
+          <el-input v-model="form.name" maxlength="50" class="w-name" />
+        </el-form-item>
 
-    <!-- 规则编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑规则' : '新建规则'" width="640px">
-      <el-form label-width="130px">
-        <el-form-item label="规则名称">
-          <el-input v-model="form.name" maxlength="50" />
+        <el-form-item label="返现比例：">
+          <el-input v-model.number="form.back_ratio" class="w-num" />
+          <span class="unit">%</span>
         </el-form-item>
-        <el-form-item label="返现比例">
-          <el-input-number v-model="form.back_ratio" :min="0" :max="100" :precision="2" />
-          <span class="unit">%（按商品实付金额计算）</span>
-        </el-form-item>
-        <el-form-item label="返现方式">
+
+        <el-form-item label="返现类型：">
           <el-radio-group v-model="form.back_type">
             <el-radio v-for="o in BACK_TYPE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
           </el-radio-group>
+          <span class="aux">注：确认收货后返还到用户的余额/佣金/积分账户</span>
         </el-form-item>
-        <el-form-item label="受益人">
-          <el-radio-group v-model="form.receiver_type">
-            <el-radio :value="1">下单会员</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="限额倍数">
-          <el-input-number v-model="form.goods_multiple_max" :min="0" :precision="2" />
-          <span class="unit">商品售价倍数封顶，0 表示不限</span>
-        </el-form-item>
-        <el-form-item label="参与人群">
-          <el-input v-model="form.gettj" placeholder="-1 表示全部；多个会员等级ID用逗号分隔" style="width: 320px" />
-        </el-form-item>
-        <el-form-item label="适用范围">
+
+        <el-form-item label="选择活动商品：">
           <el-radio-group v-model="form.fwtype">
-            <el-radio :value="0">全部商品</el-radio>
-            <el-radio :value="1">指定分类</el-radio>
+            <el-radio :value="0">所有商品</el-radio>
+            <el-radio :value="1">指定类目</el-radio>
             <el-radio :value="2">指定商品</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="form.fwtype === 1" label="分类ID">
-          <el-input v-model="form.categoryids" placeholder="多个用逗号分隔" />
+
+        <el-form-item v-if="form.fwtype === 1" label-width="110px">
+          <el-table :data="form.categoryRows" size="small" class="inner-table" :header-cell-style="{ background: '#e6e6e6' }">
+            <el-table-column prop="id" label="分类ID" width="120" />
+            <el-table-column prop="name" label="分类名称" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="removeCategoryRow(row.id)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-button size="small" class="inner-add" @click="openCatPicker">添加</el-button>
         </el-form-item>
-        <el-form-item v-if="form.fwtype === 2" label="商品ID">
-          <el-input v-model="form.productids" placeholder="多个用逗号分隔" />
+
+        <el-form-item v-if="form.fwtype === 2" label-width="110px">
+          <el-table :data="form.productRows" size="small" class="inner-table" :header-cell-style="{ background: '#e6e6e6' }">
+            <el-table-column prop="id" label="商品ID" width="120" />
+            <el-table-column prop="name" label="商品名称" />
+            <el-table-column label="操作" width="100">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="removeProductRow(row.id)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-button size="small" class="inner-add" @click="openProPicker">添加</el-button>
         </el-form-item>
-        <el-form-item label="单品门槛金额">
-          <el-input-number v-model="form.minprice" :min="0" :precision="2" />
-          <span class="unit">元（单品实付低于该值不返现，0 表示不限）</span>
+
+        <el-form-item label="参与条件：">
+          <el-checkbox-group v-model="form.gettjArr" @change="onGettjChange">
+            <el-checkbox value="-1">所有人</el-checkbox>
+            <el-checkbox v-for="lv in levelOptions" :key="lv.id" :value="String(lv.id)">{{ lv.name }}</el-checkbox>
+          </el-checkbox-group>
         </el-form-item>
-        <el-form-item label="活动时间">
-          <el-date-picker
-            v-model="timeRange"
-            type="datetimerange"
-            range-separator="至"
-            start-placeholder="开始时间"
-            end-placeholder="结束时间"
-          />
+
+        <el-form-item label="开始时间：">
+          <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="活动开始时间" />
         </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort" :min="0" />
+
+        <el-form-item label="结束时间：">
+          <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="活动结束时间" />
         </el-form-item>
-        <el-form-item label="说明">
-          <el-input v-model="form.shuoming" type="textarea" :rows="2" maxlength="200" />
+
+        <el-form-item label="序号：">
+          <el-input v-model.number="form.sort" class="w-num" />
+          <span class="aux">用于排序,越大越靠前</span>
+        </el-form-item>
+
+        <el-form-item label="返现说明：">
+          <el-input v-model="form.shuoming" type="textarea" :rows="3" class="w-name" maxlength="500" />
+        </el-form-item>
+
+        <el-form-item>
+          <el-button type="success" :loading="saving" @click="handleSave">提 交</el-button>
         </el-form-item>
       </el-form>
+    </el-card>
+
+    <!-- ============ 参与人列表（平铺页） ============ -->
+    <el-card v-else shadow="never" class="edit-card">
+      <template #header>
+        <div class="edit-header">
+          <span>参与列表 - {{ recordName }}</span>
+          <el-button link :icon="Close" @click="viewMode = 'list'" />
+        </div>
+      </template>
+
+      <div class="tip-bar">同一会员购买同一商品时，购买数量会自动叠加；购买不同商品时，会分别生成独立额度记录。</div>
+
+      <div class="record-search">
+        <span class="label">用户ID</span>
+        <el-input v-model="recordQuery.mid" clearable class="w-search" @keyup.enter="handleRecordSearch" />
+        <span class="label">昵称</span>
+        <el-input v-model="recordQuery.nickname" clearable class="w-search" @keyup.enter="handleRecordSearch" />
+        <span class="label">时间</span>
+        <el-date-picker v-model="ctimeRange" type="daterange" value-format="YYYY-MM-DD" class="w-search" />
+        <el-button circle type="success" :icon="Search" @click="handleRecordSearch" />
+      </div>
+
+      <el-table
+        v-loading="recordLoading"
+        :data="recordRows"
+        :header-cell-style="{ background: '#e6e6e6' }"
+        :cell-style="{ textAlign: 'left' }"
+      >
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="ID" width="70" sortable />
+        <el-table-column label="用户信息" min-width="180">
+          <template #default="{ row }">
+            <img v-if="row.headimg" :src="row.headimg" style="width:32px;height:32px;border-radius:50%;vertical-align:middle" />
+            {{ row.nickname }}(ID:{{ row.mid }})
+          </template>
+        </el-table-column>
+        <el-table-column label="额度" width="100">
+          <template #default="{ row }">{{ quotaText(row) }}</template>
+        </el-table-column>
+        <el-table-column label="已返金额" width="100">
+          <template #default="{ row }">{{ row.back_type === 1 ? row.cashback_money : row.cashback_money }}</template>
+        </el-table-column>
+        <el-table-column label="已返佣金" width="100">
+          <template #default="{ row }">{{ row.commission }}</template>
+        </el-table-column>
+        <el-table-column label="已返积分" width="100">
+          <template #default="{ row }">{{ row.score }}</template>
+        </el-table-column>
+        <el-table-column prop="pro_num" label="购买数量" width="90" />
+        <el-table-column label="时间" width="160">
+          <template #default="{ row }">{{ row.create_time }}</template>
+        </el-table-column>
+        <el-table-column label="操作" width="110">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="openLog(row)">返现记录</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        class="pagination"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="recordTotal"
+        :current-page="recordQuery.page"
+        :page-size="recordQuery.pagesize"
+        :page-sizes="[10, 20, 50, 100]"
+        @current-change="handleRecordPageChange"
+        @size-change="handleRecordSizeChange"
+      />
+    </el-card>
+
+    <!-- 类目选择 -->
+    <el-dialog v-model="catPickerVisible" title="选择商品分类" width="640px">
+      <el-table ref="catTableRef" :data="categoryOptions" size="small" row-key="id" @selection-change="onCatSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="分类ID" width="100" />
+        <el-table-column prop="name" label="分类名称" />
+      </el-table>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+        <el-button @click="catPickerVisible = false">取消</el-button>
+        <el-button type="success" @click="confirmCatPicker">确定</el-button>
       </template>
     </el-dialog>
 
-    <!-- 参与记录弹窗 -->
-    <el-dialog v-model="recordVisible" :title="recordTitle" width="860px">
-      <el-tabs v-model="recordTab" @tab-change="fetchRecords">
-        <el-tab-pane label="会员台账" name="member">
-          <el-table v-loading="recordLoading" :data="memberRows" border size="small">
-            <el-table-column prop="mid" label="会员ID" width="80" />
-            <el-table-column prop="phone" label="手机号" width="120" />
-            <el-table-column prop="nickname" label="昵称" min-width="100" />
-            <el-table-column prop="pro_num" label="参与件数" width="90" />
-            <el-table-column prop="cashback_money" label="已返余额" width="100" />
-            <el-table-column prop="cashback_money_max" label="限额" width="100" />
-            <el-table-column prop="score" label="已返积分" width="90" />
-            <el-table-column prop="commission" label="已返佣金" width="100" />
-            <el-table-column prop="create_time" label="参与时间" min-width="160" />
-          </el-table>
-        </el-tab-pane>
-        <el-tab-pane label="返现流水" name="log">
-          <el-table v-loading="recordLoading" :data="logRows" border size="small">
-            <el-table-column prop="mid" label="会员ID" width="80" />
-            <el-table-column prop="phone" label="手机号" width="120" />
-            <el-table-column prop="nickname" label="昵称" min-width="100" />
-            <el-table-column prop="cashback_money" label="返余额" width="90" />
-            <el-table-column prop="score" label="返积分" width="90" />
-            <el-table-column prop="commission" label="返佣金" width="90" />
-            <el-table-column prop="create_time" label="返现时间" min-width="160" />
-          </el-table>
-        </el-tab-pane>
-      </el-tabs>
-      <el-pagination
-        v-model:current-page="recordPage"
-        :total="recordTotal"
-        layout="total, prev, pager, next"
-        style="margin-top: 12px"
-        @current-change="fetchRecords"
-      />
+    <!-- 商品选择 -->
+    <el-dialog v-model="proPickerVisible" title="选择商品" width="760px">
+      <el-table ref="proTableRef" :data="goodsOptions" size="small" row-key="id" @selection-change="onProSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="商品ID" width="100" />
+        <el-table-column prop="name" label="商品名称" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="proPickerVisible = false">取消</el-button>
+        <el-button type="success" @click="confirmProPicker">确定</el-button>
+      </template>
     </el-dialog>
-  </el-card>
+
+    <!-- 返现流水 -->
+    <el-dialog v-model="logVisible" :title="logTitle" width="720px">
+      <el-table v-loading="logLoading" :data="logRows" size="small">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column label="金额" width="100">
+          <template #default="{ row }">{{ row.cashback_money }}</template>
+        </el-table-column>
+        <el-table-column label="佣金" width="100">
+          <template #default="{ row }">{{ row.commission }}</template>
+        </el-table-column>
+        <el-table-column label="积分" width="100">
+          <template #default="{ row }">{{ row.score }}</template>
+        </el-table-column>
+        <el-table-column prop="create_time" label="时间" min-width="160" />
+      </el-table>
+    </el-dialog>
+  </div>
 </template>
 
 <style scoped>
-.card-header {
+.page-wrap {
+  margin: 3px;
+}
+.tip-bar {
+  background: #f5f7fa;
+  border-left: 3px solid #5fb878;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  font-size: 13px;
+  color: #606266;
+}
+.toolbar-card { margin-bottom: 3px; }
+.toolbar-card :deep(.el-card__body) { padding: 5px; }
+.toolbar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.toolbar {
-  display: flex;
   gap: 8px;
+  flex-wrap: nowrap;
 }
-.unit {
-  margin-left: 8px;
-  color: #606266;
-  font-size: 12px;
+.toolbar-left { display: flex; gap: 8px; flex-wrap: nowrap; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.label { font-size: 13px; color: #606266; }
+.w-keyword { width: 180px; }
+.table-card :deep(.el-card__body) { padding: 5px; }
+.table-card :deep(.el-table .cell) { text-align: left; padding: 3px 0; }
+.pagination { margin-top: 3px; justify-content: flex-end; }
+.op-flex { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+.edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
 }
+.compact-form :deep(.el-form-item) { margin-bottom: 10px; }
+.compact-form :deep(.el-radio) { margin-right: 12px; }
+.w-name { width: 320px; }
+.w-num { width: 160px; }
+.unit { margin: 0 8px 0 4px; color: #606266; }
+.aux { margin-left: 12px; color: #909399; font-size: 12px; }
+.inner-table { width: 560px; margin-bottom: 6px; }
+.inner-add { margin-top: 4px; }
+.record-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+.w-search { width: 160px; }
 </style>

@@ -360,6 +360,183 @@ class ScoreService
     {
         $timestamp = (int) $timestamp;
 
-        return $timestamp > 0 ? date('Y-m-d H:i:s', $timestamp) : '';
+
+    }
+
+    /* ================= 后台积分明细（任务对齐点大 score/scorelog.html） ================= */
+
+    /**
+     * 积分明细列表（搜索 mid/nickname/时间/remark；含会员头像/昵称/变更后剩余/操作显隐）
+     *
+     * @param array<string, mixed> $f
+     * @return array{list: array, total: int, page: int, pagesize: int, stat: array}
+     */
+    public function adminScoreLogList(int $aid, array $f): array
+    {
+        $mid      = (int) ($f['mid'] ?? 0);
+        $nickname = trim((string) ($f['nickname'] ?? ''));
+        $remark   = trim((string) ($f['remark'] ?? ''));
+        $page     = max(1, (int) ($f['page'] ?? 1));
+        $pageSize = $this->pageSize($f);
+        $range    = $this->scoreTimeRange((string) ($f['start_date'] ?? ''), (string) ($f['end_date'] ?? ''));
+
+        $query = ScopeService::queryAs('score_log', $aid, 'l')
+            ->leftJoin('member m', 'm.id = l.mid');
+
+        if ($mid > 0) {
+            $query->where('l.mid', $mid);
+        }
+        if ('' !== $nickname) {
+            $query->where('m.nickname', 'like', '%' . $nickname . '%');
+        }
+        if ('' !== $remark) {
+            $query->where('l.remark', 'like', '%' . $remark . '%');
+        }
+        if (null !== $range) {
+            $query->whereBetween('l.create_time', $range);
+        }
+
+        $total = (clone $query)->count();
+
+        // 变更后剩余：按会员累计到当前行（id<=l.id）的积分，如实计算
+        $afterSql = '(SELECT IFNULL(SUM(s2.score),0) FROM score_log s2 WHERE s2.mid=l.mid AND s2.aid=l.aid AND s2.id<=l.id)';
+
+        $rows = $query->field('l.id, l.mid, l.score, l.remark, l.type, l.is_cancel, l.create_time, m.nickname, m.headimg, m.tel')
+            ->fieldRaw("$afterSql as after_score")
+            ->order('l.id', 'desc')
+            ->page($page, $pageSize)
+            ->select()
+            ->toArray();
+
+        $list = array_map(static fn (array $row) => [
+            'id'           => (int) ($row['id'] ?? 0),
+            'mid'          => (int) ($row['mid'] ?? 0),
+            'nickname'     => (string) ($row['nickname'] ?? ''),
+            'headimg'      => (string) ($row['headimg'] ?? ''),
+            'tel'          => (string) ($row['tel'] ?? ''),
+            'score'        => (int) ($row['score'] ?? 0),
+            'after_score'  => (int) ($row['after_score'] ?? 0),
+            'remark'       => (string) ($row['remark'] ?? ''),
+            'type'         => (int) ($row['type'] ?? 0),
+            'create_time'  => (int) ($row['create_time'] ?? 0),
+            'is_cancel'    => (int) ($row['is_cancel'] ?? 0),
+            // 点大操作员：score_log 无 uid 列，返回空串
+            'un'           => '',
+            // 行[撤销] 显隐：未撤销才允许；[删除] 恒显
+            'can_cancel'   => 0 === (int) ($row['is_cancel'] ?? 0),
+            'can_delete'   => true,
+        ], $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize, 'stat' => ['count' => $total]];
+    }
+
+    /**
+     * 积分明细批量删除（aid 租户隔离逐条校验）
+     *
+     * @param array<int, int|string> $ids
+     */
+    public function deleteScoreLog(int $aid, array $ids): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+        $n = 0;
+        foreach ($ids as $id) {
+            $exist = Db::name('score_log')->where('id', $id)->where('aid', $aid)->find();
+            if (!empty($exist)) {
+                Db::name('score_log')->where('id', $id)->where('aid', $aid)->delete();
+                ++$n;
+            }
+        }
+        return $n;
+    }
+
+    /**
+     * 积分撤销（对齐点大 Score::cancel）：未撤销(is_cancel=0)的流水，
+     * 标记 is_cancel=1 + 反向扣/加会员积分 + 落一条 type=3「撤销操作」流水
+     *
+     * @param array<int, int|string> $ids
+     */
+    public function cancelScoreLog(int $aid, array $ids): int
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要撤销的记录');
+        }
+        $n = 0;
+        foreach ($ids as $id) {
+            $done = Db::transaction(function () use ($aid, $id) {
+                $row = Db::name('score_log')->where('id', $id)->where('aid', $aid)->lock(true)->find();
+                if (empty($row)) {
+                    return false;
+                }
+                if ((int) ($row['is_cancel'] ?? 0) === 1) {
+                    return false; // 已撤销不重复
+                }
+                $delta = -(int) $row['score']; // 反向
+                $mid   = (int) $row['mid'];
+
+                if ($delta < 0) {
+                    $memberScore = (int) Db::name('member')->where('id', $mid)->where('aid', $aid)->value('score');
+                    if ($memberScore + $delta < 0) {
+                        throw new BusinessException("会员#{$mid} 积分不足，无法撤销");
+                    }
+                }
+
+                Db::name('member')->where('id', $mid)->where('aid', $aid)->inc('score', $delta)->update();
+
+                Db::name('score_log')->where('id', $id)->where('aid', $aid)->update(['is_cancel' => 1]);
+
+                Db::name('score_log')->insert([
+                    'aid'         => $aid,
+                    'mid'         => $mid,
+                    'score'       => $delta,
+                    'remark'      => '撤销操作',
+                    'type'        => 3,
+                    'is_cancel'   => 1,
+                    'create_time' => time(),
+                ]);
+                return true;
+            });
+            if ($done) {
+                ++$n;
+            }
+        }
+        return $n;
+    }
+
+    /** 积分明细导出 */
+    public function scoreLogExport(int $aid, array $f): array
+    {
+        $f['pagesize'] = 50000;
+        $f['page']     = 1;
+        $data          = $this->adminScoreLogList($aid, $f);
+        $titles        = ['ID', '会员ID', '会员信息', '变更积分', '变更后剩余', '变更时间', '备注', '操作员'];
+        $rows = [];
+        foreach ($data['list'] as $v) {
+            $rows[] = [$v['id'], $v['mid'], $v['nickname'], $v['score'], $v['after_score'], date('Y-m-d H:i:s', $v['create_time']), $v['remark'], $v['un']];
+        }
+        return [$titles, $rows];
+    }
+
+    /** 分页大小 */
+    protected function pageSize(array $f): int
+    {
+        return max(1, min(200, (int) ($f['pagesize'] ?? 10)));
+    }
+
+    /** 时间范围 */
+    protected function scoreTimeRange(string $start, string $end): ?array
+    {
+        $start = trim($start);
+        $end   = trim($end);
+        if ('' === $start && '' === $end) {
+            return null;
+        }
+        $s = '' !== $start ? strtotime($start) : 0;
+        $e = '' !== $end ? strtotime($end . ' 23:59:59') : PHP_INT_MAX;
+        return [$s, $e];
     }
 }
+

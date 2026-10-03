@@ -27,6 +27,9 @@ class KechengService
     public const ORDER_UNPAID = 0;
     public const ORDER_PAID   = 1;
 
+    /** 升级优惠文字默认文案（[等级名称]/[优惠金额] 为C端动态占位符，原样保留勿转义） */
+    public const DEFAULT_UPGRADE_TEXT = '升级到[等级名称]，优惠[优惠金额]元';
+
     /* ==================== B端：课程分类 ==================== */
 
     /**
@@ -294,13 +297,27 @@ class KechengService
     /* ==================== B端：章节 ==================== */
 
     /**
-     * 章节列表（按课程，返回 parent_id 供前端组树）
+     * 章节列表（按课程/名称/状态筛选；独立菜单与嵌入课程共用）
      *
+     * @param array{kcid?:int,name?:string,status?:string} $filters
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function chapterList(int $aid, int $kcid, int $page, int $pageSize): array
+    public function chapterList(int $aid, array $filters, int $page, int $pageSize): array
     {
-        $query = ScopeService::query('kecheng_chapter', $aid)->where('kcid', $kcid);
+        $kcid   = (int) ($filters['kcid'] ?? 0);
+        $name   = trim((string) ($filters['name'] ?? ''));
+        $status = (string) ($filters['status'] ?? '');
+
+        $query = ScopeService::query('kecheng_chapter', $aid);
+        if ($kcid > 0) {
+            $query->where('kcid', $kcid);
+        }
+        if ('' !== $name) {
+            $query->where('name', 'like', '%' . $name . '%');
+        }
+        if ('' !== $status) {
+            $query->where('status', (int) $status);
+        }
 
         $total = (clone $query)->count();
 
@@ -310,7 +327,44 @@ class KechengService
             ->select()
             ->toArray();
 
+        // 课程名回显 + 章节类型文案（对标 canzhao zjtype）
+        $kcNames = Db::name('kecheng_list')->where('aid', $aid)->column('name', 'id');
+        $typearr = [1 => '图文', 2 => '音频', 3 => '视频'];
+        foreach ($rows as $k => $row) {
+            $rows[$k]['kcname'] = $kcNames[(int) $row['kcid']] ?? '';
+            $rows[$k]['zjtype'] = $typearr[(int) $row['kctype']] ?? '';
+        }
+
         return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 章节详情（编辑回填，含 detail/voice_url/video_url 全字段）
+     *
+     * @return array<string, mixed>
+     */
+    public function chapterDetail(int $aid, int $id): array
+    {
+        $row = ScopeService::query('kecheng_chapter', $aid)->where('id', $id)->find();
+        if (empty($row)) {
+            throw new BusinessException('章节不存在', 404, 404);
+        }
+
+        return (array) $row;
+    }
+
+    /**
+     * 章节批量上下架
+     *
+     * @param array<int, int> $ids
+     */
+    public function chapterStatus(int $aid, array $ids, int $status): void
+    {
+        if (empty($ids)) {
+            throw new BusinessException('请选择章节');
+        }
+
+        ScopeService::query('kecheng_chapter', $aid)->whereIn('id', $ids)->update(['status' => $status]);
     }
 
     /**
@@ -373,21 +427,29 @@ class KechengService
     }
 
     /**
-     * 章节删除（有子章节拒绝）
+     * 章节删除（批量；同时清理学习记录，对标 canzhao）
+     *
+     * @param array<int, int> $ids
      */
-    public function chapterDelete(int $aid, int $id): void
+    public function chapterDelete(int $aid, array $ids): void
     {
-        $exists = ScopeService::query('kecheng_chapter', $aid)->where('id', $id)->find();
-        if (empty($exists)) {
-            throw new BusinessException('章节不存在', 404, 404);
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择章节');
         }
 
-        $child = ScopeService::query('kecheng_chapter', $aid)->where('parent_id', $id)->count();
-        if ($child > 0) {
-            throw new BusinessException('请先删除子章节');
+        foreach ($ids as $id) {
+            $exists = ScopeService::query('kecheng_chapter', $aid)->where('id', $id)->find();
+            if (empty($exists)) {
+                continue;
+            }
+            $child = ScopeService::query('kecheng_chapter', $aid)->where('parent_id', $id)->count();
+            if ($child > 0) {
+                throw new BusinessException('请先删除子章节');
+            }
+            Db::name('kecheng_chapter')->where('id', $id)->where('aid', $aid)->delete();
+            Db::name('kecheng_studylog')->where('aid', $aid)->where('mlid', $id)->delete();
         }
-
-        Db::name('kecheng_chapter')->where('id', $id)->where('aid', $aid)->delete();
     }
 
     /* ==================== B端：订单/学习记录/设置 ==================== */
@@ -397,21 +459,30 @@ class KechengService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function orderList(int $aid, string $keyword, string $status, int $page, int $pageSize): array
+    public function orderList(int $aid, string $ordernum, string $ctime, string $status, int $page, int $pageSize): array
     {
         $query = ScopeService::queryAs('kecheng_order', $aid, 'o')
             ->leftJoin('member m', 'm.id = o.mid')
-            ->field('o.*, m.tel as member_tel, m.nickname as member_nickname');
+            ->field('o.*, m.headimg as member_headimg, m.tel as member_tel, m.nickname as member_nickname');
 
+        if ('' !== $ordernum) {
+            $query->where('o.ordernum', 'like', '%' . $ordernum . '%');
+        }
+        if ('' !== $ctime) {
+            $parts = explode('~', $ctime);
+            if (count($parts) === 2) {
+                $start = strtotime(trim($parts[0]));
+                $end   = strtotime(trim($parts[1]));
+                if ($start) {
+                    $query->where('o.createtime', '>=', $start);
+                }
+                if ($end) {
+                    $query->where('o.createtime', '<', $end + 86400);
+                }
+            }
+        }
         if ('' !== $status) {
             $query->where('o.status', (int) $status);
-        }
-        if ('' !== $keyword) {
-            $query->where(function ($q) use ($keyword) {
-                $q->where('o.title', 'like', '%' . $keyword . '%')
-                    ->whereOr('o.ordernum', 'like', '%' . $keyword . '%')
-                    ->whereOr('m.tel', 'like', '%' . $keyword . '%');
-            });
         }
 
         $total = (clone $query)->count();
@@ -422,8 +493,9 @@ class KechengService
             ->toArray();
 
         foreach ($rows as &$row) {
-            $row['createtime_text'] = date('Y-m-d H:i', (int) ($row['createtime'] ?: 0));
+            $row['createtime_text'] = date('Y年m月d日 H:i', (int) ($row['createtime'] ?: 0));
             $row['paytime_text']    = !empty($row['paytime']) ? date('Y-m-d H:i', (int) $row['paytime']) : '';
+            $row['platform_text']   = $this->platformName((string) ($row['platform'] ?? ''));
         }
         unset($row);
 
@@ -431,25 +503,63 @@ class KechengService
     }
 
     /**
+     * 订单详情
+     *
+     * @return array{order: array<string, mixed>, member: array<string, mixed>}
+     */
+    public function orderDetail(int $aid, int $id): array
+    {
+        $order = ScopeService::query('kecheng_order', $aid)->where('id', $id)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+
+        $member = Db::name('member')->where('id', (int) $order['mid'])->find() ?: [];
+        $order['platform_text'] = $this->platformName((string) ($order['platform'] ?? ''));
+
+        return ['order' => $order, 'member' => $member];
+    }
+
+    /**
+     * 关闭订单（仅未支付 status=0 可关，关为 4）
+     */
+    public function orderClose(int $aid, int $id): void
+    {
+        $order = ScopeService::query('kecheng_order', $aid)->where('id', $id)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+        if ((int) $order['status'] !== 0) {
+            throw new BusinessException('关闭失败，订单状态错误');
+        }
+
+        Db::name('kecheng_order')->where('id', $id)->where('aid', $aid)->update(['status' => 4]);
+    }
+
+    /**
+     * 删除订单
+     */
+    public function orderDelete(int $aid, int $id): void
+    {
+        $order = ScopeService::query('kecheng_order', $aid)->where('id', $id)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+
+        Db::name('kecheng_order')->where('id', $id)->where('aid', $aid)->delete();
+    }
+
+    /**
      * 学习记录列表
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function studylogList(int $aid, string $keyword, int $kcid, int $page, int $pageSize): array
+    public function studylogList(int $aid, int $page, int $pageSize): array
     {
         $query = ScopeService::queryAs('kecheng_studylog', $aid, 's')
             ->leftJoin('member m', 'm.id = s.mid')
-            ->field('s.*, m.tel as member_tel, m.nickname as member_nickname');
-
-        if ($kcid > 0) {
-            $query->where('s.kcid', $kcid);
-        }
-        if ('' !== $keyword) {
-            $query->where(function ($q) use ($keyword) {
-                $q->where('s.title', 'like', '%' . $keyword . '%')
-                    ->whereOr('m.tel', 'like', '%' . $keyword . '%');
-            });
-        }
+            ->leftJoin('kecheng_list k', 'k.id = s.kcid')
+            ->field('s.*, m.headimg as member_headimg, m.tel as member_tel, m.nickname as member_nickname, k.name as kecheng_name');
 
         $total = (clone $query)->count();
 
@@ -459,11 +569,41 @@ class KechengService
             ->toArray();
 
         foreach ($rows as &$row) {
-            $row['createtime_text'] = date('Y-m-d H:i', (int) ($row['createtime'] ?: 0));
+            $row['createtime_text'] = date('Y年m月d日 H:i', (int) ($row['createtime'] ?: 0));
+            $row['platform_text']   = $this->platformName((string) ($row['platform'] ?? ''));
         }
         unset($row);
 
         return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 删除学习记录
+     */
+    public function studylogDelete(int $aid, int $id): void
+    {
+        $log = ScopeService::query('kecheng_studylog', $aid)->where('id', $id)->find();
+        if (empty($log)) {
+            throw new BusinessException('记录不存在', 404, 404);
+        }
+
+        Db::name('kecheng_studylog')->where('id', $id)->where('aid', $aid)->delete();
+    }
+
+    /** 平台来源名 */
+    protected function platformName(string $platform): string
+    {
+        return match ($platform) {
+            'wx'      => '微信小程序',
+            'mp'      => '微信公众号',
+            'alipay'  => '支付宝小程序',
+            'baidu'   => '百度小程序',
+            'toutiao' => '抖音小程序',
+            'qq'      => 'QQ小程序',
+            'h5'      => '手机H5',
+            'app'     => '手机APP',
+            default   => '' !== $platform ? $platform : '其他',
+        };
     }
 
     /**
@@ -475,19 +615,37 @@ class KechengService
     {
         $row = ScopeService::query('kecheng_sysset', $aid)->find();
 
-        return $row ?: [
+        $default = [
             'aid'                        => $aid,
             'details_rec'                => 1,
             'showcommission'             => 0,
-            'show_lvupsavemoney'         => 0,
+            'show_lvupsavemoney'         => 1,
             'show_join_num'              => 1,
             'show_buyed_kecheng_price'   => 1,
-            'upgrade_text'               => '',
+            'upgrade_text'               => self::DEFAULT_UPGRADE_TEXT,
             'ios_canbuy'                 => 1,
             'send_score_num'             => 0,
             'give_score_num'             => 0,
             'lecturer_open'              => 0,
         ];
+
+        if (!$row) {
+            return $default;
+        }
+
+        // 默认口径：是否显示升级优惠缺省为 1（显示）
+        if (null === $row['show_lvupsavemoney'] || '' === $row['show_lvupsavemoney']) {
+            $row['show_lvupsavemoney'] = 1;
+        }
+
+        // 升级优惠文案：空串 / 历史 mojibake（含 ? 且无任何中文字符，连接字符集错误时中文被转 ?）时回退默认文案
+        $upgradeText = trim((string) ($row['upgrade_text'] ?? ''));
+        if ('' === $upgradeText
+            || (str_contains($upgradeText, '?') && !preg_match('/[\x{4e00}-\x{9fff}]/u', $upgradeText))) {
+            $row['upgrade_text'] = self::DEFAULT_UPGRADE_TEXT;
+        }
+
+        return $row;
     }
 
     /**
@@ -500,7 +658,7 @@ class KechengService
         $row = [
             'details_rec'              => (int) ($data['details_rec'] ?? 1),
             'showcommission'           => (int) ($data['showcommission'] ?? 0),
-            'show_lvupsavemoney'       => (int) ($data['show_lvupsavemoney'] ?? 0),
+            'show_lvupsavemoney'       => (int) ($data['show_lvupsavemoney'] ?? 1),
             'show_join_num'            => (int) ($data['show_join_num'] ?? 1),
             'show_buyed_kecheng_price' => (int) ($data['show_buyed_kecheng_price'] ?? 1),
             'upgrade_text'             => (string) ($data['upgrade_text'] ?? ''),

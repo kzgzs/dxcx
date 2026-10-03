@@ -183,6 +183,48 @@ export function remarkKanjiaOrder(id: number, remark: string) {
   return request.post<unknown, null>('/admin/kanjia/order/remark', { id, remark })
 }
 
+
+// 订单详情（含下单会员）
+export function getKanjiaOrderDetail(id: number) {
+  return request.get<unknown, { order: Record<string, any>; member: Record<string, any> }>(
+    '/admin/kanjia/order/detail',
+    { params: { id } },
+  )
+}
+
+// 删除订单（单 id 或批量 ids[]）
+export function deleteKanjiaOrder(id: number | number[]) {
+  const payload = Array.isArray(id) ? { ids: id } : { id }
+  return request.post<unknown, null>('/admin/kanjia/order/del', payload)
+}
+
+// 改为已支付（仅未支付）
+export function ispayKanjiaOrder(id: number) {
+  return request.post<unknown, null>('/admin/kanjia/order/ispay', { id })
+}
+
+// 核销并确认收货（status 1/2 → 3）
+export function hexiaoKanjiaOrder(id: number) {
+  return request.post<unknown, null>('/admin/kanjia/order/hexiao', { id })
+}
+
+// 订单导出（blob 下载真实 xlsx）
+export async function exportKanjiaOrder(params: Record<string, unknown>) {
+  const res = await request.get('/admin/kanjia/order/export', {
+    params,
+    responseType: 'blob',
+    transformResponse: [(data: unknown) => data],
+  })
+  const blob = res instanceof Blob ? res : new Blob([res as unknown as BlobPart])
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `砍价订单_${new Date().getTime()}.xlsx`
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
 /* ================= 核销码 ================= */
 
 // 核销码列表

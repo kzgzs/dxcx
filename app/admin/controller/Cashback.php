@@ -98,20 +98,28 @@ class Cashback extends BaseController
     }
 
     /**
-     * 删除规则（已有参与台账时拒绝）
-     * POST /admin/cashback/delete {id}
+     * 删除规则（已有参与台账时拒绝；兼容单条 id 与批量 ids[]）
+     * POST /admin/cashback/delete {id} | {ids[]}
      */
     public function delete()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $id = (int) $this->request->post('id', 0);
+        $ids = (array) $this->request->post('ids', []);
 
-        if ($id <= 0) {
-            throw new BusinessException('缺少规则ID');
+        if (empty($ids)) {
+            $single = (int) $this->request->post('id', 0);
+
+            if ($single <= 0) {
+                throw new BusinessException('缺少规则ID');
+            }
+
+            $ids = [$single];
         }
 
-        $this->cashbackService->delete($aid, $id);
+        foreach ($ids as $id) {
+            $this->cashbackService->delete($aid, (int) $id);
+        }
 
         return $this->success([], '删除成功');
     }
@@ -125,11 +133,14 @@ class Cashback extends BaseController
         $aid = ScopeService::aidOf($this->request);
 
         $cashbackId = (int) $this->request->get('cashback_id', 0);
+        $mid        = trim((string) $this->request->get('mid', ''));
+        $nickname   = trim((string) $this->request->get('nickname', ''));
+        $ctime      = trim((string) $this->request->get('ctime', ''));
         $page       = max(1, (int) $this->request->get('page', 1));
         $pageSize   = (int) $this->request->get('pagesize', 10);
         $pageSize   = $pageSize > 0 ? min($pageSize, 100) : 10;
 
-        return $this->success($this->cashbackService->memberList($aid, $cashbackId, $page, $pageSize));
+        return $this->success($this->cashbackService->memberList($aid, $cashbackId, $page, $pageSize, $mid, $nickname, $ctime));
     }
 
     /**

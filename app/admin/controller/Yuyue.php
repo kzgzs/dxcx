@@ -202,13 +202,13 @@ class Yuyue extends BaseController
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $keyword  = trim((string) $this->request->get('keyword', ''));
+        $realname = trim((string) $this->request->get('realname', ''));
         $status   = trim((string) $this->request->get('status', ''));
         $page     = max(1, (int) $this->request->get('page', 1));
         $pageSize = (int) $this->request->get('pagesize', 10);
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
 
-        return $this->success($this->yuyueService->workerList($aid, $keyword, $status, $page, $pageSize));
+        return $this->success($this->yuyueService->workerList($aid, $realname, $status, $page, $pageSize));
     }
 
     /**
@@ -264,23 +264,137 @@ class Yuyue extends BaseController
         return $this->success([], 1 === $status ? '已启用' : '已停用');
     }
 
+    /**
+     * 加余额（money 为负表示扣除）
+     * POST /admin/yuyue/worker/addMoney {id,money,remark}
+     */
+    public function workerAddMoney()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $id     = (int) $this->request->post('id', 0);
+        $money  = (float) $this->request->post('money', 0);
+        $remark = trim((string) $this->request->post('remark', ''));
+
+        return $this->success($this->yuyueService->workerAddMoney($aid, $id, $money, $remark), '操作成功');
+    }
+
+    /**
+     * 查看服务记录（按人员过滤）
+     * GET /admin/yuyue/worker/orders?worker_id=&proname=&linkman=&tel=&ctime=&status=&page=&pagesize=
+     */
+    public function workerOrders()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $workerId = (int) $this->request->get('worker_id', 0);
+        if ($workerId <= 0) {
+            return $this->success(['list' => [], 'total' => 0, 'page' => 1, 'pagesize' => 10]);
+        }
+
+        $proname  = trim((string) $this->request->get('proname', ''));
+        $linkman  = trim((string) $this->request->get('linkman', ''));
+        $tel      = trim((string) $this->request->get('tel', ''));
+        $ctime    = trim((string) $this->request->get('ctime', ''));
+        $status   = trim((string) $this->request->get('status', ''));
+        $page     = max(1, (int) $this->request->get('page', 1));
+        $pageSize = (int) $this->request->get('pagesize', 10);
+        $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
+
+        return $this->success($this->yuyueService->workerOrderList($aid, $workerId, $proname, $linkman, $tel, $ctime, $status, $page, $pageSize));
+    }
+
+    /**
+     * 查进度（服务单时间线）
+     * GET /admin/yuyue/worker/orderProgress?id=
+     */
+    public function workerOrderProgress()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $id = (int) $this->request->get('id', 0);
+
+        return $this->success($this->yuyueService->workerOrderProgress($aid, $id));
+    }
     /* ================= 预约订单 ================= */
 
     /**
-     * 订单列表（keyword 匹配订单号/项目名/手机号）
-     * GET /admin/yuyue/order/list?page&pagesize&status&keyword
+     * 订单列表（keyword 匹配订单号/项目名/手机号；proname/linkman/tel/ctime 细分筛选）
+     * GET /admin/yuyue/order/list?page&pagesize&status&keyword&proname&linkman&tel&ctime
      */
     public function orderList()
     {
         $aid = ScopeService::aidOf($this->request);
 
-        $status   = trim((string) $this->request->get('status', ''));
-        $keyword  = trim((string) $this->request->get('keyword', ''));
+        $status  = trim((string) $this->request->get('status', ''));
+        $keyword = trim((string) $this->request->get('keyword', ''));
+        $proname = trim((string) $this->request->get('proname', ''));
+        $linkman = trim((string) $this->request->get('linkman', ''));
+        $tel     = trim((string) $this->request->get('tel', ''));
+        $ctime   = trim((string) $this->request->get('ctime', ''));
         $page     = max(1, (int) $this->request->get('page', 1));
         $pageSize = (int) $this->request->get('pagesize', 10);
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
 
-        return $this->success($this->yuyueService->adminOrderList($aid, $status, $keyword, $page, $pageSize));
+        return $this->success($this->yuyueService->adminOrderList($aid, $status, $keyword, $proname, $linkman, $tel, $ctime, $page, $pageSize));
+    }
+
+    /**
+     * 查看进度（时间线）
+     * GET /admin/yuyue/order/progress?id=
+     */
+    public function orderProgress()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success($this->yuyueService->adminOrderProgress($aid, (int) $this->request->get('id', 0)));
+    }
+
+    /**
+     * 订单详情（查看详情弹窗）
+     * GET /admin/yuyue/order/detail?id=
+     */
+    public function orderDetail()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success($this->yuyueService->adminOrderDetail($aid, (int) $this->request->get('id', 0)));
+    }
+
+    /**
+     * 服务完成
+     * POST /admin/yuyue/order/finish {id}
+     */
+    public function orderFinish()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $id = (int) $this->request->post('id', 0);
+        if ($id <= 0) {
+            throw new BusinessException('缺少订单ID');
+        }
+
+        $this->yuyueService->adminOrderFinish($aid, $id);
+
+        return $this->success([], '已确认完成');
+    }
+
+    /**
+     * 删除订单（软删）
+     * POST /admin/yuyue/order/delete {id}
+     */
+    public function orderDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $id = (int) $this->request->post('id', 0);
+        if ($id <= 0) {
+            throw new BusinessException('缺少订单ID');
+        }
+
+        $this->yuyueService->adminOrderDelete($aid, $id);
+
+        return $this->success([], '删除成功');
     }
 
     /**
@@ -509,7 +623,12 @@ class Yuyue extends BaseController
             throw new BusinessException('评价不存在', 404, 404);
         }
 
-        Db::name('yuyue_comment')->where('aid', $aid)->where('id', $id)->update(['reply_content' => $content, 'reply_time' => time()]);
+        // 回复即落库，并同步转为已审核（status=1，对齐任务要求「回复真实落库并转已审」）
+        Db::name('yuyue_comment')->where('aid', $aid)->where('id', $id)->update([
+            'reply_content' => $content,
+            'reply_time'    => time(),
+            'status'        => 1,
+        ]);
 
         return $this->success([], '回复成功');
     }

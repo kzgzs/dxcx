@@ -296,6 +296,8 @@ class BargainService
             'helpgive_type'    => $helpgiveType,
             'helpgive_percent' => $helpgivePercent,
             'helpgive_ff'      => 1 === $helpgiveFf ? 1 : 0,
+            'weight'           => (int) ($data['weight'] ?? 0),
+            'sales'            => (int) ($data['sales'] ?? 0),
             'kjdata'           => $kjdata,
             'sort'             => (int) ($data['sort'] ?? 0),
             'status'           => (int) ($data['status'] ?? 1) === 1 ? 1 : 0,
@@ -738,6 +740,123 @@ class BargainService
             ->update(['remark' => trim($remark)]);
     }
 
+    /**
+     * 订单详情（含下单会员）
+     *
+     * @return array{order: array, member: array}
+     */
+    public function orderDetail(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+        $member = Db::name('member')->field('id,nickname,headimg,realname,tel')
+            ->where('id', (int) $order['mid'])->find() ?: [];
+        $order['status_text'] = $this->orderStatusText((int) $order['status']);
+        $order['refund_text'] = $this->refundStatusText((int) $order['refund_status']);
+
+        return ['order' => $order, 'member' => $member];
+    }
+
+    /**
+     * 删除订单（单 id 或批量 ids[]；aid 租户隔离）
+     *
+     * @param array<int, int> $ids
+     */
+    public function orderDelete(int $aid, array $ids): void
+    {
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的订单');
+        }
+        ScopeService::query('kanjia_order', $aid)->whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * 改为已支付（仅未支付；mock 后台支付）
+     */
+    public function orderIspay(int $aid, int $orderId): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+        if (self::ORDER_UNPAID !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改为已支付');
+        }
+        ScopeService::query('kanjia_order', $aid)->where('id', $orderId)->update([
+            'status'  => self::ORDER_PAID,
+            'paytime' => time(),
+            'paytype' => '后台支付',
+        ]);
+    }
+
+    /**
+     * 核销并确认收货（status 1已支付 / 2已发货 → 3已收货）
+     */
+    public function orderHexiao(int $aid, int $orderId): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+        if (!in_array((int) $order['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+            throw new BusinessException('订单状态不符合核销收货要求');
+        }
+        ScopeService::query('kanjia_order', $aid)->where('id', $orderId)->update([
+            'status'       => self::ORDER_COLLECT,
+            'collect_time' => time(),
+        ]);
+    }
+
+    /**
+     * 订单导出行（列对齐 canzhao KanjiaOrder/excel）
+     *
+     * @param array<string, mixed> $filters
+     * @return array<int, array<int, mixed>>
+     */
+    public function orderExportRows(int $aid, array $filters): array
+    {
+        $query = ScopeService::queryAs('kanjia_order', $aid, 'o')
+            ->where(function ($q) {
+                $q->whereNull('o.delete')->whereOr('o.delete', 0);
+            });
+
+        $status = (string) ($filters['status'] ?? '');
+        if ('' !== $status) {
+            if (str_starts_with($status, 'r')) {
+                $query->where('o.refund_status', (int) substr($status, 1));
+            } else {
+                $query->where('o.status', (int) $status);
+            }
+        }
+        foreach (['ordernum' => 'o.ordernum', 'proname' => 'o.proname', 'linkman' => 'o.linkman', 'tel' => 'o.tel'] as $k => $col) {
+            if (!empty($filters[$k])) {
+                $query->whereLike($col, '%' . trim((string) $filters[$k]) . '%');
+            }
+        }
+        if (!empty($filters['start_date'])) {
+            $query->where('o.createtime', '>=', strtotime((string) $filters['start_date']));
+        }
+        if (!empty($filters['end_date'])) {
+            $query->where('o.createtime', '<', strtotime((string) $filters['end_date']) + 86400);
+        }
+
+        $rows = $query->order('o.id', 'desc')->limit(5000)->select()->toArray();
+        $data = [];
+        foreach ($rows as $vo) {
+            $data[] = [
+                ' ' . (string) $vo['ordernum'],
+                $vo['proname'] ?? '',
+                $vo['sell_price'] ?? '',
+                $vo['product_price'] ?? '',
+                $vo['totalprice'] ?? '',
+                $vo['paytype'] ?? '',
+                $vo['linkman'] ?? '',
+                $vo['tel'] ?? '',
+                trim(($vo['area'] ?? '') . ' ' . ($vo['address'] ?? '')),
+                $vo['freight_text'] ?? '',
+                ($vo['express_com'] ?? '') . (!empty($vo['express_no']) ? '(' . $vo['express_no'] . ')' : ''),
+                $vo['remark'] ?? '',
+                date('Y-m-d H:i:s', (int) $vo['createtime']),
+                $this->orderStatusText((int) $vo['status']),
+                $this->refundStatusText((int) $vo['refund_status']),
+            ];
+        }
+
+        return $data;
+    }
     /* ================= 核销码 ================= */
 
     /**

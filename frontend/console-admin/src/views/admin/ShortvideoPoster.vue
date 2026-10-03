@@ -2,43 +2,48 @@
 import { ref } from 'vue'
 import PosterEditor from '../../components/PosterEditor.vue'
 
-// 短视频海报（admin_set_poster type=shortvideo，按 platform 单模板；批次5-C 任务196）
-const platform = ref<'wx' | 'mp'>('wx')
+// 短视频分享海报：八个终端 Tab（点大截图顺序），每个终端独立模板
+// PosterEditor 内部按 type=shortvideo + platform 读写 admin_set_poster
+type PosterPlatform = 'mp' | 'wx' | 'alipay' | 'baidu' | 'toutiao' | 'qq' | 'h5' | 'app'
+
+const platforms: Array<{ value: PosterPlatform; label: string }> = [
+  { value: 'mp', label: '微信公众号' },
+  { value: 'wx', label: '微信小程序' },
+  { value: 'alipay', label: '支付宝小程序' },
+  { value: 'baidu', label: '百度小程序' },
+  { value: 'toutiao', label: '抖音小程序' },
+  { value: 'qq', label: 'QQ小程序' },
+  { value: 'h5', label: '手机H5' },
+  { value: 'app', label: '手机APP' },
+]
+
+const platform = ref<PosterPlatform>('mp')
 </script>
 
 <template>
   <div>
     <el-card shadow="never">
       <div class="page-head">
-        <div class="list-title">短视频分享海报</div>
-        <el-radio-group v-model="platform">
-          <el-radio-button value="wx">小程序端</el-radio-button>
-          <el-radio-button value="mp">公众号端</el-radio-button>
-        </el-radio-group>
+        <span class="list-title">⚙ 分享海报设置</span>
       </div>
-      <el-alert
-        class="tip"
-        type="info"
-        :closable="false"
-        title="会员分享短视频时按此模板合成海报：拖动元素调整位置，拉右下角手柄缩放，保存后立即生效。二维码元素在 C 端按分享会员实时生成。"
-      />
-      <PosterEditor :type="'shortvideo'" :platform="platform" :key="platform" />
+      <el-tabs v-model="platform" class="sv-poster-tabs">
+        <el-tab-pane v-for="p in platforms" :key="p.value" :label="p.label" :name="p.value" />
+      </el-tabs>
+      <PosterEditor :type="'shortvideo'" :platform="platform" :key="platform" show-all-qr />
     </el-card>
   </div>
 </template>
 
 <style scoped>
 .page-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: 8px;
 }
 .list-title {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
+  color: #303133;
 }
-.tip {
-  margin-bottom: 16px;
+.sv-poster-tabs :deep(.el-tabs__nav-wrap::after) {
+  height: 1px;
 }
 </style>

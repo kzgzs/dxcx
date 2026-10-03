@@ -4,7 +4,9 @@ declare(strict_types=1);
 
 namespace app\common\service;
 
+use app\common\constant\ExpressCompany;
 use app\common\exception\BusinessException;
+use app\common\Kdniao;
 use think\facade\Db;
 
 /**
@@ -53,7 +55,7 @@ class LuckyCollageService
     public const ORDER_STATUS_TEXT = [0 => '未支付', 1 => '已支付', 2 => '已发货', 3 => '已收货', 4 => '已关闭'];
     public const REFUND_TEXT       = [0 => '', 1 => '退款审核中', 2 => '已退款', 3 => '退款已驳回'];
     public const BUYTYPE_TEXT      = [1 => '单买', 2 => '发团', 3 => '参团'];
-    public const TEAM_STATUS_TEXT  = [0 => '未支付', 1 => '拼团中', 2 => '已开奖', 3 => '拼团失败'];
+    public const TEAM_STATUS_TEXT  = [0 => '未支付', 1 => '拼团中', 2 => '拼团成功', 3 => '拼团失败'];
     public const ISZJ_TEXT         = [0 => '待开奖', 1 => '中奖', 2 => '未中奖'];
 
     public function __construct(
@@ -94,6 +96,7 @@ class LuckyCollageService
             'comment'       => (int) ($info['comment'] ?? 1),
             'comment_check' => (int) ($info['comment_check'] ?? 1),
             'showjd'        => (int) ($info['showjd'] ?? 1),
+            'member_discount' => (int) ($info['member_discount'] ?? 1),
             'robot_get'     => (int) ($info['robot_get'] ?? 0),
             'tklx'          => (int) ($info['tklx'] ?? 1),
         ];
@@ -118,12 +121,20 @@ class LuckyCollageService
             $update['autoshdays'] = max(1, (int) $data['autoshdays']);
         }
 
+        if (isset($data['comment'])) {
+            $update['comment'] = (int) $data['comment'] === 1 ? 1 : 0;
+        }
+
         if (isset($data['comment_check'])) {
             $update['comment_check'] = (int) $data['comment_check'] === 1 ? 1 : 0;
         }
 
         if (isset($data['showjd'])) {
             $update['showjd'] = (int) $data['showjd'] === 1 ? 1 : 0;
+        }
+
+        if (isset($data['member_discount'])) {
+            $update['member_discount'] = (int) $data['member_discount'] === 1 ? 1 : 0;
         }
 
         if (isset($data['robot_get'])) {
@@ -310,6 +321,9 @@ class LuckyCollageService
             $row['market_price'] = (float) ($row['market_price'] ?? 0);
             $row['cost_price']   = (float) ($row['cost_price'] ?? 0);
             $row['stock']        = (int) ($row['stock'] ?? 0);
+            $row['weight']       = (int) ($row['weight'] ?? 0);
+            $row['procode']      = (string) ($row['procode'] ?? '');
+            $row['pic']          = (string) ($row['pic'] ?? '');
         }
         unset($row);
 
@@ -369,6 +383,9 @@ class LuckyCollageService
             $marketPrice = max(0, (float) ($row['market_price'] ?? 0));
             $costPrice   = max(0, (float) ($row['cost_price'] ?? 0));
             $stock       = max(0, (int) ($row['stock'] ?? 0));
+            $weight      = max(0, (int) ($row['weight'] ?? 0));
+            $procode     = trim((string) ($row['procode'] ?? ''));
+            $pic         = trim((string) ($row['pic'] ?? ''));
 
             if ($sellPrice <= 0) {
                 throw new BusinessException('规格「' . $ggName . '」拼团价须大于0');
@@ -380,6 +397,9 @@ class LuckyCollageService
                 'market_price' => $marketPrice,
                 'cost_price'   => $costPrice,
                 'stock'        => $stock,
+                'weight'       => $weight,
+                'procode'      => $procode,
+                'pic'          => $pic,
             ];
 
             $stockTotal += $stock;
@@ -391,6 +411,16 @@ class LuckyCollageService
 
         $fyType = (int) ($data['fy_type'] ?? 1);
         $tklx   = (int) ($data['tklx'] ?? 1);
+
+        // 归一化：24 项字段清单未涉及的旧字段补默认值，避免直接取键触发 Undefined key
+        foreach ([
+            'failtklx' => 1, 'zjjl_type' => 1, 'bzjl_type' => 1,
+            'tzjl_type' => 1, 'sharejltype' => 1, 'freighttype' => 1,
+        ] as $dk => $dv) {
+            if (!isset($data[$dk])) {
+                $data[$dk] = $dv;
+            }
+        }
 
         $update = [
             'name'          => $name,
@@ -426,8 +456,35 @@ class LuckyCollageService
             'bzjl_type'     => in_array((int) ($data['bzjl_type'] ?? 1), [1, 2, 3, 4], true) ? (int) $data['bzjl_type'] : 1,
             'bzj_score'     => max(0, (int) ($data['bzj_score'] ?? 0)),
             'bzj_commission' => (string) max(0, (float) ($data['bzj_commission'] ?? 0)),
+            'perlimitdan'   => max(0, (int) ($data['perlimitdan'] ?? 0)),
+            'leaderscore'   => max(0, (int) ($data['leaderscore'] ?? 0)),
+            'sales'         => max(0, (int) ($data['sales'] ?? 0)),
+            'procode'       => trim((string) ($data['procode'] ?? '')),
+            'fuwupoint'     => trim((string) ($data['fuwupoint'] ?? '')),
+            'tzjl_type'     => in_array((int) ($data['tzjl_type'] ?? 1), [1, 2, 3, 4], true) ? (int) $data['tzjl_type'] : 1,
+            'member_money'  => max(0, (float) ($data['member_money'] ?? 0)),
+            'zstzcommission' => max(0, (float) ($data['zstzcommission'] ?? 0)),
+            'zstz_yhqids'   => $this->cleanIds((string) ($data['zstz_yhqids'] ?? '')),
+            'sharejltype'   => in_array((int) ($data['sharejltype'] ?? 1), [1, 2, 3, 4], true) ? (int) $data['sharejltype'] : 1,
+            'sharemoney'    => max(0, (float) ($data['sharemoney'] ?? 0)),
+            'sharescore'    => max(0, (int) ($data['sharescore'] ?? 0)),
+            'sharecommission' => max(0, (float) ($data['sharecommission'] ?? 0)),
+            'share_yhqids'  => $this->cleanIds((string) ($data['share_yhqids'] ?? '')),
+            'tsktnum'       => max(0, (int) ($data['tsktnum'] ?? 0)),
+            'isktdate'      => (int) ($data['isktdate'] ?? 0) === 1 ? 1 : 0,
+            'contact_require' => (int) ($data['contact_require'] ?? 0) === 1 ? 1 : 0,
+            'freightcontent' => (string) ($data['freightcontent'] ?? ''),
             'bzj_yhqids'    => $this->cleanIds((string) ($data['bzj_yhqids'] ?? '')),
             'freighttype'   => in_array((int) ($data['freighttype'] ?? 1), [1, 2, 3, 4], true) ? (int) $data['freighttype'] : 1,
+            // 24 项字段清单新增
+            'goods_id'      => (int) ($data['goods_id'] ?? 0),
+            'no_discount'   => in_array((int) ($data['no_discount'] ?? -1), [-1, 0, 1], true) ? (int) $data['no_discount'] : -1,
+            'freightid'     => max(0, (int) ($data['freightid'] ?? 0)),
+            'commissionset' => in_array((int) ($data['commissionset'] ?? 0), [0, 1, 2, 3, -1], true) ? (int) $data['commissionset'] : 0,
+            'commission1'   => max(0, (float) ($data['commission1'] ?? 0)),
+            'commission2'   => max(0, (float) ($data['commission2'] ?? 0)),
+            'commission3'   => max(0, (float) ($data['commission3'] ?? 0)),
+            'guigedata'     => (string) ($data['guigedata'] ?? ''),
         ];
 
         $id = (int) ($data['id'] ?? 0);
@@ -458,6 +515,9 @@ class LuckyCollageService
                 'market_price' => $row['market_price'],
                 'cost_price'   => $row['cost_price'],
                 'stock'        => $row['stock'],
+                'weight'       => $row['weight'],
+                'procode'      => $row['procode'],
+                'pic'          => $row['pic'],
             ];
 
             $exists = Db::name('lucky_collage_guige')
@@ -574,7 +634,7 @@ class LuckyCollageService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function teamList(int $aid, string $status, int $page, int $pageSize): array
+    public function teamList(int $aid, string $status, int $page, int $pageSize, string $ctimeStart = '', string $ctimeEnd = ''): array
     {
         $query = ScopeService::query('lucky_collage_order_team', $aid);
 
@@ -582,6 +642,14 @@ class LuckyCollageService
             $query->where('status', (int) $status);
         } else {
             $query->where('status', '<>', self::TEAM_UNPAID); // 未支付的空团不展示
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
         }
 
         $total = (clone $query)->count();
@@ -602,19 +670,24 @@ class LuckyCollageService
     /**
      * 删除团（仅未支付/已开奖/已失败可删）
      */
-    public function teamDelete(int $aid, int $id): void
+    public function teamDelete(int $aid, array $ids): void
     {
-        $team = ScopeService::query('lucky_collage_order_team', $aid)->where('id', $id)->find();
+        $ids = array_values(array_filter(array_map('intval', $ids)));
 
-        if (empty($team)) {
-            throw new BusinessException('团不存在', 404, 404);
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的团');
         }
 
-        if (self::TEAM_ONGOING === (int) $team['status']) {
+        $ongoing = ScopeService::query('lucky_collage_order_team', $aid)
+            ->whereIn('id', $ids)
+            ->where('status', self::TEAM_ONGOING)
+            ->count();
+
+        if ($ongoing > 0) {
             throw new BusinessException('进行中的团涉及资金，不允许删除');
         }
 
-        ScopeService::query('lucky_collage_order_team', $aid)->where('id', $id)->delete();
+        ScopeService::query('lucky_collage_order_team', $aid)->whereIn('id', $ids)->delete();
     }
 
     /* ================= 订单管理 ================= */
@@ -624,8 +697,20 @@ class LuckyCollageService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function orderList(int $aid, string $status, string $buytype, string $keyword, string $iszj, int $teamId, int $page, int $pageSize): array
-    {
+    public function orderList(
+        int $aid,
+        string $status,
+        string $buytype,
+        string $keyword,
+        int $teamId,
+        int $page,
+        int $pageSize,
+        string $ordernum = '',
+        string $linkman = '',
+        string $tel = '',
+        string $ctimeStart = '',
+        string $ctimeEnd = ''
+    ): array {
         $query = ScopeService::query('lucky_collage_order', $aid);
 
         if ('' !== $status) {
@@ -646,12 +731,28 @@ class LuckyCollageService
             $query->where('buytype', (int) $buytype);
         }
 
-        if ('' !== $iszj) {
-            $query->where('iszj', (int) $iszj);
-        }
-
         if ($teamId > 0) {
             $query->where('teamid', $teamId);
+        }
+
+        if ('' !== $ordernum) {
+            $query->where('ordernum', 'like', '%' . $ordernum . '%');
+        }
+
+        if ('' !== $linkman) {
+            $query->where('linkman', 'like', '%' . $linkman . '%');
+        }
+
+        if ('' !== $tel) {
+            $query->where('tel', 'like', '%' . $tel . '%');
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
         }
 
         if ('' !== $keyword) {
@@ -745,14 +846,108 @@ class LuckyCollageService
         throw new BusinessException('当前订单状态不可发货');
     }
 
+    /**
+     * 订单详情
+     *
+     * @return array<string, mixed>
+     */
+    public function orderDetail(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        return $this->formatOrder($aid, $order);
+    }
+
+    /**
+     * 删除订单（兼容单个 id 与批量 ids[]）
+     *
+     * @param int[] $ids
+     */
+    public function orderDelete(int $aid, array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的订单');
+        }
+
+        ScopeService::query('lucky_collage_order', $aid)->whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * 订单改价（仅未支付）
+     */
+    public function orderChangePrice(int $aid, int $orderId, float $newPrice): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (self::ORDER_UNPAID !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改价');
+        }
+
+        if ($newPrice <= 0) {
+            throw new BusinessException('订单金额须大于0');
+        }
+
+        ScopeService::query('lucky_collage_order', $aid)->where('id', $orderId)->update([
+            'totalprice' => $newPrice,
+        ]);
+    }
+
+    /**
+     * 设置订单备注
+     */
+    public function orderSetRemark(int $aid, int $orderId, string $content): void
+    {
+        $this->findOrder($aid, $orderId);
+
+        ScopeService::query('lucky_collage_order', $aid)->where('id', $orderId)->update([
+            'remark' => trim($content),
+        ]);
+    }
+
+    /**
+     * 改为已支付（后台支付；仅未支付）
+     */
+    public function orderIspay(int $aid, int $orderId): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (self::ORDER_UNPAID !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改为已支付');
+        }
+
+        ScopeService::query('lucky_collage_order', $aid)->where('id', $orderId)->update([
+            'status'  => self::ORDER_PAID,
+            'paytime' => time(),
+            'paytype' => '后台支付',
+        ]);
+    }
+
     /* ================= 评价管理 ================= */
 
     /**
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function commentList(int $aid, int $page, int $pageSize): array
+    public function commentList(int $aid, string $content, string $ctimeStart, string $ctimeEnd, string $status, int $page, int $pageSize): array
     {
         $query = ScopeService::query('lucky_collage_comment', $aid);
+
+        if ('' !== $content) {
+            $query->where('content', 'like', '%' . $content . '%');
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
+        }
+
+        if ('' !== $status) {
+            $query->where('status', (int) $status);
+        }
 
         $total = (clone $query)->count();
 
@@ -793,6 +988,59 @@ class LuckyCollageService
     public function commentDelete(int $aid, int $id): void
     {
         ScopeService::query('lucky_collage_comment', $aid)->where('id', $id)->delete();
+    }
+
+    /**
+     * 评价审核/批量审核（status=1 通过 / 0 不通过）
+     *
+     * @param int[] $ids
+     */
+    public function commentSetst(int $aid, array $ids, int $status): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+
+        if (empty($ids)) {
+            throw new BusinessException('请选择要操作的评价');
+        }
+
+        if (1 !== $status && 0 !== $status) {
+            throw new BusinessException('非法的审核状态');
+        }
+
+        foreach ($ids as $id) {
+            ScopeService::query('lucky_collage_comment', $aid)->where('id', $id)->update(['status' => $status]);
+        }
+    }
+
+    /**
+     * 评价详情
+     *
+     * @return array<string, mixed>
+     */
+    public function commentDetail(int $aid, int $id): array
+    {
+        $row = ScopeService::query('lucky_collage_comment', $aid)->where('id', $id)->find();
+
+        if (empty($row)) {
+            throw new BusinessException('评价不存在', 404, 404);
+        }
+
+        return [
+            'id'            => (int) ($row['id'] ?? 0),
+            'proid'         => (int) ($row['proid'] ?? 0),
+            'proname'       => (string) ($row['proname'] ?? ''),
+            'propic'        => (string) ($row['propic'] ?? ''),
+            'ggname'        => (string) ($row['ggname'] ?? ''),
+            'nickname'      => (string) ($row['nickname'] ?? ''),
+            'headimg'       => (string) ($row['headimg'] ?? ''),
+            'score'         => (int) ($row['score'] ?? 5),
+            'content'       => (string) ($row['content'] ?? ''),
+            'content_pic'   => (string) ($row['content_pic'] ?? ''),
+            'reply_content' => (string) ($row['reply_content'] ?? ''),
+            'reply_time'    => (int) ($row['reply_time'] ?? 0),
+            'status'        => (int) ($row['status'] ?? 1),
+            'createtime'    => (int) ($row['createtime'] ?? 0),
+        ];
     }
 
     /* ================= 卡密管理 ================= */
@@ -1071,7 +1319,20 @@ class LuckyCollageService
 
             $robot   = $pool[array_rand($pool)];
             $robotId = (int) $robot['id'];
-            $sellPrice = (float) ($product['sell_price'] ?? 0);
+
+            $guige = Db::name('lucky_collage_guige')
+                ->where('aid', $aid)
+                ->where('proid', $proid)
+                ->order('id', 'asc')
+                ->find();
+
+            $sellPrice = $guige
+                ? (float) $guige['sell_price']
+                : (float) ($product['sell_price'] ?? 0);
+            $ggId   = $guige ? (int) $guige['id'] : 0;
+            $ggName = $guige ? (string) $guige['name'] : '';
+            $freightType = (int) ($product['freighttype'] ?? 1);
+            $freightText = [1 => '到店自提', 2 => '普通快递', 3 => '自动发货', 4 => '在线卡密'][$freightType] ?? '普通快递';
 
             $orderId = (int) Db::name('lucky_collage_order')->insertGetId([
                 'aid'           => $aid,
@@ -1084,12 +1345,15 @@ class LuckyCollageService
                 'proid'         => $proid,
                 'proname'       => (string) $product['name'],
                 'propic'        => (string) ($product['pic'] ?? ''),
-                'ggid'          => 0,
-                'ggname'        => '',
+                'ggid'          => $ggId,
+                'ggname'        => $ggName,
                 'num'           => 1,
                 'sell_price'    => $sellPrice,
                 'totalprice'    => $sellPrice,
                 'product_price' => $sellPrice,
+                'freight_type'  => $freightType,
+                'freight_text'  => $freightText,
+                'freight_price' => 0,
                 'createtime'    => time(),
                 'status'        => self::ORDER_PAID,
                 'isjiqiren'     => 1,
@@ -1314,7 +1578,7 @@ class LuckyCollageService
                 : (float) $product['fy_money_val'];
 
             if ($money > 0) {
-                $this->addMoneyInternal($aid, $mid, $money, '拼团未中奖奖励余额');
+                $this->giveRedPacketInternal($aid, $mid, $money, $orderinfo, $product);
             }
 
             Db::name('lucky_collage_order')->where('id', $orderId)->update(['money' => $money]);
@@ -2165,6 +2429,46 @@ class LuckyCollageService
 
     /* ================= 资产入账工具 ================= */
 
+    /**
+     * 未中奖红包发放（red_give_mode 1返到余额 / 2返到微信零钱）
+     *
+     * 返微信零钱：mock 即时成功落 wx_transfer_log；真实模式预留微信 V3 商家转账桩
+     *
+     * @param array<string, mixed> $order
+     * @param array<string, mixed> $product
+     */
+    protected function giveRedPacketInternal(int $aid, int $mid, float $money, array $order, array $product): void
+    {
+        if (2 !== (int) ($product['red_give_mode'] ?? 1)) {
+            $this->addMoneyInternal($aid, $mid, $money, '拼团未中奖奖励余额');
+
+            return;
+        }
+
+        if (!PayService::isMock()) {
+            // 真实模式：微信 V3 商家转账（POST /v3/transfer/batches），与提现打款同口径
+            throw new BusinessException('真实微信 V3 转账接入开发中（TODO）', 501, 501);
+        }
+
+        $payNum = 'MOCK' . time() . random_int(1000, 9999);
+
+        Db::name('wx_transfer_log')->insert([
+            'aid'              => $aid,
+            'mid'              => $mid,
+            'ordernum'         => (string) ($order['ordernum'] ?? ''),
+            'money'            => $money,
+            'realname'         => '',
+            'desc'             => '幸运拼团未中奖红包',
+            'data_tbl'         => 'lucky_collage_order',
+            'data_id'          => (int) ($order['id'] ?? 0),
+            'status_code'      => 'SUCCESS',
+            'createtime'       => time(),
+            'state'            => 'SUCCESS',
+            'transfer_bill_no' => $payNum,
+            'message'          => '',
+        ]);
+    }
+
     protected function addMoneyInternal(int $aid, int $mid, float $money, string $remark): void
     {
         if ($money <= 0 || $mid <= 0) {
@@ -2355,6 +2659,30 @@ class LuckyCollageService
             'bzj_score'      => (int) ($row['bzj_score'] ?? 0),
             'bzj_commission' => (float) ($row['bzj_commission'] ?? 0),
             'bzj_yhqids'     => (string) ($row['bzj_yhqids'] ?? ''),
+            'procode'        => (string) ($row['procode'] ?? ''),
+            'fuwupoint'      => (string) ($row['fuwupoint'] ?? ''),
+            'perlimitdan'    => (int) ($row['perlimitdan'] ?? 0),
+            'leaderscore'    => (int) ($row['leaderscore'] ?? 0),
+            'member_money'   => (float) ($row['member_money'] ?? 0),
+            'zstzcommission' => (float) ($row['zstzcommission'] ?? 0),
+            'zstz_yhqids'    => (string) ($row['zstz_yhqids'] ?? ''),
+            'sharejltype'    => (int) ($row['sharejltype'] ?? 1),
+            'sharemoney'     => (float) ($row['sharemoney'] ?? 0),
+            'sharescore'     => (int) ($row['sharescore'] ?? 0),
+            'sharecommission' => (float) ($row['sharecommission'] ?? 0),
+            'share_yhqids'   => (string) ($row['share_yhqids'] ?? ''),
+            'tsktnum'        => (int) ($row['tsktnum'] ?? 0),
+            'isktdate'       => (int) ($row['isktdate'] ?? 0),
+            'contact_require' => (int) ($row['contact_require'] ?? 0),
+            'freightcontent' => (string) ($row['freightcontent'] ?? ''),
+            'goods_id'       => (int) ($row['goods_id'] ?? 0),
+            'no_discount'    => (int) ($row['no_discount'] ?? -1),
+            'freightid'      => (int) ($row['freightid'] ?? 0),
+            'commissionset'  => (int) ($row['commissionset'] ?? 0),
+            'commission1'    => (float) ($row['commission1'] ?? 0),
+            'commission2'    => (float) ($row['commission2'] ?? 0),
+            'commission3'   => (float) ($row['commission3'] ?? 0),
+            'guigedata'      => (string) ($row['guigedata'] ?? ''),
             'createtime'     => (int) ($row['createtime'] ?? 0),
         ];
     }
@@ -2370,10 +2698,13 @@ class LuckyCollageService
         $createtime = (int) ($row['createtime'] ?? 0);
         $teamhour   = (int) ($row['teamhour'] ?? 0);
 
-        $productName = (string) Db::name('lucky_collage_product')
+        $productRow = Db::name('lucky_collage_product')
             ->where('aid', $aid)
             ->where('id', (int) ($row['proid'] ?? 0))
-            ->value('name');
+            ->field('id,name,pic')
+            ->find();
+        $productName = (string) ($productRow['name'] ?? '');
+        $productPic  = (string) ($productRow['pic'] ?? '');
 
         // 团员列表（含中奖标记）
         $members = [];
@@ -2392,12 +2723,22 @@ class LuckyCollageService
             $members[] = $buyer;
         }
 
+        $realNum = count($members);
+
+        // 未占位的团员位置补空头像（对齐点大参团人列）
+        $need = max(0, (int) ($row['teamnum'] ?? 0) - $realNum);
+
+        for ($i = 0; $i < $need; ++$i) {
+            $members[] = ['mid' => 0, 'nickname' => '', 'headimg' => '', 'isjiqiren' => 0, 'iszj' => 0, 'iszj_text' => ''];
+        }
+
         return [
             'id'           => $teamId,
             'proid'        => (int) ($row['proid'] ?? 0),
             'product_name' => $productName,
+            'product_pic'  => $productPic,
             'teamnum'      => (int) ($row['teamnum'] ?? 0),
-            'num'          => (int) ($row['num'] ?? 0),
+            'num'          => $realNum,
             'status'       => $status,
             'status_text'  => self::TEAM_STATUS_TEXT[$status] ?? '未知',
             'members'      => $members,
@@ -2417,39 +2758,71 @@ class LuckyCollageService
         $buytype = (int) ($row['buytype'] ?? 1);
         $iszj    = (int) ($row['iszj'] ?? 0);
 
+        $freightType = (int) ($row['freight_type'] ?? 0);
+
         return [
-            'id'            => (int) ($row['id'] ?? 0),
-            'ordernum'      => (string) ($row['ordernum'] ?? ''),
-            'buytype'       => $buytype,
-            'buytype_text'  => self::BUYTYPE_TEXT[$buytype] ?? '未知',
-            'teamid'        => (int) ($row['teamid'] ?? 0),
-            'proname'       => (string) ($row['proname'] ?? ''),
-            'propic'        => (string) ($row['propic'] ?? ''),
-            'ggname'        => (string) ($row['ggname'] ?? ''),
-            'num'           => (int) ($row['num'] ?? 0),
-            'sell_price'    => (float) ($row['sell_price'] ?? 0),
-            'totalprice'    => (float) ($row['totalprice'] ?? 0),
-            'refund_money'  => (float) ($row['refund_money'] ?? 0),
-            'refund_reason' => (string) ($row['refund_reason'] ?? ''),
-            'status'        => $status,
-            'status_text'   => self::ORDER_STATUS_TEXT[$status] ?? '未知',
-            'refund_status' => $refund,
-            'refund_text'   => self::REFUND_TEXT[$refund] ?? '',
-            'iszj'          => $iszj,
-            'iszj_text'     => self::ISZJ_TEXT[$iszj] ?? '待开奖',
-            'money'         => (float) ($row['money'] ?? 0),
-            'isjiqiren'     => (int) ($row['isjiqiren'] ?? 0),
-            'buyer'         => $this->buyerOf($aid, $row),
-            'linkman'       => (string) ($row['linkman'] ?? ''),
-            'tel'           => (string) ($row['tel'] ?? ''),
-            'address'       => trim(((string) ($row['area'] ?? '')) . ' ' . ((string) ($row['address'] ?? ''))),
-            'express_com'   => (string) ($row['express_com'] ?? ''),
-            'express_no'    => (string) ($row['express_no'] ?? ''),
-            'paytype'       => (string) ($row['paytype'] ?? ''),
-            'paytime'       => (int) ($row['paytime'] ?? 0),
-            'send_time'     => (int) ($row['send_time'] ?? 0),
-            'createtime'    => (int) ($row['createtime'] ?? 0),
+            'id'             => (int) ($row['id'] ?? 0),
+            'ordernum'       => (string) ($row['ordernum'] ?? ''),
+            'buytype'        => $buytype,
+            'buytype_text'   => self::BUYTYPE_TEXT[$buytype] ?? '未知',
+            'teamid'         => (int) ($row['teamid'] ?? 0),
+            'proname'        => (string) ($row['proname'] ?? ''),
+            'propic'         => (string) ($row['propic'] ?? ''),
+            'ggname'         => (string) ($row['ggname'] ?? ''),
+            'num'            => (int) ($row['num'] ?? 0),
+            'sell_price'     => (float) ($row['sell_price'] ?? 0),
+            'product_price'  => (float) ($row['product_price'] ?? ((float) ($row['sell_price'] ?? 0) * (int) ($row['num'] ?? 1))),
+            'freight_price'  => (float) ($row['freight_price'] ?? 0),
+            'totalprice'     => (float) ($row['totalprice'] ?? 0),
+            'scoredk_money'  => (float) ($row['scoredk_money'] ?? 0),
+            'leveldk_money'  => (float) ($row['leveldk_money'] ?? 0),
+            'leader_money'   => (float) ($row['leader_money'] ?? 0),
+            'coupon_money'   => (float) ($row['coupon_money'] ?? 0),
+            'refund_money'   => (float) ($row['refund_money'] ?? 0),
+            'refund_reason'  => (string) ($row['refund_reason'] ?? ''),
+            'status'         => $status,
+            'status_text'    => self::ORDER_STATUS_TEXT[$status] ?? '未知',
+            'refund_status'  => $refund,
+            'refund_text'    => self::REFUND_TEXT[$refund] ?? '',
+            'iszj'           => $iszj,
+            'iszj_text'      => self::ISZJ_TEXT[$iszj] ?? '待开奖',
+            'money'          => (float) ($row['money'] ?? 0),
+            'isjiqiren'      => (int) ($row['isjiqiren'] ?? 0),
+            'buyer'          => $this->buyerOf($aid, $row),
+            'linkman'        => (string) ($row['linkman'] ?? ''),
+            'tel'            => (string) ($row['tel'] ?? ''),
+            'area'           => (string) ($row['area'] ?? ''),
+            'address'        => trim(((string) ($row['area'] ?? '')) . ' ' . ((string) ($row['address'] ?? ''))),
+            'message'        => (string) ($row['message'] ?? ''),
+            'remark'         => (string) ($row['remark'] ?? ''),
+            'freight_type'   => $freightType,
+            'freight_text'   => (string) ($row['freight_text'] ?? ''),
+            'platform'       => $this->platformName((string) ($row['platform'] ?? '')),
+            'express_com'    => (string) ($row['express_com'] ?? ''),
+            'express_no'     => (string) ($row['express_no'] ?? ''),
+            'hexiao_code'    => (string) ($row['hexiao_code'] ?? ''),
+            'paytype'        => (string) ($row['paytype'] ?? ''),
+            'paytime'        => (int) ($row['paytime'] ?? 0),
+            'send_time'      => (int) ($row['send_time'] ?? 0),
+            'collect_time'   => (int) ($row['collect_time'] ?? 0),
+            'createtime'     => (int) ($row['createtime'] ?? 0),
+            'parent1commission' => (float) ($row['parent1commission'] ?? 0),
+            'parent2commission' => (float) ($row['parent2commission'] ?? 0),
+            'parent3commission' => (float) ($row['parent3commission'] ?? 0),
         ];
+    }
+
+    /** 来源平台文案（对标参考 getplatformname） */
+    protected function platformName(string $platform): string
+    {
+        return match ($platform) {
+            'wx'        => '微信公众号',
+            'wxapp'     => '微信小程序',
+            'h5'        => '手机H5',
+            'app'       => 'APP',
+            'alipay'    => '支付宝',
+            default     => '' !== $platform ? $platform : '-',
+        };
     }
 
     /**
@@ -2487,4 +2860,444 @@ class LuckyCollageService
             'isjiqiren' => 0,
         ];
     }
+
+    /* ================= 订单补充操作（对齐点大） ================= */
+
+    /**
+     * 快递公司下拉（手动发货用）
+     *
+     * @return array{list: array<int, array{name: string, code: string}>}
+     */
+    public function expressOptions(): array
+    {
+        $list = [];
+
+        foreach (ExpressCompany::dict() as $name => $code) {
+            $list[] = ['name' => $name, 'code' => $code];
+        }
+
+        return ['list' => $list];
+    }
+
+    /**
+     * 批量发货（Excel 导入：第一列订单号、第二列快递单号，统一快递公司）
+     *
+     * @param array<int, array<int, string>> $pairs
+     * @return array{total: int, success: int, fail: int, items: array}
+     */
+    public function orderBatchShip(int $aid, string $expressCompany, array $pairs): array
+    {
+        $expressCompany = trim($expressCompany);
+
+        if ('' === $expressCompany) {
+            throw new BusinessException('请选择快递公司');
+        }
+
+        $result = ['total' => count($pairs), 'success' => 0, 'fail' => 0, 'items' => []];
+
+        foreach ($pairs as $pair) {
+            $ordernum  = trim((string) ($pair[0] ?? ''));
+            $expressNo = trim((string) ($pair[1] ?? ''));
+
+            if ('' === $ordernum || '' === $expressNo) {
+                ++$result['fail'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => false, 'msg' => '订单号或快递单号为空'];
+
+                continue;
+            }
+
+            $order = ScopeService::query('lucky_collage_order', $aid)->where('ordernum', $ordernum)->find();
+
+            if (empty($order)) {
+                ++$result['fail'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => false, 'msg' => '订单不存在'];
+
+                continue;
+            }
+
+            try {
+                $this->orderSendExpress($aid, (int) $order['id'], $expressCompany, $expressNo);
+                ++$result['success'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => true, 'msg' => '发货成功'];
+            } catch (BusinessException $e) {
+                ++$result['fail'];
+                $result['items'][] = ['ordernum' => $ordernum, 'ok' => false, 'msg' => $e->getMessage()];
+            }
+        }
+
+        return $result;
+    }
+
+    /**
+     * 到店自提核销（freight_type=1；已支付/已发货 → 已收货）
+     */
+    public function orderHexiao(int $aid, int $orderId): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (1 !== (int) ($order['freight_type'] ?? 0)) {
+            throw new BusinessException('仅到店自提订单可核销');
+        }
+
+        if (!in_array((int) $order['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+            throw new BusinessException('当前订单状态不可核销');
+        }
+
+        ScopeService::query('lucky_collage_order', $aid)->where('id', $orderId)->update([
+            'status'       => self::ORDER_COLLECTED,
+            'collect_time' => time(),
+        ]);
+    }
+
+    /**
+     * 确认收货（快递配送；已发货 → 已收货）
+     */
+    public function orderCollect(int $aid, int $orderId): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (self::ORDER_SHIPPED !== (int) $order['status']) {
+            throw new BusinessException('仅已发货订单可确认收货');
+        }
+
+        ScopeService::query('lucky_collage_order', $aid)->where('id', $orderId)->update([
+            'status'       => self::ORDER_COLLECTED,
+            'collect_time' => time(),
+        ]);
+    }
+
+    /**
+     * 查物流（快递鸟 1002 即时查询）
+     *
+     * @return array{express_com: string, express_no: string, state: string, traces: array}
+     */
+    public function orderGetExpress(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        $expressCom = (string) ($order['express_com'] ?? '');
+        $expressNo  = (string) ($order['express_no'] ?? '');
+
+        if ('' === $expressCom || '' === $expressNo) {
+            throw new BusinessException('该订单暂无物流信息');
+        }
+
+        $shipperCode = (string) (array_flip(ExpressCompany::dict())[$expressCom] ?? $expressCom);
+        $kdniao      = new Kdniao($aid);
+        $res         = $kdniao->trace($shipperCode, $expressNo, (string) ($order['ordernum'] ?? ''));
+
+        if (1 !== (int) ($res['status'] ?? 0)) {
+            throw new BusinessException((string) ($res['msg'] ?? '物流查询失败'));
+        }
+
+        $data = $res['data'];
+
+        return [
+            'express_com' => $expressCom,
+            'express_no'  => $expressNo,
+            'state'       => (string) ($data['State'] ?? ''),
+            'traces'      => array_map(static function (array $t): array {
+                return ['time' => (string) ($t['AcceptTime'] ?? ''), 'station' => (string) ($t['AcceptStation'] ?? '')];
+            }, (array) ($data['Traces'] ?? [])),
+        ];
+    }
+
+    /**
+     * 送货单打印数据（按订单自动生成售货单）
+     *
+     * @return array<string, mixed>
+     */
+    public function orderShdData(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+        $item  = $this->formatOrder($aid, $order);
+
+        $goodsRows = [[
+            'name'  => trim($item['proname'] . ($item['ggname'] !== '' ? '（' . $item['ggname'] . '）' : '')),
+            'num'   => $item['num'],
+            'price' => $item['sell_price'],
+            'money' => $item['product_price'],
+        ]];
+
+        // 送货单打印样式（系统-送货单设置：标题/每页行数/品名行数）
+        $sysset = Db::name('shop_sysset')->where('aid', $aid)->field('shipping_pagetitle,shipping_pagenum,shipping_linenum')->find();
+
+        return [
+            'title'             => (string) ($sysset['shipping_pagetitle'] ?? '') !== '' ? (string) $sysset['shipping_pagetitle'] : '送货单',
+            'pagenum'           => max(1, (int) ($sysset['shipping_pagenum'] ?? 8)),
+            'linenum'           => max(0, (int) ($sysset['shipping_linenum'] ?? 2)),
+            'ordernum'          => $item['ordernum'],
+            'linkman'           => $item['linkman'],
+            'tel'               => $item['tel'],
+            'address'           => $item['address'],
+            'createtime'        => $item['createtime'],
+            'goods'             => $goodsRows,
+            'freight_price'     => $item['freight_price'],
+            'totalprice'        => $item['totalprice'],
+            'total_upper'       => $this->moneyUpper((float) $item['totalprice']),
+            'message'           => $item['message'],
+        ];
+    }
+
+    /**
+     * 订单导出数据（xlsx 行数据；筛选口径同 orderList）
+     *
+     * @return array{0: array<int, string>, 1: array<int, array<int, mixed>>}
+     */
+    public function orderExportData(
+        int $aid,
+        string $status,
+        string $buytype,
+        string $ordernum,
+        string $linkman,
+        string $tel,
+        string $ctimeStart,
+        string $ctimeEnd,
+        int $teamId,
+        int $limit = 20000
+    ): array {
+        $query = ScopeService::query('lucky_collage_order', $aid);
+
+        if ('' !== $status && !str_starts_with($status, 'r')) {
+            $query->where('status', (int) $status);
+        } elseif (str_starts_with($status, 'r')) {
+            $query->where('refund_status', (int) substr($status, 1));
+        }
+
+        if ('' !== $buytype) {
+            $query->where('buytype', (int) $buytype);
+        }
+
+        if ($teamId > 0) {
+            $query->where('teamid', $teamId);
+        }
+
+        if ('' !== $ordernum) {
+            $query->where('ordernum', 'like', '%' . $ordernum . '%');
+        }
+
+        if ('' !== $linkman) {
+            $query->where('linkman', 'like', '%' . $linkman . '%');
+        }
+
+        if ('' !== $tel) {
+            $query->where('tel', 'like', '%' . $tel . '%');
+        }
+
+        if ('' !== $ctimeStart) {
+            $query->where('createtime', '>=', strtotime($ctimeStart));
+        }
+
+        if ('' !== $ctimeEnd) {
+            $query->where('createtime', '<', strtotime($ctimeEnd) + 86400);
+        }
+
+        $rows = $query->order('id', 'desc')->limit($limit)->select()->toArray();
+
+        $titles = ['订单号', '商品名称', '规格数量', '商品总价', '运费', '实付款', '支付方式', '收货人', '电话', '收货地址', '配送方式', '快递信息', '下单时间', '状态', '来源'];
+
+        $data = [];
+
+        foreach ($rows as $r) {
+            $v = $this->formatOrder($aid, $r);
+            $data[] = [
+                $v['ordernum'],
+                $v['proname'],
+                trim($v['ggname'] . ' × ' . $v['num']),
+                $v['product_price'],
+                $v['freight_price'],
+                $v['totalprice'],
+                $v['paytype'],
+                $v['linkman'],
+                $v['tel'],
+                $v['address'],
+                $v['freight_text'],
+                $v['express_com'] !== '' ? ($v['express_com'] . ' ' . $v['express_no']) : '',
+                date('Y-m-d H:i:s', $v['createtime']),
+                $v['status_text'] . ($v['refund_money'] > 0 ? '（已退¥' . $v['refund_money'] . '）' : ''),
+                $v['platform'],
+            ];
+        }
+
+        return [$titles, $data];
+    }
+
+    /**
+     * 退款审核（用户发起退款申请 refund_status=1）
+     * pass=1 同意→原路退款+退积分+退券同事务；pass=2 驳回
+     */
+    public function orderRefundCheck(int $aid, int $orderId, int $pass, string $remark): void
+    {
+        if (1 !== $pass && 2 !== $pass) {
+            throw new BusinessException('非法的审核结果');
+        }
+
+        $order = $this->findOrder($aid, $orderId);
+
+        if (1 !== (int) ($order['refund_status'] ?? 0)) {
+            throw new BusinessException('该订单无待审核的退款申请');
+        }
+
+        if (2 === $pass) {
+            ScopeService::query('lucky_collage_order', $aid)->where('id', $orderId)->update([
+                'refund_status'      => 3,
+                'refund_checkremark' => trim($remark),
+                'refund_time'        => time(),
+            ]);
+
+            return;
+        }
+
+        if (!in_array((int) $order['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+            throw new BusinessException('该订单状态不允许退款');
+        }
+
+        Db::transaction(function () use ($aid, $orderId, $remark) {
+            $locked = Db::name('lucky_collage_order')
+                ->where('aid', $aid)
+                ->where('id', $orderId)
+                ->lock(true)
+                ->find();
+
+            if (empty($locked) || 1 !== (int) ($locked['refund_status'] ?? 0)
+                || !in_array((int) $locked['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+                throw new BusinessException('订单状态已变化，请刷新后重试');
+            }
+
+            $refundMoney = (float) ($locked['refund_money'] ?? 0) > 0
+                ? (float) $locked['refund_money']
+                : (float) $locked['totalprice'];
+
+            $this->refundByRoute($locked, 1, '订单退款');
+            $this->refundAssetsInternal($aid, $locked, '订单退款');
+
+            if (self::ORDER_PAID === (int) $locked['status'] && 1 === (int) ($locked['iszj'] ?? 0)) {
+                $this->restoreLuckyStock($locked);
+            }
+
+            Db::name('lucky_collage_order')->where('id', $orderId)->update([
+                'status'             => self::ORDER_CLOSED,
+                'refund_status'      => 2,
+                'refund_money'       => $refundMoney,
+                'refund_time'        => time(),
+                'refund_checkremark' => trim($remark),
+            ]);
+        });
+    }
+
+    /**
+     * 直接退款（管理员对已支付/已发货的中奖订单发起）
+     */
+    public function orderRefund(int $aid, int $orderId, string $reason): void
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (!in_array((int) $order['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+            throw new BusinessException('该订单状态不允许退款');
+        }
+
+        $reason = trim($reason);
+
+        if ('' === $reason) {
+            throw new BusinessException('请填写退款原因');
+        }
+
+        Db::transaction(function () use ($aid, $orderId, $reason) {
+            $locked = Db::name('lucky_collage_order')
+                ->where('aid', $aid)
+                ->where('id', $orderId)
+                ->lock(true)
+                ->find();
+
+            if (empty($locked) || !in_array((int) $locked['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+                throw new BusinessException('订单状态已变化，请刷新后重试');
+            }
+
+            $refundMoney = (float) $locked['totalprice'];
+
+            $this->refundByRoute($locked, 1, '订单退款');
+            $this->refundAssetsInternal($aid, $locked, $reason);
+
+            if (self::ORDER_PAID === (int) $locked['status'] && 1 === (int) ($locked['iszj'] ?? 0)) {
+                $this->restoreLuckyStock($locked);
+            }
+
+            Db::name('lucky_collage_order')->where('id', $orderId)->update([
+                'status'        => self::ORDER_CLOSED,
+                'refund_status' => 2,
+                'refund_money'  => $refundMoney,
+                'refund_reason' => $reason,
+                'refund_time'   => time(),
+            ]);
+        });
+    }
+
+    /**
+     * 回补库存（商品 + 规格；仅中奖订单退款时）
+     *
+     * @param array<string, mixed> $order
+     */
+    protected function restoreLuckyStock(array $order): void
+    {
+        $num = (int) ($order['num'] ?? 0);
+
+        if ($num <= 0) {
+            return;
+        }
+
+        if ((int) ($order['proid'] ?? 0) > 0) {
+            Db::name('lucky_collage_product')->where('id', (int) $order['proid'])->inc('stock', $num)->update();
+        }
+
+        if ((int) ($order['ggid'] ?? 0) > 0) {
+            Db::name('lucky_collage_guige')->where('id', (int) $order['ggid'])->inc('stock', $num)->update();
+        }
+    }
+
+    /** 金额转中文大写（送货单用） */
+    protected function moneyUpper(float $money): string
+    {
+        $money = round($money, 2);
+
+        if ($money <= 0) {
+            return '零元整';
+        }
+
+        $digits = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
+        $units  = ['分', '角', '元', '拾', '佰', '仟', '万', '拾', '佰', '仟', '亿'];
+        $str    = number_format($money, 2, '.', '');
+        $parts  = explode('.', $str);
+        $zheng  = (int) $parts[0];
+        $fen    = (int) ($parts[1] ?? 0);
+        $result = '';
+
+        if ($zheng > 0) {
+            $zs = (string) $zheng;
+            $len = strlen($zs);
+
+            for ($i = 0; $i < $len; ++$i) {
+                $n = (int) $zs[$i];
+                $u = $units[$len - $i + 1];
+                $result .= $digits[$n] . $u;
+            }
+
+            $result .= '整';
+        }
+
+        if ($fen > 0) {
+            $jiao = intdiv($fen, 10);
+            $fc   = $fen % 10;
+
+            if ($jiao > 0) {
+                $result .= $digits[$jiao] . '角';
+            }
+
+            if ($fc > 0) {
+                $result .= $digits[$fc] . '分';
+            }
+        }
+
+        return str_replace(['零拾', '零佰', '零仟', '零万', '零亿'], ['零', '零', '零', '万', '亿'], $result);
+    }
 }
+

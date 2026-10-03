@@ -8,119 +8,93 @@ const loading = ref(false)
 const saving = ref(false)
 
 const form = reactive({
-  pics: '',
+  pics: [] as string[],
   autoshdays: 7,
   comment: 1,
   comment_check: 1,
   showjd: 1,
+  vipdiscount: 1,
 })
 
 async function fetchSet() {
   loading.value = true
   try {
-    const data = await getTuangouSet()
-    Object.assign(form, {
-      pics: data.pics ?? '',
-      autoshdays: data.autoshdays ?? 7,
-      comment: data.comment ?? 1,
-      comment_check: data.comment_check ?? 1,
-      showjd: data.showjd ?? 1,
-    })
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    loading.value = false
-  }
+    const d = await getTuangouSet()
+    form.pics = d.pics ? String(d.pics).split(',').filter((s) => s !== '') : []
+    form.autoshdays = d.autoshdays ?? 7
+    form.comment = d.comment ?? 1
+    form.comment_check = d.comment_check ?? 1
+    form.showjd = d.showjd ?? 1
+    form.vipdiscount = d.vipdiscount ?? 1
+  } catch { /* 拦截器 */ } finally { loading.value = false }
 }
 
-async function handleSave() {
+async function submit() {
   saving.value = true
   try {
-    await saveTuangouSet({ ...form })
+    await saveTuangouSet({
+      pics: form.pics.join(','),
+      autoshdays: Number(form.autoshdays) || 1,
+      comment: form.comment,
+      comment_check: form.comment_check,
+      showjd: form.showjd,
+      vipdiscount: form.vipdiscount,
+    })
     ElMessage.success('保存成功')
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    saving.value = false
-  }
+  } catch { /* 拦截器 */ } finally { saving.value = false }
 }
 
-// ============ 图片选择（任务294：ImgIconPicker，默认素材库） ============
 const imgPickerVisible = ref(false)
-
-function openImgPicker() {
-  imgPickerVisible.value = true
-}
-
-function onImgPick(urls: string[]) {
-  if (urls.length) form.pics = urls[0]
+function openImgPicker() { imgPickerVisible.value = true }
+function onPick(urls: string[]) {
+  form.pics = urls
 }
 
 onMounted(fetchSet)
 </script>
 
 <template>
-  <div v-loading="loading">
-    <el-card shadow="never">
-      <template #header>
-        <span>团购设置</span>
-      </template>
-      <el-form label-width="130px" label-position="left" style="max-width: 560px">
-        <el-form-item label="自动收货天数">
-          <el-input-number v-model="form.autoshdays" :min="1" :max="90" :precision="0" :step="1" />
-          <span class="form-tip">发货后 N 天自动确认收货</span>
-        </el-form-item>
-        <el-form-item label="评价开关">
-          <el-switch v-model="form.comment" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">关闭后会员不可评价团购订单</span>
-        </el-form-item>
-        <el-form-item label="评价审核">
-          <el-switch v-model="form.comment_check" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">开启后评价需审核通过才展示</span>
-        </el-form-item>
-        <el-form-item label="显示购买进度">
-          <el-switch v-model="form.showjd" :active-value="1" :inactive-value="0" />
-          <span class="form-tip">商品页展示已购人数与阶梯价达成进度</span>
-        </el-form-item>
-        <el-form-item label="活动说明图">
-          <div class="img-pick-row">
-            <el-image v-if="form.pics" :src="form.pics" class="img-pick-thumb" fit="cover" />
-            <el-button size="small" @click="openImgPicker">{{ form.pics ? '更换' : '选择图片' }}</el-button>
-            <el-button v-if="form.pics" size="small" link type="danger" @click="form.pics = ''">删除</el-button>
-          </div>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" :loading="saving" @click="handleSave">保存设置</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
-
-    <!-- 选图弹窗（任务294） -->
-    <ImgIconPicker
-      v-model:visible="imgPickerVisible"
-      default-tab="library"
-      @pick="(urls: string[]) => onImgPick(urls)"
-    />
-  </div>
+  <el-card v-loading="loading" shadow="never">
+    <el-form label-width="120px" class="set-form">
+      <el-form-item label="轮播图">
+        <el-button @click="openImgPicker">批量上传</el-button>
+        <span class="hint">建议尺寸：740×320像素</span>
+        <div class="thumb-row">
+          <el-image v-for="(u, i) in form.pics" :key="i" :src="u" fit="cover" class="thumb" />
+        </div>
+      </el-form-item>
+      <el-form-item label="自动收货天数">
+        <el-input-number v-model="form.autoshdays" :min="1" :precision="0" />
+        <span class="unit">天</span>
+        <span class="hint">发货后多少天用户未确认收货自动完成收货（最小值为1）</span>
+      </el-form-item>
+      <el-form-item label="商品评价">
+        <el-radio-group v-model="form.comment"><el-radio :value="1">开启</el-radio><el-radio :value="0">关闭</el-radio></el-radio-group>
+      </el-form-item>
+      <el-form-item label="评价审核">
+        <el-radio-group v-model="form.comment_check"><el-radio :value="1">开启</el-radio><el-radio :value="0">关闭</el-radio></el-radio-group>
+        <span class="hint">关闭后用户的评价将直接显示,不需要后台审核</span>
+      </el-form-item>
+      <el-form-item label="进店及咨询">
+        <el-radio-group v-model="form.showjd"><el-radio :value="1">开启</el-radio><el-radio :value="0">关闭</el-radio></el-radio-group>
+        <span class="hint">商品详情页是否显示进店及咨询</span>
+      </el-form-item>
+      <el-form-item label="会员等级折扣">
+        <el-radio-group v-model="form.vipdiscount"><el-radio :value="1">开启</el-radio><el-radio :value="0">关闭</el-radio></el-radio-group>
+        <span class="hint">是否开启会员等级折扣</span>
+      </el-form-item>
+      <el-form-item>
+        <el-button type="success" :loading="saving" @click="submit">提交</el-button>
+      </el-form-item>
+    </el-form>
+    <ImgIconPicker v-model:visible="imgPickerVisible" :multi="true" default-tab="library" @pick="onPick" />
+  </el-card>
 </template>
 
 <style scoped>
-.form-tip {
-  margin-left: 8px;
-  color: #909399;
-  font-size: 12px;
-}
-
-.img-pick-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.img-pick-thumb {
-  width: 72px;
-  height: 72px;
-  border-radius: 6px;
-  border: 1px solid #ebeef5;
-}
+.set-form { max-width: 640px; }
+.hint { color: #909399; font-size: 12px; margin-left: 10px; }
+.unit { margin-left: 6px; }
+.thumb-row { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+.thumb { width: 120px; height: 52px; border-radius: 4px; border: 1px solid #e4e7ed; }
 </style>

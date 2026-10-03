@@ -12,7 +12,7 @@ export interface CuxiaoListQuery {
 export interface CuxiaoItem {
   id: number
   name: string
-  type: number // 0仅显示 1满减 2满赠 3换购
+  type: number // 0无 1满额立减 2满额赠送 3加价换购 4满额打折 5满件打折 6满件立减
   tip: string
   gettj: string
   fwtype: number // 0全部 1分类 2指定商品
@@ -21,9 +21,12 @@ export interface CuxiaoItem {
   minprice: number
   minnum: number
   money: number
+  zhekou: number
   proid: number
   ggid: number
   proname: string
+  prozk: string // 逗号分隔：指定商品单独折扣（按 productids 顺序对齐）
+  pronum: string // 逗号分隔：指定商品单独最低件数（按 productids 顺序对齐）
   starttime: string
   endtime: string
   sort: number
@@ -71,6 +74,10 @@ export function setCuxiaoStatus(id: number, status: number) {
 
 export function deleteCuxiao(id: number) {
   return request.post<unknown, null>('/admin/cuxiao/delete', { id })
+}
+
+export function deleteCuxiaoBatch(ids: number[]) {
+  return request.post<unknown, null>('/admin/cuxiao/delete', { ids })
 }
 
 // 赠品/换购品候选（商品列表）

@@ -39,6 +39,7 @@ export interface CashbackListResult {
 export interface CashbackMemberRow {
   id: number
   mid: number
+  headimg: string
   phone: string
   nickname: string
   cashback_id: number
@@ -52,6 +53,15 @@ export interface CashbackMemberRow {
   back_type: number
   type: string
   create_time: string
+}
+
+export interface CashbackMemberQuery {
+  cashback_id: number
+  page?: number
+  pagesize?: number
+  mid?: string
+  nickname?: string
+  ctime?: string
 }
 
 export interface CashbackMemberLogRow {
@@ -94,8 +104,12 @@ export function deleteCashback(id: number) {
   return request.post<unknown, null>('/admin/cashback/delete', { id })
 }
 
+export function deleteCashbackBatch(ids: number[]) {
+  return request.post<unknown, null>('/admin/cashback/delete', { ids })
+}
+
 // 参与记录：会员台账
-export function getCashbackMemberList(params: { cashback_id: number; page?: number; pagesize?: number }) {
+export function getCashbackMemberList(params: CashbackMemberQuery) {
   return request.get<unknown, { list: CashbackMemberRow[]; total: number; page: number; pagesize: number }>(
     '/admin/cashback/memberList',
     { params }

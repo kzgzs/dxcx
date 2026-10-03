@@ -384,77 +384,6 @@ class KechengExamService
         return ['list' => $list];
     }
 
-    /* ==================== B端：讲师审核 ==================== */
-
-    /**
-     * 讲师列表
-     *
-     * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
-     */
-    public function lecturerList(int $aid, string $keyword, string $checkstatus, int $page, int $pageSize): array
-    {
-        $query = ScopeService::query('kecheng_lecturer', $aid);
-
-        if ('' !== $keyword) {
-            $query->where(function ($q) use ($keyword) {
-                $q->whereLike('nickname', '%' . $keyword . '%')
-                    ->whereOr('realname', 'like', '%' . $keyword . '%')
-                    ->whereOr('tel', 'like', '%' . $keyword . '%');
-            });
-        }
-        if ('' !== $checkstatus) {
-            $query->where('checkstatus', (int) $checkstatus);
-        }
-
-        $total = (clone $query)->count();
-        $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
-
-        foreach ($rows as $k => $row) {
-            $rows[$k]['course_count'] = (int) ScopeService::query('kecheng_list', $aid)
-                ->where('lecturerid', (int) $row['id'])
-                ->count();
-        }
-
-        return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
-    }
-
-    /**
-     * 讲师审核（通过/驳回）
-     */
-    public function lecturerCheck(int $aid, int $id, int $checkstatus, string $reason): void
-    {
-        if (!in_array($checkstatus, [1, -1], true)) {
-            throw new BusinessException('审核状态错误');
-        }
-
-        $lecturer = ScopeService::query('kecheng_lecturer', $aid)->where('id', $id)->find();
-        if (empty($lecturer)) {
-            throw new BusinessException('讲师不存在', 404, 404);
-        }
-
-        Db::name('kecheng_lecturer')->where('id', $id)->where('aid', $aid)->update([
-            'checkstatus'  => $checkstatus,
-            'check_reason' => $checkstatus > 0 ? '' : $reason,
-            'updatetime'   => time(),
-        ]);
-    }
-
-    /**
-     * 讲师启停用
-     */
-    public function lecturerStatus(int $aid, int $id, int $status): void
-    {
-        $lecturer = ScopeService::query('kecheng_lecturer', $aid)->where('id', $id)->find();
-        if (empty($lecturer)) {
-            throw new BusinessException('讲师不存在', 404, 404);
-        }
-
-        Db::name('kecheng_lecturer')->where('id', $id)->where('aid', $aid)->update([
-            'status'     => $status,
-            'updatetime' => time(),
-        ]);
-    }
-
     /* ==================== C端：考试引擎 ==================== */
 
     /**
@@ -1389,5 +1318,94 @@ class KechengExamService
     protected function formatDuration(int $seconds): string
     {
         return sprintf('%02d:%02d:%02d', intdiv($seconds, 3600), intdiv($seconds % 3600, 60), $seconds % 60);
+    }
+
+    /* ==================== B端：答题记录 ==================== */
+
+    /**
+     * 答题记录列表（按课程/会员筛选；对标 canzhao KechengRecord::index）
+     *
+     * @param array{kcid?:int,mid?:int} $filters
+     * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
+     */
+    public function recordList(int $aid, array $filters, int $page, int $pageSize): array
+    {
+        $kcid = (int) ($filters['kcid'] ?? 0);
+        $mid  = (int) ($filters['mid'] ?? 0);
+
+        $query = ScopeService::query('kecheng_record', $aid);
+        if ($kcid > 0) {
+            $query->where('kcid', $kcid);
+        }
+        if ($mid > 0) {
+            $query->where('mid', $mid);
+        }
+
+        $total = (clone $query)->count();
+        $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+
+        $kcNames = Db::name('kecheng_list')->where('aid', $aid)->column('name', 'id');
+        foreach ($rows as $k => $row) {
+            $rows[$k]['kcname'] = $kcNames[(int) $row['kcid']] ?? '';
+            $member = Db::name('member')->field('nickname,headimg')->where('aid', $aid)->where('id', (int) $row['mid'])->find();
+            $rows[$k]['nickname']  = $member['nickname'] ?? '';
+            $rows[$k]['headimg']   = $member['headimg'] ?? '';
+            $rows[$k]['time_text'] = !empty($row['time']) ? date('Y-m-d H:i', (int) $row['time']) : '';
+            $rows[$k]['endtime_text'] = !empty($row['endtime']) ? date('Y-m-d H:i', (int) $row['endtime']) : '';
+        }
+
+        return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 答题详情（逐题；对标 canzhao KechengRecord::logs）
+     *
+     * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
+     */
+    public function recordLogs(int $aid, int $rid, int $page, int $pageSize): array
+    {
+        $query = ScopeService::query('kecheng_recordlog', $aid)->where('recordid', $rid);
+        $total = (clone $query)->count();
+        $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+
+        foreach ($rows as $k => $row) {
+            $tiku = ScopeService::query('kecheng_tiku', $aid)->where('id', (int) $row['tmid'])->find();
+            $rows[$k]['title'] = $tiku['title'] ?? '';
+            $rows[$k]['ttype'] = (int) ($tiku['type'] ?? 2);
+            $rows[$k]['time_text'] = !empty($row['time']) ? date('Y-m-d H:i', (int) $row['time']) : '';
+
+            if (1 === (int) ($tiku['type'] ?? 2)) {
+                $rightIdx = array_filter(explode(',', (string) ($tiku['right_option'] ?? '')), 'strlen');
+                $answerRaw = json_decode((string) $row['answer'], true);
+                if (is_array($answerRaw)) {
+                    $letters = [];
+                    foreach ($answerRaw as $d) {
+                        $letters[] = self::OPTION_SORTS[(int) $d] ?? '?';
+                    }
+                    $rows[$k]['answer'] = implode(',', $letters);
+                } else {
+                    $rows[$k]['answer'] = self::OPTION_SORTS[(int) $row['answer']] ?? (string) $row['answer'];
+                }
+            }
+            // 填空题 answer 原样保留
+        }
+
+        return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 答题记录删除（连同明细）
+     *
+     * @param array<int, int> $ids
+     */
+    public function recordDelete(int $aid, array $ids): void
+    {
+        $ids = array_values(array_filter(array_map('intval', $ids)));
+        if (empty($ids)) {
+            throw new BusinessException('请选择记录');
+        }
+
+        Db::name('kecheng_record')->where('aid', $aid)->whereIn('id', $ids)->delete();
+        Db::name('kecheng_recordlog')->where('aid', $aid)->whereIn('recordid', $ids)->delete();
     }
 }

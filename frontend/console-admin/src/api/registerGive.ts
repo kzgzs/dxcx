@@ -13,11 +13,15 @@ export interface RegisterGiveConfig {
   status: number
 }
 
-export interface CouponOption {
-  id: number
-  name: string
-  type?: number
-  money?: number
+export interface RegisterGiveSavePayload {
+  status: number
+  money: number
+  score: number
+  wanshan_score: number
+  give_coupon: number
+  coupon_ids: string
+  starttime: string
+  endtime: string
 }
 
 // 读取配置
@@ -26,13 +30,6 @@ export function getRegisterGiveConfig() {
 }
 
 // 保存配置
-export function saveRegisterGiveConfig(data: Partial<RegisterGiveConfig>) {
+export function saveRegisterGiveConfig(data: RegisterGiveSavePayload) {
   return request.post<unknown, null>('/admin/registerGive/save', data)
-}
-
-// 优惠券候选（送券多选）
-export function getCouponOptions() {
-  return request.get<unknown, { list: CouponOption[]; total: number }>('/admin/coupon/list', {
-    params: { page: 1, pagesize: 200 },
-  })
 }

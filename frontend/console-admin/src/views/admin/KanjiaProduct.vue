@@ -3,15 +3,19 @@ import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import {
-  checkKanjiaProduct,
   deleteKanjiaProduct,
   getKanjiaProductDetail,
   getKanjiaProductList,
+  getKanjiaJoinList,
   saveKanjiaProduct,
   setKanjiaProductStatus,
 } from '../../api/kanjia'
 import type { KanjiaProductKjRow, KanjiaProductRow } from '../../api/kanjia'
+import { getGoodsList } from '../../api/goods'
+import type { DesignerModule } from '../../api/designer'
+import { defaultModule } from './designerModules'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
 
 // 商户视图预置：bid 由菜单工厂注入，缺省=平台自营视图
 const props = withDefaults(defineProps<{ bid?: string }>(), { bid: '' })
@@ -29,8 +33,6 @@ const query = reactive({
   pagesize: 10,
   keyword: '',
   status: '' as number | '',
-  orderField: '',
-  orderType: '',
 })
 
 async function fetchList() {
@@ -42,8 +44,6 @@ async function fetchList() {
       keyword: query.keyword || undefined,
       status: query.status === '' ? undefined : query.status,
       bid: props.bid || undefined,
-      orderField: query.orderField || undefined,
-      orderType: query.orderType || undefined,
     })
     tableData.value = data.list || []
     total.value = data.total || 0
@@ -67,27 +67,20 @@ function handleSizeChange(s: number) {
   query.page = 1
   fetchList()
 }
-function handleSortChange({ prop, order }: { prop: string; order: string | null }) {
-  query.orderField = order ? prop : ''
-  query.orderType = order === 'ascending' ? 'asc' : 'desc'
-  fetchList()
-}
 function handleSelectionChange(rows: KanjiaProductRow[]) {
   selected.value = rows
 }
 
-// 活动状态文案与颜色
+// 活动状态文案与颜色（对齐截图：进行中绿 / 已结束灰 / 未上架红）
 function activityClass(row: KanjiaProductRow) {
   if (row.status === 0) return 'st-off'
   const now = Math.floor(Date.now() / 1000)
-  if (row.starttime > 0 && now < row.starttime) return 'st-pending'
   if (row.endtime > 0 && now > row.endtime) return 'st-end'
   return 'st-on'
 }
 function activityText(row: KanjiaProductRow) {
   if (row.status === 0) return '未上架'
   const now = Math.floor(Date.now() / 1000)
-  if (row.starttime > 0 && now < row.starttime) return '未开始'
   if (row.endtime > 0 && now > row.endtime) return '已结束'
   return '进行中'
 }
@@ -129,31 +122,6 @@ function batchStatus(status: number) {
     .catch(() => {})
 }
 
-// ============ 审核 ============
-function handleCheck(row: KanjiaProductRow, pass: boolean) {
-  if (pass) {
-    ElMessageBox.confirm(`确定通过砍价商品「${row.name}」的审核吗？`, '审核确认', { type: 'success' })
-      .then(async () => {
-        await checkKanjiaProduct(row.id, 1)
-        ElMessage.success('审核通过')
-        fetchList()
-      })
-      .catch(() => {})
-    return
-  }
-  ElMessageBox.prompt('请输入驳回原因', '驳回审核', {
-    inputType: 'textarea',
-    inputPlaceholder: '请填写驳回原因',
-    type: 'warning',
-  })
-    .then(async ({ value }) => {
-      await checkKanjiaProduct(row.id, 2, (value || '').trim())
-      ElMessage.success('已驳回')
-      fetchList()
-    })
-    .catch(() => {})
-}
-
 // ============ 单行删除 ============
 function handleDelete(row: KanjiaProductRow) {
   ElMessageBox.confirm(`确定删除砍价商品「${row.name}」吗？`, '删除确认', { type: 'warning' })
@@ -165,11 +133,41 @@ function handleDelete(row: KanjiaProductRow) {
     .catch(() => {})
 }
 
+// ============ 参与列表 ============
+const joinVisible = ref(false)
+const joinLoading = ref(false)
+const joinList = ref<Record<string, any>[]>([])
+const joinTitle = ref('')
+async function openJoin(row: KanjiaProductRow) {
+  joinVisible.value = true
+  joinTitle.value = row.name
+  joinLoading.value = true
+  joinList.value = []
+  try {
+    const d = await getKanjiaJoinList({ page: 1, pagesize: 50, proid: row.id } as never)
+    joinList.value = (d as unknown as { list: Record<string, any>[] }).list || []
+  } catch {
+    /* ignore */
+  } finally {
+    joinLoading.value = false
+  }
+}
+function fmtLeft(sec: number) {
+  sec = Number(sec) || 0
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  return h > 0 ? `${h}小时${m}分` : `${m}分`
+}
+
 // ============ 编辑 ============
 const isEdit = ref(false)
 const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const activeTab = ref('info')
+
+function defaultDetailModules(): DesignerModule[] {
+  return [defaultModule('richtext')]
+}
 
 const emptyForm = () => ({
   id: 0,
@@ -178,23 +176,33 @@ const emptyForm = () => ({
   pics: '' as string,
   sell_price: 0 as number,
   min_price: 0 as number,
-  stock: 0 as number,
-  helpnum: 5,
-  limitHour: 12,
-  directbuy: 0,
+  helpgive_type: 0 as number,
+  helpgive_percent: 0 as number,
+  weight: 0 as number,
+  sales: 0 as number,
+  stock: 100 as number,
+  directbuy: 0 as number,
+  freighttype: 1 as number,
   starttime: '' as string,
   endtime: '' as string,
-  sort: 0,
+  sort: 0 as number,
   status: 1,
-  detail: '',
-
+  detailModules: defaultDetailModules() as DesignerModule[],
 })
 const form = reactive(emptyForm())
-const kjRows = ref<KanjiaProductKjRow[]>([])
+
+// 砍价区间行：endnum 数字或字符串「最后一」
+interface KjRow {
+  startnum: number | string
+  endnum: number | string
+  startmoney: number
+  endmoney: number
+}
+const kjRows = ref<KjRow[]>([])
 
 function resetForm() {
   Object.assign(form, emptyForm())
-  kjRows.value = [{ startnum: 1, endnum: 0, startmoney: 0, endmoney: 0 }]
+  kjRows.value = [{ startnum: 1, endnum: '最后一', startmoney: 1, endmoney: 10 }]
 }
 
 function openAdd() {
@@ -218,34 +226,63 @@ async function openEdit(row: KanjiaProductRow) {
       pics: d.pics || '',
       sell_price: Number(d.sell_price),
       min_price: Number(d.min_price),
+      helpgive_type: Number((d as any).helpgive_type ?? 0),
+      helpgive_percent: Number((d as any).helpgive_percent ?? 0),
+      weight: Number((d as any).weight ?? 0),
+      sales: Number((d as any).sales ?? 0),
       stock: d.stock,
-      helpnum: d.helpnum,
-      limitHour: d.limitHour,
       directbuy: d.directbuy,
+      freighttype: Number((d as any).freighttype ?? 1),
       starttime: fmtTs(d.starttime),
       endtime: fmtTs(d.endtime),
       sort: d.sort,
       status: d.status,
-      detail: d.detail || '',
-
     })
-    const kj = (d.kjdata_list || []).map((k) => ({
-      startnum: Number(k.startnum) || 0,
-      endnum: k.endnum,
-      startmoney: Number(k.startmoney) || 0,
-      endmoney: Number(k.endmoney) || 0,
-    }))
-    kjRows.value = kj.length ? kj : [{ startnum: 1, endnum: 0, startmoney: 0, endmoney: 0 }]
+    // 详情装修器：detail 为 DesignerModule[] 的 JSON
+    let modules: DesignerModule[] = []
+    if (d.detail) {
+      try {
+        const parsed = JSON.parse(d.detail)
+        if (Array.isArray(parsed)) modules = parsed
+      } catch {
+        modules = []
+      }
+    }
+    form.detailModules = modules.length ? modules : defaultDetailModules()
+
+    const kj = ((d as any).kjdata_list || []) as KanjiaProductKjRow[]
+    kjRows.value = kj.length
+      ? kj.map((k, i) => ({
+          startnum: i === 0 ? 1 : (Number(k.startnum) || ''),
+          endnum: i === kj.length - 1 ? '最后一' : (Number(k.endnum) || ''),
+          startmoney: Number(k.startmoney) || 0,
+          endmoney: Number(k.endmoney) || 0,
+        }))
+      : [{ startnum: 1, endnum: '最后一', startmoney: 1, endmoney: 10 }]
   } catch {
     viewMode.value = 'list'
   }
 }
 
+// 点「+」（首行）：把当前末行的「最后一」解锁为可编辑数字，末尾追加新行（新行 endnum=最后一）
 function addKjRow() {
-  kjRows.value.push({ startnum: 0, endnum: 0, startmoney: 0, endmoney: 0 })
+  const lastIdx = kjRows.value.length - 1
+  // 旧末行不再是末行：endnum 变为可编辑数字（清空待填）
+  kjRows.value[lastIdx].endnum = ''
+  // 追加新末行
+  kjRows.value.push({
+    startnum: '',
+    endnum: '最后一',
+    startmoney: 1,
+    endmoney: 10,
+  })
 }
+// 点「-」（非首行）：删除该行，新末行 endnum 锁定为「最后一」
 function removeKjRow(i: number) {
+  if (kjRows.value.length <= 1) return
   kjRows.value.splice(i, 1)
+  const last = kjRows.value[kjRows.value.length - 1]
+  last.endnum = '最后一'
 }
 
 function backToList() {
@@ -254,64 +291,97 @@ function backToList() {
 }
 
 async function handleSubmit() {
-  if (!formRef.value) return
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    if (!form.pic) {
-      ElMessage.warning('请上传商品主图')
-      return
-    }
-    submitting.value = true
-    try {
-      await saveKanjiaProduct({
-        id: form.id || undefined,
-        name: form.name,
-        pic: form.pic,
-        pics: form.pics,
-        sell_price: Number(form.sell_price),
-        min_price: Number(form.min_price),
-        stock: Number(form.stock),
-        helpnum: Number(form.helpnum),
-        limitHour: Number(form.limitHour),
-        directbuy: form.directbuy ? 1 : 0,
-        starttime: form.starttime || undefined,
-        endtime: form.endtime || undefined,
-        sort: Number(form.sort),
-        status: form.status ? 1 : 0,
-        detail: form.detail,
+  if (formRef.value) {
+    try { await formRef.value.validate() } catch { return }
+  }
+  submitting.value = true
+  try {
+    // 组装 kjdata：末行 endnum 已为「最后一」，首行 startnum 固定 1
+    const rows = kjRows.value.map((r, i) => ({
+      startnum: i === 0 ? 1 : Number(r.startnum) || 0,
+      endnum: i === kjRows.value.length - 1 ? '最后一' : Number(r.endnum) || 0,
+      startmoney: Number(r.startmoney) || 0,
+      endmoney: Number(r.endmoney) || 0,
+    }))
+    await saveKanjiaProduct({
+      id: form.id || undefined,
+      name: form.name,
+      pic: form.pic,
+      pics: form.pics,
+      sell_price: Number(form.sell_price),
+      min_price: Number(form.min_price),
+      stock: Number(form.stock),
+      helpnum: 10,
+      limitHour: 48,
+      directbuy: form.directbuy ? 1 : 0,
+      starttime: form.starttime || undefined,
+      endtime: form.endtime || undefined,
+      sort: Number(form.sort),
+      status: form.status ? 1 : 0,
+      weight: Number(form.weight),
+      sales: Number(form.sales),
+      helpgive_type: Number(form.helpgive_type),
+      helpgive_percent: Number(form.helpgive_percent),
+      freighttype: Number(form.freighttype),
+      detail: JSON.stringify(form.detailModules || []),
+      kjdata: rows,
+    } as never)
+    ElMessage.success('保存成功')
+    backToList()
+  } catch {
+    /* 错误已提示 */
+  } finally {
+    submitting.value = false
+  }
+}
 
-        kjdata: kjRows.value.map((r) => ({
-          startnum: Number(r.startnum) || 0,
-          endnum: Number(r.endnum) || 0,
-          startmoney: Number(r.startmoney) || 0,
-          endmoney: Number(r.endmoney) || 0,
-        })),
-      })
-      ElMessage.success('保存成功')
-      backToList()
-    } catch {
-      /* 错误已提示 */
-    } finally {
-      submitting.value = false
-    }
-  })
+// ============ 选择商城商品 ============
+const chooseVisible = ref(false)
+const chooseLoading = ref(false)
+const chooseKeyword = ref('')
+const choosePage = ref(1)
+const chooseTotal = ref(0)
+const chooseList = ref<{ id: number; name: string; image: string; price: number }[]>([])
+async function openChoose() {
+  chooseVisible.value = true
+  chooseKeyword.value = ''
+  choosePage.value = 1
+  await fetchChoose()
+}
+async function fetchChoose() {
+  chooseLoading.value = true
+  try {
+    const d = await getGoodsList({ page: choosePage.value, pagesize: 10, keyword: chooseKeyword.value || undefined, status: 1 } as never)
+    chooseList.value = (d as unknown as { list: any[] }).list.map((g) => ({
+      id: Number(g.id),
+      name: String(g.name),
+      image: String(g.image || g.pic || ''),
+      price: Number(g.price ?? g.sell_price ?? 0),
+    }))
+    chooseTotal.value = (d as unknown as { total: number }).total || 0
+  } catch {
+    /* ignore */
+  } finally {
+    chooseLoading.value = false
+  }
+}
+function handleChooseSearch() {
+  choosePage.value = 1
+  fetchChoose()
+}
+function pickGoods(g: { id: number; name: string; image: string; price: number }) {
+  form.name = g.name
+  form.pic = g.image
+  if (g.image) form.pics = g.image
+  form.sell_price = g.price
+  chooseVisible.value = false
 }
 
 // ============ 选图 ============
 const imgPickerVisible = ref(false)
-let imgSetter: ((u: string) => void) | null = null
-function openImg(setter: (u: string) => void) {
-  imgSetter = setter
-  imgPickerVisible.value = true
-}
-function onPick(urls: string[]) {
-  if (urls[0] && imgSetter) imgSetter(urls[0])
-  imgSetter = null
-}
-
 const multiPickerVisible = ref(false)
-function openMultiPick() {
-  multiPickerVisible.value = true
+function onPick(urls: string[]) {
+  if (urls[0]) form.pic = urls[0]
 }
 function onMultiPick(urls: string[]) {
   const cur = form.pics ? form.pics.split(',').filter(Boolean) : []
@@ -336,10 +406,11 @@ onMounted(fetchList)
       </div>
       <el-form inline class="toolbar-search" @submit.prevent>
         <el-form-item label="商品名称">
-          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 120px" @keyup.enter="handleSearch" />
+          <el-input v-model="query.keyword" placeholder="商品名称" clearable style="width: 140px" @keyup.enter="handleSearch" />
         </el-form-item>
         <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 90px">
+          <el-select v-model="query.status" placeholder="全部" clearable style="width: 96px">
+            <el-option label="全部" :value="''" />
             <el-option label="已上架" :value="1" />
             <el-option label="未上架" :value="0" />
           </el-select>
@@ -353,12 +424,9 @@ onMounted(fetchList)
     </el-card>
 
     <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange" @sort-change="handleSortChange">
+      <el-table v-loading="loading" :data="tableData" border @selection-change="handleSelectionChange">
         <el-table-column type="selection" width="40" align="center" />
-        <el-table-column prop="id" label="ID" width="60" sortable="custom" align="center" />
-        <el-table-column v-if="isMerchantView" prop="bname" label="所属商户" width="96" align="center">
-          <template #default="{ row }">{{ row.bname }}</template>
-        </el-table-column>
+        <el-table-column prop="id" label="ID" width="60" align="left" />
         <el-table-column label="商品信息" min-width="260">
           <template #default="{ row }">
             <div class="goods-info">
@@ -372,35 +440,23 @@ onMounted(fetchList)
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="stock" label="库存" width="80" align="center" />
-        <el-table-column prop="sales" label="已成功" width="80" sortable="custom" align="center" />
-        <el-table-column prop="saleing" label="砍价中" width="80" sortable="custom" align="center" />
-        <el-table-column label="活动时间" width="220" align="center">
+        <el-table-column prop="stock" label="库存" width="80" align="left" />
+        <el-table-column prop="sales" label="已成功" width="80" align="left" />
+        <el-table-column prop="saleing" label="砍价中" width="80" align="left" />
+        <el-table-column label="活动时间" width="220" align="left">
           <template #default="{ row }">{{ fmtTs(row.starttime) }} ~ {{ fmtTs(row.endtime) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="80" align="center">
+        <el-table-column label="状态" width="80" align="left">
           <template #default="{ row }">
             <span :class="activityClass(row)">{{ activityText(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column v-if="isMerchantView" label="审核状态" width="86" align="center">
-          <template #default="{ row }">
-            <el-tooltip :content="row.check_reason" :disabled="!row.check_reason" placement="top">
-              <span :class="row.ischecked === 1 ? 'ck-pass' : row.ischecked === 2 ? 'ck-reject' : 'ck-pending'">
-                {{ row.ischecked === 1 ? '已通过' : row.ischecked === 2 ? '已驳回' : '待审核' }}
-              </span>
-            </el-tooltip>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作" width="180">
+        <el-table-column label="操作" width="200">
           <template #default="{ row }">
             <div class="row-ops">
+              <el-button link type="primary" @click="openJoin(row)">参与列表</el-button>
               <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
               <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-              <template v-if="isMerchantView">
-                <el-button v-if="row.ischecked === 0 || row.ischecked === 2" link type="success" @click="handleCheck(row, true)">通过</el-button>
-                <el-button v-if="row.ischecked === 0 || row.ischecked === 1" link type="warning" @click="handleCheck(row, false)">驳回</el-button>
-              </template>
             </div>
           </template>
         </el-table-column>
@@ -417,6 +473,25 @@ onMounted(fetchList)
         @size-change="handleSizeChange"
       />
     </el-card>
+
+    <!-- 参与列表弹窗 -->
+    <el-dialog v-model="joinVisible" :title="`参与列表 - ${joinTitle}`" width="720px">
+      <el-table v-loading="joinLoading" :data="joinList" size="small" border max-height="420">
+        <el-table-column label="会员" min-width="160">
+          <template #default="{ row }">{{ row.nickname || ('会员' + row.mid) }}</template>
+        </el-table-column>
+        <el-table-column prop="cut_percent" label="已砍比例" width="100">
+          <template #default="{ row }">{{ Math.round(Number(row.cut_percent || 0)) }}%</template>
+        </el-table-column>
+        <el-table-column label="目标人数" width="90">
+          <template #default="{ row }">{{ row.target_helpnum }}</template>
+        </el-table-column>
+        <el-table-column prop="status_text" label="状态" width="90" />
+        <el-table-column label="剩余时间" width="110">
+          <template #default="{ row }">{{ fmtLeft(row.leftsecond) }}</template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
   </div>
 
   <!-- ================= 整页编辑 ================= -->
@@ -428,107 +503,166 @@ onMounted(fetchList)
       </el-button>
     </div>
 
-    <el-form ref="formRef" :model="form" label-position="right" label-width="116px" class="ge-form">
+    <el-form ref="formRef" :model="form" label-position="right" label-width="110px" class="ge-form">
       <el-tabs v-model="activeTab" class="ge-tabs">
         <!-- 基本信息 -->
         <el-tab-pane label="商品基本信息" name="info">
           <el-form-item label="商品名称" required>
-            <el-input v-model="form.name" maxlength="120" style="width: 400px" placeholder="请输入商品名称" />
+            <el-input v-model="form.name" maxlength="120" style="width: 300px" />
+            <el-button size="small" style="margin-left: 10px" @click="openChoose">选择商城商品</el-button>
           </el-form-item>
-          <el-form-item label="商品主图" required>
-            <el-image v-if="form.pic" :src="form.pic" fit="cover" class="main-pic" @click="openImg((u) => (form.pic = u))" />
-            <el-button v-else size="small" @click="openImg((u) => (form.pic = u))">上传图片</el-button>
-            <span class="ge-hint">建议尺寸 640×640</span>
+          <el-form-item label="商品主图">
+            <el-image v-if="form.pic" :src="form.pic" fit="cover" class="main-pic" @click="imgPickerVisible = true" />
+            <el-button v-else size="small" @click="imgPickerVisible = true">上传图片</el-button>
+            <span class="ge-hint">建议尺寸：640×640像素</span>
           </el-form-item>
-          <el-form-item label="商品轮播图">
+          <el-form-item label="商品图片">
             <div class="pic-line">
               <div v-for="u in (form.pics ? form.pics.split(',').filter(Boolean) : [])" :key="u" class="pic-item">
                 <el-image :src="u" fit="cover" class="pic-thumb" />
                 <span class="pic-del" @click="form.pics = (form.pics.split(',').filter((x: string) => x !== u) as string[]).join(',')">×</span>
               </div>
-              <el-button size="small" @click="openMultiPick">+ 添加轮播图</el-button>
+              <el-button size="small" @click="multiPickerVisible = true">批量上传</el-button>
             </div>
+            <span class="ge-hint">建议尺寸：640×640像素</span>
           </el-form-item>
-
-          <el-form-item label="原价" required>
-            <el-input-number v-model="form.sell_price" :min="0" :precision="2" :controls="false" style="width: 140px" />
-            <span class="ge-unit">元</span>
+          <el-form-item label="原价：">
+            <el-input v-model="form.sell_price" :type="Number" :controls="false" style="width: 160px" />
+            <span class="ge-hint">最初价格</span>
           </el-form-item>
-          <el-form-item label="最低价" required>
-            <el-input-number v-model="form.min_price" :min="0" :precision="2" :controls="false" style="width: 140px" />
-            <span class="ge-unit">元（砍价底价）</span>
+          <el-form-item label="底价：">
+            <el-input v-model="form.min_price" :type="Number" :controls="false" style="width: 160px" />
+            <span class="ge-hint">最低价格，砍到该价格就不能再砍了</span>
           </el-form-item>
-          <el-form-item label="库存">
-            <el-input-number v-model="form.stock" :min="0" :controls="false" style="width: 140px" />
+          <el-form-item label="帮砍得：">
+            <el-radio-group v-model="form.helpgive_type">
+              <el-radio :value="0">积分</el-radio>
+              <el-radio :value="1">余额</el-radio>
+            </el-radio-group>
+            <span class="ge-unit">比例(%)</span>
+            <el-input v-model="form.helpgive_percent" :type="Number" :controls="false" style="width: 90px" />
+            <span class="ge-hint">帮砍人砍掉多少钱就得百分之多少的积分或余额</span>
           </el-form-item>
-          <el-form-item label="活动开始时间">
-            <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm" placeholder="选择开始时间" />
+          <el-form-item label="重量：">
+            <el-input v-model="form.weight" :type="Number" :controls="false" style="width: 160px" />
+            <span class="ge-unit">克</span>
           </el-form-item>
-          <el-form-item label="活动结束时间">
-            <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm" placeholder="选择结束时间" />
+          <el-form-item label="库存：">
+            <el-input v-model="form.stock" :type="Number" :controls="false" style="width: 160px" />
+            <span class="ge-hint">库存为零时，本商品所有正在进行的砍价将变成砍价失败状态</span>
           </el-form-item>
-          <el-form-item label="砍价时长">
-            <el-input-number v-model="form.limitHour" :min="1" :max="720" :controls="false" style="width: 140px" />
-            <span class="ge-unit">小时（单人砍价有效期）</span>
+          <el-form-item label="开始时间：">
+            <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择开始时间" />
           </el-form-item>
-          <el-form-item label="砍价人数">
-            <el-input-number v-model="form.helpnum" :min="1" :max="100" :controls="false" style="width: 140px" />
-            <span class="ge-unit">人</span>
+          <el-form-item label="结束时间：">
+            <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择结束时间" />
           </el-form-item>
-          <el-form-item label="直接购买">
-            <el-switch v-model="form.directbuy" :active-value="1" :inactive-value="0" />
-            <span class="ge-unit">开启后未砍到底价也可直接购买</span>
+          <el-form-item label="直接购买：">
+            <el-radio-group v-model="form.directbuy">
+              <el-radio :value="0">关闭</el-radio>
+              <el-radio :value="1">开启</el-radio>
+            </el-radio-group>
+            <span class="ge-hint">砍价过程中，未砍到底价是否可以直接购买</span>
           </el-form-item>
-          <el-form-item label="序号">
-            <el-input-number v-model="form.sort" :min="0" :controls="false" style="width: 140px" />
+          <el-form-item label="配送模板：">
+            <el-radio-group v-model="form.freighttype">
+              <el-radio :value="1">全部模板</el-radio>
+              <el-radio :value="2">选择模板</el-radio>
+              <el-radio :value="3">自动发货</el-radio>
+              <el-radio :value="4">在线卡密</el-radio>
+            </el-radio-group>
           </el-form-item>
-          <el-form-item label="上架状态">
-            <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
+          <el-form-item label="销量：">
+            <el-input v-model="form.sales" :type="Number" :controls="false" style="width: 160px" />
+          </el-form-item>
+          <el-form-item label="序号：">
+            <el-input v-model="form.sort" :type="Number" :controls="false" style="width: 160px" />
+            <span class="ge-hint">用于排序，越大越靠前</span>
+          </el-form-item>
+          <el-form-item label=" ">
+            <el-button type="primary" @click="activeTab = 'kj'">下一步 编辑砍价区间</el-button>
+            <el-button type="warning" :loading="submitting" @click="handleSubmit">提交</el-button>
           </el-form-item>
         </el-tab-pane>
 
         <!-- 砍价区间设置 -->
         <el-tab-pane label="砍价区间设置" name="kj">
-          <div class="ge-block-hint">分段砍价金额区间：按已砍人数区间设置可砍金额，留空则走内置递减。</div>
-          <table class="kj-table">
-            <thead>
-              <tr><th style="width:160px">已砍人数起始</th><th style="width:160px">已砍人数结束</th><th style="width:160px">开始金额</th><th style="width:160px">结束金额</th><th style="width:90px">操作</th></tr>
-            </thead>
-            <tbody>
-              <tr v-for="(row, i) in kjRows" :key="i">
-                <td><el-input-number v-model="row.startnum" :min="0" :controls="false" size="small" style="width: 140px" /></td>
-                <td><el-input-number v-model="row.endnum" :min="0" :controls="false" size="small" style="width: 140px" /></td>
-                <td><el-input-number v-model="row.startmoney" :min="0" :precision="2" :controls="false" size="small" style="width: 140px" /></td>
-                <td><el-input-number v-model="row.endmoney" :min="0" :precision="2" :controls="false" size="small" style="width: 140px" /></td>
-                <td><el-button size="small" type="danger" plain @click="removeKjRow(i)">删除</el-button></td>
-              </tr>
-            </tbody>
-          </table>
-          <el-button size="small" style="margin-top: 10px" @click="addKjRow">+ 添加区间</el-button>
+          <div class="kj-line" v-for="(row, i) in kjRows" :key="i">
+            <span class="kj-label">{{ i === 0 ? '砍价区间设置：' : '' }}</span>
+            <span>第</span>
+            <el-input v-if="i === 0" :model-value="1" disabled size="small" style="width: 70px" />
+            <el-input v-else v-model="row.startnum" :type="Number" :controls="false" size="small" style="width: 70px" />
+            <span>刀到第</span>
+            <template v-if="i === kjRows.length - 1">
+              <span class="kj-last">最后一</span>
+            </template>
+            <el-input v-else v-model="row.endnum" :type="Number" :controls="false" size="small" style="width: 70px" />
+            <span>刀，每刀砍掉</span>
+            <el-input v-model="row.startmoney" :type="Number" :controls="false" size="small" style="width: 70px" />
+            <span>到</span>
+            <el-input v-model="row.endmoney" :type="Number" :controls="false" size="small" style="width: 70px" />
+            <span>元</span>
+            <el-button v-if="i === 0" size="small" circle @click="addKjRow">+</el-button>
+            <el-button v-else size="small" circle @click="removeKjRow(i)">-</el-button>
+          </div>
+          <div class="kj-actions">
+            <el-button type="primary" @click="activeTab = 'info'">上一步 编辑基本信息</el-button>
+            <el-button type="primary" @click="activeTab = 'detail'">下一步 编辑商品详情</el-button>
+            <el-button type="warning" :loading="submitting" @click="handleSubmit">提交</el-button>
+          </div>
         </el-tab-pane>
 
         <!-- 商品详情 -->
         <el-tab-pane label="商品详情" name="detail">
-          <el-form-item label="商品详情">
-            <el-input v-model="form.detail" type="textarea" :rows="8" placeholder="请输入商品详情（支持 HTML）" style="width: 720px" />
-          </el-form-item>
+          <GoodsDetailEditor v-model="form.detailModules" title="商品详情" />
+          <div class="kj-actions">
+            <el-button type="primary" @click="activeTab = 'info'">上一步 编辑基本信息</el-button>
+            <el-button type="warning" :loading="submitting" @click="handleSubmit">提交</el-button>
+          </div>
         </el-tab-pane>
       </el-tabs>
-
-      <div class="tab-footer">
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">保存</el-button>
-        <el-button @click="backToList">取消</el-button>
-      </div>
     </el-form>
-  </div>
 
-  <ImgIconPicker v-model:visible="imgPickerVisible" default-tab="library" @pick="onPick" />
-  <ImgIconPicker v-model:visible="multiPickerVisible" default-tab="library" multi @pick="onMultiPick" />
+    <ImgIconPicker v-model:visible="imgPickerVisible" default-tab="library" @pick="onPick" />
+    <ImgIconPicker v-model:visible="multiPickerVisible" default-tab="library" multi @pick="onMultiPick" />
+
+    <!-- 选择商城商品弹窗 -->
+    <el-dialog v-model="chooseVisible" title="选择商城商品" width="760px">
+      <div class="choose-bar">
+        <el-input v-model="chooseKeyword" placeholder="输入商品名称搜索" clearable style="width: 240px" @keyup.enter="handleChooseSearch" />
+        <el-button type="primary" @click="handleChooseSearch">搜索</el-button>
+      </div>
+      <el-table v-loading="chooseLoading" :data="chooseList" size="small" border style="margin-top: 10px">
+        <el-table-column label="商品" min-width="260">
+          <template #default="{ row }">
+            <div class="choose-goods">
+              <el-image v-if="row.image" :src="row.image" fit="cover" class="choose-img" />
+              <span>{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="price" label="价格" width="100" />
+        <el-table-column label="操作" width="90">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="pickGoods(row)">选择</el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-pagination
+        layout="prev, pager, next"
+        :total="chooseTotal"
+        :current-page="choosePage"
+        :page-size="10"
+        style="margin-top: 10px; justify-content: flex-end"
+        @current-change="(p: number) => { choosePage = p; fetchChoose() }"
+      />
+    </el-dialog>
+  </div>
 </template>
 
 <style scoped>
-.toolbar { margin-bottom: 12px; }
-.toolbar :deep(.el-card__body) { padding: 10px 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.toolbar { margin-bottom: 3px; }
+.toolbar :deep(.el-card__body) { padding: 3px 6px; display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: nowrap; }
 .toolbar-left { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
 .toolbar-left .el-button { margin: 0; }
 .toolbar-search { display: flex; align-items: center; flex: 1 1 auto; justify-content: flex-end; flex-wrap: nowrap; min-width: 0; margin: 0; }
@@ -538,8 +672,12 @@ onMounted(fetchList)
 .search-icon-btn { padding: 8px 14px; }
 .search-icon-btn svg { display: block; }
 
+:deep(.el-table) { background: #fff; }
+:deep(th.el-table__cell) { background: #e6e6e6 !important; }
+:deep(.cell) { text-align: left; }
+
 .goods-info { display: flex; align-items: center; gap: 10px; }
-.goods-info-img { width: 70px; height: 70px; border-radius: 4px; border: 1px solid #ebeef5; flex-shrink: 0; }
+.goods-info-img { width: 50px; height: 50px; border-radius: 4px; border: 1px solid #ebeef5; flex-shrink: 0; }
 .goods-info-img-empty { display: flex; align-items: center; justify-content: center; color: #c0c4cc; font-size: 12px; background: #fafafa; }
 .goods-info-meta { min-width: 0; flex: 1; }
 .goods-info-name { color: #303133; font-size: 13px; line-height: 1.5; word-break: break-all; }
@@ -548,27 +686,21 @@ onMounted(fetchList)
 
 .st-on { color: #5FB878; }
 .st-off { color: #f55; }
-.st-pending { color: #888; }
 .st-end { color: #ccc; }
-.ck-pending { color: #409eff; }
-.ck-pass { color: #21ba45; }
-.ck-reject { color: #f56c6c; }
 
-.row-ops { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; line-height: 1.5; }
+.row-ops { display: flex; flex-direction: row; flex-wrap: nowrap; gap: 4px 10px; line-height: 1.6; align-items: center; }
 .row-ops .el-button { margin: 0; height: auto; min-height: 0; padding: 0; font-size: 12px; }
 .row-ops :deep(.el-button) { height: auto; padding: 1px 0; margin: 0; font-size: 12px; }
-.pagination { margin-top: 16px; justify-content: flex-end; }
+.pagination { margin-top: 12px; justify-content: flex-end; }
 
-.goods-edit { background: #fff; border-radius: 6px; padding: 16px 20px; }
+.goods-edit { background: #fff; border-radius: 4px; padding: 16px 20px; margin: 3px; }
 .ge-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
-.ge-head-title { font-size: 16px; font-weight: 600; color: #303133; }
+.ge-head-title { font-size: 15px; font-weight: 600; color: #303133; }
 .ge-close { border: none; background: transparent; color: #909399; }
 .ge-close:hover { color: #409eff; }
-.ge-form :deep(.el-form-item) { margin-bottom: 15px; }
-.ge-hint { color: #909399; font-size: 12px; line-height: 1.5; margin-left: 10px; }
-.ge-unit { color: #909399; font-size: 12px; margin-left: 8px; }
-.ge-block-hint { color: #909399; font-size: 12px; line-height: 1.7; margin-bottom: 10px; }
-.tab-footer { display: flex; justify-content: center; gap: 14px; padding: 16px 0 8px; border-top: 1px solid #ebeef5; }
+.ge-form :deep(.el-form-item) { margin-bottom: 14px; }
+.ge-hint { color: #909399; font-size: 12px; margin-left: 10px; }
+.ge-unit { color: #606266; font-size: 12px; margin: 0 6px 0 10px; }
 
 .main-pic { width: 80px; height: 80px; border-radius: 4px; border: 1px solid #e4e7ed; cursor: pointer; }
 .pic-line { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
@@ -576,7 +708,12 @@ onMounted(fetchList)
 .pic-thumb { width: 64px; height: 64px; border-radius: 4px; border: 1px solid #e4e7ed; object-fit: cover; }
 .pic-del { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; line-height: 16px; text-align: center; background: #f56c6c; color: #fff; border-radius: 50%; cursor: pointer; font-size: 12px; }
 
-.kj-table { width: 100%; max-width: 760px; border-collapse: collapse; font-size: 13px; }
-.kj-table th, .kj-table td { border: 1px solid #dcdfe6; padding: 6px 8px; text-align: center; }
-.kj-table th { background: #f5f7fa; color: #606266; font-weight: 600; }
+.kj-line { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 14px; font-size: 13px; color: #606266; }
+.kj-label { width: 90px; }
+.kj-last { display: inline-block; padding: 0 8px; color: #909399; }
+.kj-actions { margin-top: 18px; display: flex; gap: 12px; }
+
+.choose-bar { display: flex; gap: 10px; align-items: center; }
+.choose-goods { display: flex; align-items: center; gap: 8px; }
+.choose-img { width: 40px; height: 40px; border-radius: 4px; }
 </style>

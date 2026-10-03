@@ -1,34 +1,61 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Search } from '@element-plus/icons-vue'
+import { Close, Search } from '@element-plus/icons-vue'
 import {
   addCuxiao,
   deleteCuxiao,
+  deleteCuxiaoBatch,
   editCuxiao,
-  getCategoryOptions,
   getCuxiaoDetail,
   getCuxiaoList,
-  getGoodsOptions,
-  setCuxiaoStatus,
-  type CategoryOption,
   type CuxiaoItem,
-  type GoodsOption,
 } from '../../api/cuxiao'
+import { getCategoryList, getGoodsList } from '../../api/goods'
+import { getMemberLevelList } from '../../api/member'
+import type { CategoryItem, GoodsItem, MemberLevelItem } from '../../api/types'
 
-const TYPE_OPTIONS = [
-  { value: 0, label: '仅显示' },
-  { value: 1, label: '满减' },
-  { value: 2, label: '满赠' },
-  { value: 3, label: '换购' },
+// ============ 促销类型（对标 canzhao cuxiao/edit.html） ============
+// 1满额立减 2满额赠送 3加价换购 4满额打折 5满件打折 6满件立减 0无
+const TYPE_OPTIONS: { value: number; label: string; tip: string }[] = [
+  { value: 1, label: '满额立减', tip: '满减' },
+  { value: 2, label: '满额赠送', tip: '满赠' },
+  { value: 3, label: '加价换购', tip: '换购' },
+  { value: 4, label: '满额打折', tip: '打折' },
+  { value: 6, label: '满件立减', tip: '立减' },
+  { value: 5, label: '满件打折', tip: '打折' },
+  { value: 0, label: '无', tip: '特价' },
 ]
-const TYPE_TEXT: Record<number, string> = { 0: '仅显示', 1: '满减', 2: '满赠', 3: '换购' }
+const TYPE_TEXT: Record<number, string> = {
+  0: '无',
+  1: '满额立减',
+  2: '满额赠送',
+  3: '加价换购',
+  4: '满额打折',
+  5: '满件打折',
+  6: '满件立减',
+}
+
+// 条件字段显隐
+const showMinprice = computed(() => [1, 2, 3, 4].includes(form.type))
+const showMinnum = computed(() => [5, 6].includes(form.type))
+const showMoney = computed(() => [1, 3, 6].includes(form.type))
+const showZhekou = computed(() => [4, 5].includes(form.type))
+const showGift = computed(() => [2, 3].includes(form.type))
+const moneyLabel = computed(() => (form.type === 3 ? '加价金额' : '立减金额'))
+const giftLabel = computed(() => (form.type === 2 ? '赠送商品' : '换购商品'))
+const showRowZk = computed(() => [4, 5].includes(form.type))
+const showRowNum = computed(() => [5, 6].includes(form.type))
+
+// ============ 视图切换 ============
+const viewMode = ref<'list' | 'edit'>('list')
 
 // ============ 列表 ============
 const loading = ref(false)
 const list = ref<CuxiaoItem[]>([])
 const total = ref(0)
-const query = reactive({ page: 1, pagesize: 10, keyword: '', type: '' })
+const selected = ref<CuxiaoItem[]>([])
+const query = reactive({ page: 1, pagesize: 10, keyword: '' })
 
 async function fetchList() {
   loading.value = true
@@ -37,7 +64,7 @@ async function fetchList() {
     list.value = d.list || []
     total.value = d.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 错误提示由拦截器统一弹出
   } finally {
     loading.value = false
   }
@@ -48,115 +75,255 @@ function handleSearch() {
   fetchList()
 }
 
-async function handleStatus(row: CuxiaoItem, status: number) {
-  try {
-    await setCuxiaoStatus(row.id, status)
-    ElMessage.success(status === 1 ? '已启用' : '已停用')
-    fetchList()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  }
+function handleSelectionChange(rows: CuxiaoItem[]) {
+  selected.value = rows
 }
 
-async function handleDelete(row: CuxiaoItem) {
-  try {
-    await ElMessageBox.confirm(`确定删除活动「${row.name}」？`, '提示', { type: 'warning' })
-    await deleteCuxiao(row.id)
-    ElMessage.success('删除成功')
-    fetchList()
-  } catch {
-    // 取消或失败
-  }
+function handlePageChange(p: number) {
+  query.page = p
+  fetchList()
 }
 
-// ============ 表单弹窗 ============
-const dialogVisible = ref(false)
+function handleSizeChange(s: number) {
+  query.pagesize = s
+  query.page = 1
+  fetchList()
+}
+
+function handleDelete(row: CuxiaoItem) {
+  ElMessageBox.confirm(`确定删除活动「${row.name}」？`, '提示', { type: 'warning' })
+    .then(async () => {
+      await deleteCuxiao(row.id)
+      ElMessage.success('删除成功')
+      fetchList()
+    })
+    .catch(() => {})
+}
+
+function handleBatchDelete() {
+  if (selected.value.length === 0) {
+    ElMessage.warning('请先勾选要删除的活动')
+    return
+  }
+  ElMessageBox.confirm(`确定删除选中的 ${selected.value.length} 个活动？`, '批量删除', { type: 'warning' })
+    .then(async () => {
+      await deleteCuxiaoBatch(selected.value.map((r) => r.id))
+      ElMessage.success('删除成功')
+      fetchList()
+    })
+    .catch(() => {})
+}
+
+// 状态：按活动起止时间推算（对标 canzhao index）
+function statusLabel(row: CuxiaoItem): { text: string; type: 'info' | 'success' | 'danger' } {
+  const now = Date.now() / 1000
+  const start = row.starttime ? new Date(row.starttime.replace(' ', 'T')).getTime() / 1000 : 0
+  const end = row.endtime ? new Date(row.endtime.replace(' ', 'T')).getTime() / 1000 : 0
+  if (start > 0 && now < start) return { text: '未开始', type: 'info' }
+  if (end > 0 && now > end) return { text: '已结束', type: 'info' }
+  return { text: '进行中', type: 'success' }
+}
+
+// ============ 编辑表单 ============
 const saving = ref(false)
 const isEdit = ref(false)
 
+interface ProductRow {
+  id: number
+  name: string
+  zk: string
+  num: string
+}
+interface CategoryRow {
+  id: number
+  name: string
+}
+
 const form = reactive({
   id: 0,
-  name: '',
   type: 1,
-  tip: '',
-  gettj: '-1',
-  fwtype: 0,
-  categoryArr: [] as number[],
-  productArr: [] as number[],
+  tip: '满减',
+  name: '',
   minprice: 0,
   minnum: 1,
   money: 0,
+  zhekou: 0,
   proid: 0,
   ggid: 0,
-  status: 1,
+  fwtype: 0,
+  categoryRows: [] as CategoryRow[],
+  productRows: [] as ProductRow[],
+  gettjArr: ['-1'] as string[],
+  starttime: '',
+  endtime: '',
   sort: 0,
 })
-const timeRange = ref<[string, string] | null>(null)
 
-const goodsOptions = ref<GoodsOption[]>([])
-const categoryOptions = ref<CategoryOption[]>([])
+const levelOptions = ref<MemberLevelItem[]>([])
+const categoryOptions = ref<CategoryItem[]>([])
+const goodsOptions = ref<GoodsItem[]>([])
 
-const moneyLabel = computed(() => (form.type === 3 ? '换购加价金额' : '减免金额'))
+// 参与条件：勾选“所有人”时互斥
+function onGettjChange(val: string[]) {
+  if (val.includes('-1')) {
+    form.gettjArr = ['-1']
+  }
+}
+
+// 促销类型切换：写入 type 并自动回填活动标识
+function onTypeChange(val: number) {
+  form.type = val
+  const opt = TYPE_OPTIONS.find((o) => o.value === val)
+  if (opt) form.tip = opt.tip
+}
 
 async function loadCandidates() {
   try {
-    const [goods, cats] = await Promise.all([getGoodsOptions(), getCategoryOptions()])
-    goodsOptions.value = goods.list || []
+    const [cats, goods, levels] = await Promise.all([
+      getCategoryList({ page: 1, pagesize: 200 }),
+      getGoodsList({ page: 1, pagesize: 200 }),
+      getMemberLevelList(),
+    ])
     categoryOptions.value = cats.list || []
+    goodsOptions.value = goods.list || []
+    levelOptions.value = levels.list || []
   } catch {
     // 候选加载失败不阻断
   }
 }
 
-function openAdd() {
-  isEdit.value = false
+function resetForm() {
   Object.assign(form, {
     id: 0,
-    name: '',
     type: 1,
-    tip: '',
-    gettj: '-1',
-    fwtype: 0,
-    categoryArr: [],
-    productArr: [],
+    tip: '满减',
+    name: '',
     minprice: 0,
     minnum: 1,
     money: 0,
+    zhekou: 0,
     proid: 0,
     ggid: 0,
-    status: 1,
+    fwtype: 0,
+    categoryRows: [],
+    productRows: [],
+    gettjArr: ['-1'],
+    starttime: '',
+    endtime: '',
     sort: 0,
   })
-  timeRange.value = null
-  dialogVisible.value = true
+}
+
+function openAdd() {
+  isEdit.value = false
+  resetForm()
+  viewMode.value = 'edit'
 }
 
 async function openEdit(row: CuxiaoItem) {
   isEdit.value = true
   try {
     const d = await getCuxiaoDetail(row.id)
+    const pidArr = d.productids ? d.productids.split(',').filter(Boolean).map(Number) : []
+    const zkArr = d.prozk ? d.prozk.split(',') : []
+    const numArr = d.pronum ? d.pronum.split(',') : []
     Object.assign(form, {
       id: d.id,
-      name: d.name,
       type: d.type,
-      tip: d.tip,
-      gettj: d.gettj || '-1',
-      fwtype: d.fwtype,
-      categoryArr: d.categoryids ? d.categoryids.split(',').filter(Boolean).map(Number) : [],
-      productArr: d.productids ? d.productids.split(',').filter(Boolean).map(Number) : [],
+      tip: d.tip || '',
+      name: d.name,
       minprice: d.minprice,
       minnum: d.minnum,
       money: d.money,
+      zhekou: d.zhekou || 0,
       proid: d.proid,
       ggid: d.ggid,
-      status: d.status,
+      fwtype: d.fwtype,
+      categoryRows: d.categoryids
+        ? d.categoryids
+            .split(',')
+            .filter(Boolean)
+            .map(Number)
+            .map((id) => {
+              const c = categoryOptions.value.find((x) => x.id === id)
+              return { id, name: c ? c.name : '' }
+            })
+        : [],
+      productRows: pidArr.map((id, i) => {
+        const g = goodsOptions.value.find((x) => x.id === id)
+        return { id, name: g ? g.name : '', zk: zkArr[i] || '', num: numArr[i] || '' }
+      }),
+      gettjArr: d.gettj ? d.gettj.split(',') : ['-1'],
+      starttime: d.starttime || '',
+      endtime: d.endtime || '',
       sort: d.sort,
     })
-    timeRange.value = d.starttime && d.endtime ? [d.starttime, d.endtime] : null
-    dialogVisible.value = true
+    viewMode.value = 'edit'
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 错误提示由拦截器统一弹出
   }
+}
+
+function handleCancelEdit() {
+  viewMode.value = 'list'
+}
+
+// ============ 选择器弹窗（类目 / 商品） ============
+const catPickerVisible = ref(false)
+const catChecked = ref<number[]>([])
+const proPickerVisible = ref(false)
+const proChecked = ref<number[]>([])
+const catTableRef = ref<{ toggleRowSelection: (row: CategoryItem, selected?: boolean) => void } | null>(null)
+const proTableRef = ref<{ toggleRowSelection: (row: GoodsItem, selected?: boolean) => void } | null>(null)
+
+function openCatPicker() {
+  catChecked.value = form.categoryRows.map((r) => r.id)
+  catPickerVisible.value = true
+  nextTick(() => {
+    categoryOptions.value.forEach((c) => {
+      if (catChecked.value.includes(c.id)) catTableRef.value?.toggleRowSelection(c, true)
+    })
+  })
+}
+function onCatSelectionChange(rows: CategoryItem[]) {
+  catChecked.value = rows.map((x) => x.id)
+}
+function confirmCatPicker() {
+  form.categoryRows = catChecked.value.map((id) => {
+    const c = categoryOptions.value.find((x) => x.id === id)
+    return { id, name: c ? c.name : '' }
+  })
+  catPickerVisible.value = false
+}
+function removeCategoryRow(id: number) {
+  form.categoryRows = form.categoryRows.filter((r) => r.id !== id)
+}
+
+function openProPicker() {
+  proChecked.value = form.productRows.map((r) => r.id)
+  proPickerVisible.value = true
+  nextTick(() => {
+    goodsOptions.value.forEach((g) => {
+      if (proChecked.value.includes(g.id)) proTableRef.value?.toggleRowSelection(g, true)
+    })
+  })
+}
+function onProSelectionChange(rows: GoodsItem[]) {
+  proChecked.value = rows.map((x) => x.id)
+}
+function confirmProPicker() {
+  // 保留已有行的单独折扣/件数
+  const oldMap = new Map(form.productRows.map((r) => [r.id, r]))
+  form.productRows = proChecked.value.map((id) => {
+    const old = oldMap.get(id)
+    if (old) return old
+    const g = goodsOptions.value.find((x) => x.id === id)
+    return { id, name: g ? g.name : '', zk: '', num: '' }
+  })
+  proPickerVisible.value = false
+}
+function removeProductRow(id: number) {
+  form.productRows = form.productRows.filter((r) => r.id !== id)
 }
 
 async function handleSave() {
@@ -164,40 +331,43 @@ async function handleSave() {
     ElMessage.warning('请填写活动名称')
     return
   }
-  if (!timeRange.value) {
+  if (!form.starttime || !form.endtime) {
     ElMessage.warning('请选择活动起止时间')
     return
   }
-  const payload: Partial<CuxiaoItem> = {
-    name: form.name,
+  const payload = {
+    id: form.id,
     type: form.type,
     tip: form.tip,
-    gettj: form.gettj || '-1',
-    fwtype: form.fwtype,
-    categoryids: form.categoryArr.join(','),
-    productids: form.productArr.join(','),
+    name: form.name,
     minprice: form.minprice,
     minnum: form.minnum,
     money: form.money,
-    proid: form.type === 2 || form.type === 3 ? form.proid : 0,
-    ggid: form.ggid,
+    zhekou: form.zhekou,
+    proid: showGift.value ? form.proid : 0,
+    ggid: showGift.value ? form.ggid : 0,
+    fwtype: form.fwtype,
+    categoryids: form.categoryRows.map((r) => r.id).join(','),
+    productids: form.productRows.map((r) => r.id).join(','),
+    prozk: form.productRows.map((r) => r.zk).join(','),
+    pronum: form.productRows.map((r) => r.num).join(','),
+    gettj: form.gettjArr.includes('-1') ? '-1' : form.gettjArr.join(','),
+    starttime: form.starttime,
+    endtime: form.endtime,
     sort: form.sort,
-    status: form.status,
-    starttime: timeRange.value[0],
-    endtime: timeRange.value[1],
   }
   saving.value = true
   try {
     if (isEdit.value) {
-      await editCuxiao({ ...payload, id: form.id })
+      await editCuxiao(payload)
     } else {
       await addCuxiao(payload)
     }
     ElMessage.success('保存成功')
-    dialogVisible.value = false
+    viewMode.value = 'list'
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 错误提示由拦截器统一弹出
   } finally {
     saving.value = false
   }
@@ -210,163 +380,269 @@ onMounted(() => {
 </script>
 
 <template>
-  <el-card shadow="never">
-    <template #header>
-      <div class="card-header">
-        <div class="toolbar">
-          <el-input
-            v-model="query.keyword"
-            placeholder="活动名称"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-          <el-select v-model="query.type" placeholder="活动类型" clearable style="width: 130px">
-            <el-option v-for="o in TYPE_OPTIONS" :key="o.value" :label="o.label" :value="String(o.value)" />
-          </el-select>
-          <el-button type="primary" :icon="Search" @click="handleSearch">查询</el-button>
+  <div class="page-wrap">
+    <template v-if="viewMode === 'list'">
+      <div class="tip-bar">可设置商品满减活动、满赠活动、加价换购活动，设置后会在商品详情页面显示正在进行的促销活动信息</div>
+
+      <el-card shadow="never" class="toolbar-card">
+        <div class="toolbar-row">
+          <div class="toolbar-left">
+            <el-button type="success" @click="openAdd">添加</el-button>
+            <el-button @click="handleBatchDelete">删除</el-button>
+          </div>
+          <div class="toolbar-right">
+            <span class="label">活动名称</span>
+            <el-input v-model="query.keyword" clearable class="w-keyword" @keyup.enter="handleSearch" />
+            <el-button circle type="success" :icon="Search" @click="handleSearch" />
+          </div>
         </div>
-        <el-button type="primary" :icon="Plus" @click="openAdd">新建活动</el-button>
-      </div>
+      </el-card>
+
+      <el-card shadow="never" class="table-card">
+        <el-table
+          v-loading="loading"
+          :data="list"
+          :header-cell-style="{ background: '#e6e6e6' }"
+          :cell-style="{ textAlign: 'left' }"
+          @selection-change="handleSelectionChange"
+        >
+          <el-table-column type="selection" width="42" />
+          <el-table-column prop="id" label="ID" width="70" sortable />
+          <el-table-column label="活动类型" width="100">
+            <template #default="{ row }">{{ TYPE_TEXT[row.type] || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="tip" label="活动标识" width="90" />
+          <el-table-column prop="name" label="活动名称" min-width="150" show-overflow-tooltip />
+          <el-table-column label="活动时间" min-width="220" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.starttime }} ~ {{ row.endtime }}</template>
+          </el-table-column>
+          <el-table-column label="创建时间" width="150">
+            <template #default="{ row }">{{ row.create_time ? new Date(row.create_time * 1000).toLocaleString('zh-CN', { hour12: false }) : '-' }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="90">
+            <template #default="{ row }">
+              <el-tag :type="statusLabel(row).type" size="small">{{ statusLabel(row).text }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="操作" width="130">
+            <template #default="{ row }">
+              <div class="op-flex">
+                <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
+
+        <el-pagination
+          class="pagination"
+          background
+          layout="total, sizes, prev, pager, next, jumper"
+          :total="total"
+          :current-page="query.page"
+          :page-size="query.pagesize"
+          :page-sizes="[10, 20, 50, 100]"
+          @current-change="handlePageChange"
+          @size-change="handleSizeChange"
+        />
+      </el-card>
     </template>
 
-    <el-table v-loading="loading" :data="list" border>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="name" label="活动名称" min-width="150" />
-      <el-table-column label="类型" width="90">
-        <template #default="{ row }">{{ TYPE_TEXT[row.type] || '-' }}</template>
-      </el-table-column>
-      <el-table-column label="优惠内容" min-width="160">
-        <template #default="{ row }">
-          <template v-if="row.type === 1">满{{ row.minprice }}元减{{ row.money }}元</template>
-          <template v-else-if="row.type === 2">满{{ row.minprice }}元赠「{{ row.proname }}」</template>
-          <template v-else-if="row.type === 3">满{{ row.minprice }}元可{{ row.money }}元换购「{{ row.proname }}」</template>
-          <template v-else>{{ row.tip || '仅展示' }}</template>
-        </template>
-      </el-table-column>
-      <el-table-column label="活动时间" min-width="200">
-        <template #default="{ row }">{{ row.starttime }} ~ {{ row.endtime }}</template>
-      </el-table-column>
-      <el-table-column prop="sort" label="排序" width="70" />
-      <el-table-column label="状态" width="90">
-        <template #default="{ row }">
-          <el-switch
-            :model-value="row.status"
-            :active-value="1"
-            :inactive-value="0"
-            @change="(v: number) => handleStatus(row, v)"
-          />
-        </template>
-      </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-    </el-table>
+    <el-card v-else shadow="never" class="edit-card">
+      <template #header>
+        <div class="edit-header">
+          <span>{{ isEdit ? '编辑商品促销' : '添加商品促销' }}</span>
+          <el-button link :icon="Close" @click="handleCancelEdit" />
+        </div>
+      </template>
 
-    <el-pagination
-      v-model:current-page="query.page"
-      v-model:page-size="query.pagesize"
-      :total="total"
-      layout="total, prev, pager, next, sizes"
-      style="margin-top: 12px"
-      @current-change="fetchList"
-      @size-change="handleSearch"
-    />
-
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑活动' : '新建活动'" width="640px">
-      <el-form label-width="110px">
-        <el-form-item label="活动名称">
-          <el-input v-model="form.name" maxlength="50" />
-        </el-form-item>
-        <el-form-item label="活动类型">
-          <el-radio-group v-model="form.type">
+      <el-form label-width="110px" class="compact-form">
+        <el-form-item label="促销类型：">
+          <el-radio-group :model-value="form.type" @change="onTypeChange">
             <el-radio v-for="o in TYPE_OPTIONS" :key="o.value" :value="o.value">{{ o.label }}</el-radio>
           </el-radio-group>
+          <div class="aux">选择"无"时仅用于显示活动名称到商品详情</div>
         </el-form-item>
-        <el-form-item label="提示文案">
-          <el-input v-model="form.tip" maxlength="100" placeholder="C 端展示的促销提示文案" />
+
+        <el-form-item label="活动标识：">
+          <el-input v-model="form.tip" class="w-tip" />
         </el-form-item>
-        <el-form-item label="参与人群">
-          <el-input v-model="form.gettj" placeholder="-1 表示全部；多个会员等级ID用逗号分隔" style="width: 320px" />
+
+        <el-form-item label="活动名称：">
+          <el-input v-model="form.name" maxlength="50" class="w-name" />
+          <div class="aux">如：购物满100元减20元，购物满100元赠送玫瑰花一束，购物满100元加10元换购玫瑰花一束等</div>
         </el-form-item>
-        <el-form-item label="适用范围">
+
+        <el-form-item v-if="showMinprice" label="最低消费金额：">
+          <el-input v-model.number="form.minprice" class="w-num" />
+          <span class="unit">元</span>
+          <span class="aux">注：购物金额（不含运费）达到最低消费金额才可参与</span>
+        </el-form-item>
+
+        <el-form-item v-if="showMinnum" label="最低购买件数：">
+          <el-input v-model.number="form.minnum" class="w-num" />
+          <span class="unit">件</span>
+          <span class="aux">注：购买商品数量达到最低购买件数才可参与</span>
+        </el-form-item>
+
+        <el-form-item v-if="showMoney" :label="moneyLabel + '：'">
+          <el-input v-model.number="form.money" class="w-num" />
+          <span class="unit">元</span>
+        </el-form-item>
+
+        <el-form-item v-if="showZhekou" label="折扣：">
+          <el-input v-model.number="form.zhekou" class="w-num" />
+          <span class="unit">折</span>
+          <span class="aux">输入0.01~9.99的数字</span>
+        </el-form-item>
+
+        <el-form-item v-if="showGift" :label="giftLabel + '：'">
+          <el-select v-model="form.proid" filterable placeholder="请选择商品" class="w-name">
+            <el-option v-for="g in goodsOptions" :key="g.id" :label="g.name" :value="g.id" />
+          </el-select>
+        </el-form-item>
+
+        <el-form-item label="适用范围：">
           <el-radio-group v-model="form.fwtype">
-            <el-radio :value="0">全部商品</el-radio>
-            <el-radio :value="1">指定分类</el-radio>
+            <el-radio :value="0">所有商品</el-radio>
+            <el-radio :value="1">指定类目</el-radio>
             <el-radio :value="2">指定商品</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item v-if="form.fwtype === 1" label="选择分类">
-          <el-select v-model="form.categoryArr" multiple filterable placeholder="请选择分类">
-            <el-option v-for="c in categoryOptions" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
+
+        <el-form-item v-if="form.fwtype === 1" label-width="110px">
+          <el-table :data="form.categoryRows" size="small" class="inner-table" :header-cell-style="{ background: '#e6e6e6' }">
+            <el-table-column prop="id" label="分类ID" width="120" />
+            <el-table-column prop="name" label="分类名称" />
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="removeCategoryRow(row.id)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <el-button size="small" class="inner-add" @click="openCatPicker">添加</el-button>
         </el-form-item>
-        <el-form-item v-if="form.fwtype === 2" label="选择商品">
-          <el-select v-model="form.productArr" multiple filterable placeholder="请选择商品">
-            <el-option v-for="g in goodsOptions" :key="g.id" :label="g.name" :value="g.id" />
-          </el-select>
+
+        <el-form-item v-if="form.fwtype === 2" label-width="110px">
+          <el-table :data="form.productRows" size="small" class="inner-table" :header-cell-style="{ background: '#e6e6e6' }">
+            <el-table-column prop="id" label="商品ID" width="100" />
+            <el-table-column prop="name" label="商品名称" />
+            <el-table-column v-if="showRowZk" label="单独折扣" width="140">
+              <template #default="{ row }">
+                <el-input v-model="row.zk" size="small" placeholder="0.01~9.99" />
+              </template>
+            </el-table-column>
+            <el-table-column v-if="showRowNum" label="单独最低件数" width="150">
+              <template #default="{ row }">
+                <el-input v-model="row.num" size="small" placeholder="设置后如未达到不打折" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="90">
+              <template #default="{ row }">
+                <el-button link type="danger" @click="removeProductRow(row.id)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+          <div v-if="showRowZk" class="aux">注：不单独设置商品折扣则按照统一的折扣计算</div>
+          <el-button size="small" class="inner-add" @click="openProPicker">添加</el-button>
         </el-form-item>
-        <el-form-item v-if="form.type !== 0" label="满额门槛">
-          <el-input-number v-model="form.minprice" :min="0" :precision="2" />
-          <span class="unit">元</span>
+
+        <el-form-item label="参与条件：">
+          <el-checkbox-group v-model="form.gettjArr" @change="onGettjChange">
+            <el-checkbox value="-1">所有人</el-checkbox>
+            <el-checkbox v-for="lv in levelOptions" :key="lv.id" :value="String(lv.id)">{{ lv.name }}</el-checkbox>
+          </el-checkbox-group>
         </el-form-item>
-        <el-form-item v-if="form.type !== 0" label="最低件数">
-          <el-input-number v-model="form.minnum" :min="1" />
+
+        <el-form-item label="开始时间：">
+          <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="活动开始时间" />
         </el-form-item>
-        <el-form-item v-if="form.type === 1 || form.type === 3" :label="moneyLabel">
-          <el-input-number v-model="form.money" :min="0" :precision="2" />
-          <span class="unit">元</span>
+
+        <el-form-item label="结束时间：">
+          <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="活动结束时间" />
         </el-form-item>
-        <el-form-item v-if="form.type === 2" label="赠送商品">
-          <el-select v-model="form.proid" filterable placeholder="请选择赠送商品">
-            <el-option v-for="g in goodsOptions" :key="g.id" :label="g.name" :value="g.id" />
-          </el-select>
+
+        <el-form-item label="序号：">
+          <el-input v-model.number="form.sort" class="w-num" />
+          <span class="aux">用于排序,越大越靠前</span>
         </el-form-item>
-        <el-form-item v-if="form.type === 3" label="换购商品">
-          <el-select v-model="form.proid" filterable placeholder="请选择换购商品">
-            <el-option v-for="g in goodsOptions" :key="g.id" :label="g.name" :value="g.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="活动时间">
-          <el-date-picker
-            v-model="timeRange"
-            type="datetimerange"
-            value-format="YYYY-MM-DD HH:mm:ss"
-            range-separator="至"
-            start-placeholder="开始时间"
-            end-placeholder="结束时间"
-          />
-        </el-form-item>
-        <el-form-item label="排序">
-          <el-input-number v-model="form.sort" :min="0" />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
+
+        <el-form-item>
+          <el-button type="success" :loading="saving" @click="handleSave">提 交</el-button>
         </el-form-item>
       </el-form>
+    </el-card>
+
+    <!-- 类目选择 -->
+    <el-dialog v-model="catPickerVisible" title="选择商品分类" width="640px">
+      <el-table ref="catTableRef" :data="categoryOptions" size="small" row-key="id" @selection-change="onCatSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="分类ID" width="100" />
+        <el-table-column prop="name" label="分类名称" />
+      </el-table>
       <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSave">保存</el-button>
+        <el-button @click="catPickerVisible = false">取消</el-button>
+        <el-button type="success" @click="confirmCatPicker">确定</el-button>
       </template>
     </el-dialog>
-  </el-card>
+
+    <!-- 商品选择 -->
+    <el-dialog v-model="proPickerVisible" title="选择商品" width="760px">
+      <el-table ref="proTableRef" :data="goodsOptions" size="small" row-key="id" @selection-change="onProSelectionChange">
+        <el-table-column type="selection" width="42" />
+        <el-table-column prop="id" label="商品ID" width="100" />
+        <el-table-column prop="name" label="商品名称" show-overflow-tooltip />
+      </el-table>
+      <template #footer>
+        <el-button @click="proPickerVisible = false">取消</el-button>
+        <el-button type="success" @click="confirmProPicker">确定</el-button>
+      </template>
+    </el-dialog>
+  </div>
 </template>
 
 <style scoped>
-.card-header {
+.page-wrap {
+  margin: 3px;
+}
+.tip-bar {
+  background: #f5f7fa;
+  border-left: 3px solid #5fb878;
+  padding: 8px 12px;
+  margin-bottom: 3px;
+  font-size: 13px;
+  color: #606266;
+}
+.toolbar-card { margin-bottom: 3px; }
+.toolbar-card :deep(.el-card__body) { padding: 5px; }
+.toolbar-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-}
-.toolbar {
-  display: flex;
   gap: 8px;
+  flex-wrap: nowrap;
 }
-.unit {
-  margin-left: 8px;
-  color: #606266;
+.toolbar-left { display: flex; gap: 8px; flex-wrap: nowrap; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.label { font-size: 13px; color: #606266; }
+.w-keyword { width: 180px; }
+.table-card :deep(.el-card__body) { padding: 5px; }
+.table-card :deep(.el-table .cell) { text-align: left; padding: 3px 0; }
+.pagination { margin-top: 3px; justify-content: flex-end; }
+.op-flex { display: flex; flex-direction: row; flex-wrap: wrap; gap: 4px; }
+.edit-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 600;
 }
+.compact-form :deep(.el-form-item) { margin-bottom: 10px; }
+.compact-form :deep(.el-radio) { margin-right: 12px; }
+.w-tip { width: 160px; }
+.w-name { width: 320px; }
+.w-num { width: 160px; }
+.unit { margin: 0 8px 0 4px; color: #606266; }
+.aux { margin-left: 12px; color: #909399; font-size: 12px; }
+.inner-table { width: 560px; margin-bottom: 6px; }
+.inner-add { margin-top: 4px; }
 </style>

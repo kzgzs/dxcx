@@ -151,15 +151,36 @@ class CashbackService
      *
      * @return array{list: array, total: int, page: int, pagesize: int}
      */
-    public function memberList(int $aid, int $cashbackId, int $page, int $pageSize): array
+    public function memberList(int $aid, int $cashbackId, int $page, int $pageSize, string $mid = '', string $nickname = '', string $ctime = ''): array
     {
         $query = ScopeService::queryAs('cashback_member', $aid, 'c')
             ->leftJoin('member m', 'm.id = c.mid')
             ->leftJoin('cashback cb', 'cb.id = c.cashback_id')
-            ->field('c.*, m.tel as phone, m.nickname, cb.name as cashback_name');
+            ->field('c.*, m.tel as phone, m.nickname, m.headimg, cb.name as cashback_name');
 
         if ($cashbackId > 0) {
             $query->where('c.cashback_id', $cashbackId);
+        }
+
+        if ('' !== $mid) {
+            $query->where('c.mid', (int) $mid);
+        }
+
+        if ('' !== $nickname) {
+            $query->where('m.nickname', 'like', '%' . $nickname . '%');
+        }
+
+        // 时间区间：YYYY-MM-DD~YYYY-MM-DD（create_time 为 unix 秒）
+        if ('' !== $ctime && false !== strpos($ctime, '~')) {
+            [$startDate, $endDate] = explode('~', $ctime, 2);
+            $startTs = strtotime(trim($startDate) . ' 00:00:00');
+            $endTs   = strtotime(trim($endDate) . ' 23:59:59');
+            if (false !== $startTs) {
+                $query->where('c.create_time', '>=', $startTs);
+            }
+            if (false !== $endTs) {
+                $query->where('c.create_time', '<=', $endTs);
+            }
         }
 
         $total = (clone $query)->count();
@@ -172,6 +193,7 @@ class CashbackService
         $list = array_map(static fn (array $row) => [
             'id'                 => (int) ($row['id'] ?? 0),
             'mid'                => (int) ($row['mid'] ?? 0),
+            'headimg'            => (string) ($row['headimg'] ?? ''),
             'phone'              => (string) ($row['phone'] ?? ''),
             'nickname'           => (string) ($row['nickname'] ?? ''),
             'cashback_id'        => (int) ($row['cashback_id'] ?? 0),
@@ -238,7 +260,7 @@ class CashbackService
      * 确认收货返现结算（OrderService::confirm 独立 try/catch 钩子调用）
      *
      * 口径：逐商品行（gtype=0）匹配生效规则 → 行实付×比率 → 台账限额裁剪 → 发放 → 落台账/流水
-     * 幂等依赖：confirm 状态条件更新只成功一次，本钩子只会被触发一次（同 PrizePool 口径）
+     * 幂等依赖：confirm 状态条件更新只成功一次，本钩子只会被触发一次
      *
      * @return array{granted: int, money: float, commission: float, score: int}
      */

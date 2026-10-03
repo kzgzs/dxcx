@@ -7,6 +7,7 @@ namespace app\admin\controller;
 use app\BaseController;
 use app\common\service\LotteryService;
 use app\common\service\ScopeService;
+use util\ExcelUtil;
 
 /**
  * 租户后台 - 抽奖活动（大转盘 dzp / 刮刮卡 ggk，admin 应用，JWT role=admin，aid 走 ScopeService）
@@ -113,14 +114,34 @@ class Choujiang extends BaseController
 
         $filters = [
             'hid'        => (int) $this->request->get('hid', 0),
+            'mid'        => (int) $this->request->get('mid', 0),
             'nickname'   => trim((string) $this->request->get('nickname', '')),
             'jxmc'       => trim((string) $this->request->get('jxmc', '')),
+            'duijiang'   => trim((string) $this->request->get('duijiang', '')),
             'status'     => trim((string) $this->request->get('status', '')),
             'start_date' => trim((string) $this->request->get('start_date', '')),
             'end_date'   => trim((string) $this->request->get('end_date', '')),
         ];
 
         return $this->success($this->lotteryService->recordList($aid, $page, $pageSize, $filters));
+    }
+
+    /**
+     * 删除抽奖记录（单条/批量）
+     * POST /admin/choujiang/recordDelete {ids:[...]}
+     */
+    public function recordDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $ids = $this->request->post('ids', []);
+        if (!is_array($ids)) {
+            $ids = [];
+        }
+
+        $this->lotteryService->recordDelete($aid, $ids);
+
+        return $this->success([], '删除成功');
     }
 
     /**
@@ -136,5 +157,82 @@ class Choujiang extends BaseController
         $result = $this->lotteryService->recordVerify($aid, $id);
 
         return $this->success($result, '核销成功，奖品已发放');
+    }
+
+    /**
+     * 中奖记录导出（PhpSpreadsheet xlsx 附件下载）
+     * GET /admin/choujiang/export?hid&nickname&jxmc&status&start_date&end_date
+     */
+    public function export()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+
+        $query = ScopeService::query('choujiang_record', $aid);
+
+        $hid = (int) $this->request->get('hid', 0);
+        if ($hid > 0) {
+            $query->where('hid', $hid);
+        }
+        $mid = (int) $this->request->get('mid', 0);
+        if ($mid > 0) {
+            $query->where('mid', $mid);
+        }
+        $nickname = trim((string) $this->request->get('nickname', ''));
+        if ('' !== $nickname) {
+            $query->whereLike('nickname', '%' . $nickname . '%');
+        }
+        $jxmc = trim((string) $this->request->get('jxmc', ''));
+        if ('' !== $jxmc) {
+            $query->whereLike('jxmc', '%' . $jxmc . '%');
+        }
+        $duijiang = trim((string) $this->request->get('duijiang', ''));
+        if ('' !== $duijiang) {
+            $query->where(function ($q) use ($duijiang) {
+                $q->whereLike('linkman', '%' . $duijiang . '%')
+                    ->whereOr('tel', 'like', '%' . $duijiang . '%')
+                    ->whereOr('code', 'like', '%' . $duijiang . '%');
+            });
+        }
+        $status = trim((string) $this->request->get('status', ''));
+        if ('' !== $status) {
+            $status = (int) $status;
+            if (-1 === $status) {
+                $query->where('jx', 0);
+            } else {
+                $query->where('status', $status ? 1 : 0)->where('jx', '>', 0);
+            }
+        }
+        $startDate = trim((string) $this->request->get('start_date', ''));
+        if ('' !== $startDate && false !== strtotime($startDate)) {
+            $query->where('createtime', '>=', strtotime($startDate));
+        }
+        $endDate = trim((string) $this->request->get('end_date', ''));
+        if ('' !== $endDate && false !== strtotime($endDate)) {
+            $query->where('createtime', '<', strtotime($endDate) + 86400);
+        }
+
+        $rows = $query->order('id', 'desc')->limit(20000)->select()->toArray();
+
+        $titles = ['ID', '活动ID', '会员昵称', '奖项', '奖品名称', '奖品类型', '领奖状态', '核销码', '抽奖时间'];
+        $excelRows = [];
+        foreach ($rows as $r) {
+            $jx = (int) ($r['jx'] ?? 0);
+            $excelRows[] = [
+                (int) $r['id'],
+                (int) ($r['hid'] ?? 0),
+                $r['nickname'] ?? '',
+                $jx === 0 ? '未中奖' : '奖项' . $jx,
+                $r['jxmc'] ?? '',
+                ($r['jxtp'] ?? 1) == 2 ? '红包' : '实物',
+                $jx === 0 ? '未中奖' : ((int) ($r['status'] ?? 0) === 1 ? '已领取' : '未领取'),
+                $r['code'] ?? '',
+                !empty($r['createtime']) ? date('Y-m-d H:i:s', (int) $r['createtime']) : '',
+            ];
+        }
+
+        ExcelUtil::export($titles, $excelRows, '中奖记录_' . date('YmdHis'));
     }
 }

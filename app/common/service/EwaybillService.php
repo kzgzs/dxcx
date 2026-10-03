@@ -31,8 +31,10 @@ class EwaybillService
     public const ORDER_TYPE_MAP = [
         'shop'    => '商城订单',
         'tuangou' => '团购订单',
+        'scoreshop' => '积分兑换订单',
         'seckill' => '秒杀订单',
         'collage' => '拼团订单',
+        'lucky_collage' => '幸运拼团订单',
     ];
 
     /** 打印内容字段字典（ewaybill_set.print_shop_content 候选） */
@@ -204,6 +206,10 @@ class EwaybillService
                 if ($product && (int) $product['endtime'] > time()) {
                     throw new BusinessException('团购活动未结束 暂不允许发货');
                 }
+            }
+            // 幸运拼团仅中奖订单可发货
+            if ('lucky_collage' === $ordertype && 1 !== (int) ($order['iszj'] ?? 0)) {
+                throw new BusinessException('仅中奖订单允许发货');
             }
         }
 

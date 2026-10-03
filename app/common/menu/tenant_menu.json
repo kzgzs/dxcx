@@ -725,20 +725,6 @@
     ]
    },
    {
-    "name": "线下补助",
-    "key": "offline-subsidies",
-    "child": [
-     {
-      "name": "数据统计",
-      "key": "offline-subsidies-log"
-     },
-     {
-      "name": "补助配置",
-      "key": "offline-subsidies-set"
-     }
-    ]
-   },
-   {
     "name": "确认收货奖励",
     "key": "order-collect-reward",
     "child": [
@@ -749,28 +735,6 @@
      {
       "name": "奖励设置",
       "key": "order-collect-reward-set"
-     }
-    ]
-   },
-   {
-    "name": "奖金池",
-    "key": "commission-prizepool",
-    "child": [
-     {
-      "name": "利润奖金池",
-      "key": "commission-prizepool-index"
-     },
-     {
-      "name": "区域奖金池",
-      "key": "commission-area-prizepool-index"
-     },
-     {
-      "name": "达标奖金池",
-      "key": "commission-reach-prizepool-index"
-     },
-     {
-      "name": "发放记录",
-      "key": "commission-prizepool-log"
      }
     ]
    },
@@ -928,10 +892,6 @@
      {
       "name": "题库管理",
       "key": "kecheng-tiku-index"
-     },
-     {
-      "name": "讲师审核",
-      "key": "kecheng-lecturer-index"
      },
      {
       "name": "课程订单",

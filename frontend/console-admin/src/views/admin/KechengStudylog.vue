@@ -1,141 +1,155 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
-import { getKechengCourseList, getKechengStudylogList } from '../../api/kecheng'
-import type { KechengCourseItem, KechengStudylogItem } from '../../api/kecheng'
-import { formatTime } from '../../utils/time'
+import { onMounted, reactive, ref } from 'vue'
+import { ElMessage, ElMessageBox } from 'element-plus'
+import { deleteKechengStudylog, getKechengStudylogList } from '../../api/kecheng'
+import type { KechengStudylogItem } from '../../api/kecheng'
 
+// 学习记录（对齐点大 扩展-知识付费-学习记录：课程信息/学习时间/头像昵称/学习进度/来源/删除，截图无搜索栏）
 const loading = ref(false)
 const tableData = ref<KechengStudylogItem[]>([])
 const total = ref(0)
-const page = ref(1)
-const pagesize = ref(20)
-const keyword = ref('')
-const filterKcid = ref<number | undefined>(undefined)
 
-const courses = ref<KechengCourseItem[]>([])
-
-async function fetchCourses() {
-  try {
-    const data = await getKechengCourseList({ page: 1, pagesize: 500 })
-    courses.value = data.list || []
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  }
-}
+const query = reactive({ page: 1, pagesize: 10 })
 
 async function fetchList() {
   loading.value = true
   try {
-    const data = await getKechengStudylogList({
-      page: page.value,
-      pagesize: pagesize.value,
-      keyword: keyword.value,
-      kcid: filterKcid.value,
-    })
+    const data = await getKechengStudylogList({ page: query.page, pagesize: query.pagesize })
     tableData.value = data.list || []
     total.value = data.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     loading.value = false
   }
 }
 
-function handleSearch() {
-  page.value = 1
+function handlePageChange(p: number) {
+  query.page = p
   fetchList()
 }
 
-onMounted(() => {
-  fetchCourses()
-  fetchList()
-})
+// 进度展示：jindu==='100' 或 '已学完' → 已学完；否则 进度：xx%
+function progressText(row: KechengStudylogItem): string {
+  const j = String(row.jindu ?? '')
+  if (j === '已学完' || j === '100') return '进度：已学完'
+  return `进度：${j}%`
+}
+
+function handleDelete(row: KechengStudylogItem) {
+  ElMessageBox.confirm('确定要删除该记录吗？删除后无法恢复！', '操作确认', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      try {
+        await deleteKechengStudylog(row.id)
+        ElMessage.success('删除成功')
+        fetchList()
+      } catch {
+        // 拦截器统一提示
+      }
+    })
+    .catch(() => {})
+}
+
+onMounted(fetchList)
 </script>
 
 <template>
-  <div>
-    <!-- 工具栏 -->
-    <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="keyword"
-            placeholder="章节名 / 手机号"
-            clearable
-            style="width: 200px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="课程">
-          <el-select
-            v-model="filterKcid"
-            placeholder="全部课程"
-            clearable
-            filterable
-            style="width: 220px"
-          >
-            <el-option v-for="c in courses" :key="c.id" :label="c.name" :value="c.id" />
-          </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">查询</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+  <div class="kecheng-studylog">
+    <el-table v-loading="loading" :data="tableData" class="data-table" size="default">
+      <el-table-column prop="id" label="ID" width="60" />
+      <el-table-column label="课程信息" min-width="160">
+        <template #default="{ row }">
+          <div>{{ row.kecheng_name || row.title }}</div>
+          <div class="sub">章节：{{ row.title }}</div>
+        </template>
+      </el-table-column>
+      <el-table-column label="学习时间" min-width="150" sortable>
+        <template #default="{ row }">
+          <span class="sub green">{{ row.createtime_text }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="头像昵称" min-width="140">
+        <template #default="{ row }">
+          <div class="member-cell">
+            <el-avatar :src="row.member_headimg" :size="32">{{ (row.member_nickname || '?').slice(0, 1) }}</el-avatar>
+            <span>{{ row.member_nickname || row.member_tel || '-' }}</span>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column label="学习进度" min-width="120">
+        <template #default="{ row }">
+          <span class="progress">{{ progressText(row) }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="来源" width="110">
+        <template #default="{ row }">{{ row.platform_text || '-' }}</template>
+      </el-table-column>
+      <el-table-column label="操作" width="100">
+        <template #default="{ row }">
+          <el-button link type="primary" @click="handleDelete(row)">删除</el-button>
+        </template>
+      </el-table-column>
+    </el-table>
 
-    <!-- 学习记录 -->
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="会员" width="160">
-          <template #default="{ row }">
-            {{ row.member_nickname || '-' }}
-            <span v-if="row.member_tel">（{{ row.member_tel }}）</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="title" label="章节" min-width="180" show-overflow-tooltip />
-        <el-table-column label="进度" width="160">
-          <template #default="{ row }">
-            <el-progress :percentage="Math.min(100, Math.max(0, Number(row.jindu || 0)))" />
-          </template>
-        </el-table-column>
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : 'info'" size="small">
-              {{ row.status === 1 ? '已学完' : '学习中' }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column prop="currentTime" label="播放位置(秒)" width="110" />
-        <el-table-column label="学习时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
-        </el-table-column>
-      </el-table>
-      <el-pagination
-        class="pager"
-        v-model:current-page="page"
-        v-model:page-size="pagesize"
-        :total="total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
-        @current-change="fetchList"
-        @size-change="handleSearch"
-      />
-    </el-card>
+    <el-pagination
+      class="pager"
+      background
+      layout="total, sizes, prev, pager, next"
+      :total="total"
+      :current-page="query.page"
+      :page-size="query.pagesize"
+      :page-sizes="[10, 20, 50]"
+      @current-change="handlePageChange"
+      @size-change="(s: number) => { query.pagesize = s; query.page = 1; fetchList() }"
+    />
   </div>
 </template>
 
 <style scoped>
-.toolbar-card {
-  margin-bottom: 16px;
+.kecheng-studylog {
+  margin: 3px;
 }
 
-.toolbar-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+.data-table {
+  width: 100%;
+}
+
+.data-table :deep(th.el-table__cell) {
+  background: #e6e6e6;
+  text-align: left;
+}
+
+.data-table :deep(.cell) {
+  text-align: left;
+}
+
+.sub {
+  font-size: 12px;
+  color: #999;
+}
+
+.sub.green {
+  color: #080;
+}
+
+.member-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+}
+
+.progress {
+  color: #ff8758;
+  font-size: 13px;
 }
 
 .pager {
-  margin-top: 16px;
+  margin-top: 10px;
   justify-content: flex-end;
 }
 </style>

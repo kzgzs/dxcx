@@ -1,7 +1,9 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { Search } from '@element-plus/icons-vue'
 import {
+  deleteCouponManageRecords,
   getCouponManageList,
   getCouponManageRecords,
   setRecordStatus,
@@ -9,7 +11,8 @@ import {
 import type { CouponManageItem, CouponManageRecordItem } from '../../api/types'
 import { formatTime } from '../../utils/time'
 
-// ============ 列表 ============
+const props = defineProps<{ couponId?: number }>()
+
 const loading = ref(false)
 const tableData = ref<CouponManageRecordItem[]>([])
 const total = ref(0)
@@ -20,12 +23,11 @@ const query = reactive({
   pagesize: 10,
   coupon_id: '' as number | '',
   mid: '' as number | '',
-  status: '' as number | '',
-  keyword: '',
+  nickname: '',
+  remark: '',
   timeRange: null as [Date, Date] | null,
 })
 
-// 券候选（筛选下拉）
 const couponOptions = ref<CouponManageItem[]>([])
 
 async function loadCouponOptions() {
@@ -33,7 +35,7 @@ async function loadCouponOptions() {
     const data = await getCouponManageList({ page: 1, pagesize: 100 })
     couponOptions.value = data.list || []
   } catch {
-    // 候选加载失败不阻断列表
+    /* 候选失败不阻断 */
   }
 }
 
@@ -45,8 +47,8 @@ async function fetchList() {
       pagesize: query.pagesize,
       coupon_id: query.coupon_id === '' ? undefined : Number(query.coupon_id),
       mid: query.mid === '' ? undefined : Number(query.mid),
-      status: query.status === '' ? undefined : query.status,
-      keyword: query.keyword || undefined,
+      keyword: query.nickname || undefined,
+      remark: query.remark || undefined,
       start_time:
         query.timeRange && query.timeRange[0]
           ? Math.floor(query.timeRange[0].getTime() / 1000)
@@ -59,23 +61,13 @@ async function fetchList() {
     tableData.value = data.list || []
     total.value = data.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器 */
   } finally {
     loading.value = false
   }
 }
 
 function handleSearch() {
-  query.page = 1
-  fetchList()
-}
-
-function handleReset() {
-  query.coupon_id = ''
-  query.mid = ''
-  query.status = ''
-  query.keyword = ''
-  query.timeRange = null
   query.page = 1
   fetchList()
 }
@@ -95,21 +87,17 @@ function handleSelectionChange(rows: CouponManageRecordItem[]) {
   selected.value = rows
 }
 
-// 状态文案（过期为查询时实时计算）
-const STATUS_TEXT: Record<number, { label: string; type: '' | 'success' | 'info' | 'danger' }> = {
-  0: { label: '未使用', type: 'success' },
-  1: { label: '已使用', type: 'info' },
-  2: { label: '已过期', type: 'danger' },
+function statusText(row: CouponManageRecordItem): { label: string; color: string } {
+  if (row.status === 1) return { label: '已使用', color: '#67c23a' }
+  if (row.status === 2) return { label: '已过期', color: '#909399' }
+  return { label: '未使用', color: '#909399' }
 }
 
-// 有效期文案
-function periodText(row: CouponManageRecordItem) {
-  if (!row.starttime && !row.endtime) return '长期有效'
-  return `${formatTime(row.starttime)} ~ ${formatTime(row.endtime)}`
-}
-
-// ============ 手工核销 / 反核销 ============
 async function changeStatus(ids: number[], st: number, tip: string) {
+  if (ids.length === 0) {
+    ElMessage.warning('请先勾选记录')
+    return
+  }
   try {
     await ElMessageBox.confirm(tip, '操作确认', {
       confirmButtonText: '确定',
@@ -124,31 +112,60 @@ async function changeStatus(ids: number[], st: number, tip: string) {
     ElMessage.success('操作成功')
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出（计次券禁止手工核销等）
+    /* 拦截器 */
   }
 }
 
-function handleVerify(row: CouponManageRecordItem) {
-  changeStatus([row.id], 1, `确定手工核销「${row.couponname}」这条记录吗？`)
+function batchToUnused() {
+  changeStatus(selected.value.map((r) => r.id), 0, `确定将选中的 ${selected.value.length} 条改为未使用吗？`)
 }
 
-function handleUnverify(row: CouponManageRecordItem) {
-  changeStatus([row.id], 0, `确定反核销「${row.couponname}」这条记录吗？`)
+function batchToUsed() {
+  changeStatus(selected.value.map((r) => r.id), 1, `确定将选中的 ${selected.value.length} 条改为已使用吗？`)
 }
 
-function handleBatchVerify() {
+function rowToUsed(row: CouponManageRecordItem) {
+  changeStatus([row.id], 1, `确定将这条记录改为已使用吗？`)
+}
+
+function rowToUnused(row: CouponManageRecordItem) {
+  changeStatus([row.id], 0, `确定将这条记录改为未使用吗？`)
+}
+
+function batchDelete() {
   if (selected.value.length === 0) {
     ElMessage.warning('请先勾选记录')
     return
   }
-  changeStatus(
-    selected.value.map((r) => r.id),
-    1,
-    `确定批量核销选中的 ${selected.value.length} 条记录吗？（计次券将被拒绝）`,
-  )
+  doDelete(selected.value.map((r) => r.id), `确定删除选中的 ${selected.value.length} 条记录吗？删除后无法恢复！`)
+}
+
+function rowDelete(row: CouponManageRecordItem) {
+  doDelete([row.id], '确定要删除这条记录吗？删除后无法恢复！')
+}
+
+function doDelete(ids: number[], tip: string) {
+  ElMessageBox.confirm(tip, '操作确认', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      try {
+        await deleteCouponManageRecords(ids)
+        ElMessage.success('删除成功')
+        fetchList()
+      } catch {
+        /* 拦截器 */
+      }
+    })
+    .catch(() => {})
 }
 
 onMounted(() => {
+  if (props.couponId && props.couponId > 0) {
+    query.coupon_id = props.couponId
+  }
   loadCouponOptions()
   fetchList()
 })
@@ -156,132 +173,80 @@ onMounted(() => {
 
 <template>
   <div>
-    <!-- 搜索工具栏 -->
     <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="优惠券">
-          <el-select
-            v-model="query.coupon_id"
-            placeholder="全部"
-            clearable
-            filterable
-            style="width: 180px"
-          >
-            <el-option
-              v-for="c in couponOptions"
-              :key="c.id"
-              :label="c.name"
-              :value="c.id"
-            />
+      <div class="toolbar-row">
+        <div class="toolbar-left">
+          <el-button @click="batchToUnused">改为未使用</el-button>
+          <el-button @click="batchToUsed">改为已使用</el-button>
+          <el-button @click="batchDelete">删除</el-button>
+        </div>
+        <div class="toolbar-right">
+          <el-select v-model="query.coupon_id" placeholder="全部券" clearable style="width: 150px">
+            <el-option v-for="c in couponOptions" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="会员ID">
-          <el-input
-            v-model="query.mid"
-            placeholder="会员ID"
-            clearable
-            style="width: 110px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="query.status" placeholder="全部" clearable style="width: 110px">
-            <el-option label="未使用" :value="0" />
-            <el-option label="已使用" :value="1" />
-            <el-option label="已过期" :value="2" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="query.keyword"
-            placeholder="昵称/手机号"
-            clearable
-            style="width: 150px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="领取时间">
+          <el-input v-model="query.mid" placeholder="用户ID" clearable style="width: 100px" @keyup.enter="handleSearch" />
+          <el-input v-model="query.nickname" placeholder="昵称" clearable style="width: 120px" @keyup.enter="handleSearch" />
           <el-date-picker
             v-model="query.timeRange"
             type="datetimerange"
             range-separator="至"
-            start-placeholder="开始"
-            end-placeholder="结束"
-            style="width: 300px"
+            start-placeholder="开始时间"
+            end-placeholder="结束时间"
+            style="width: 340px"
           />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-          <el-button type="success" plain @click="handleBatchVerify">批量核销</el-button>
-        </el-form-item>
-      </el-form>
+          <el-input v-model="query.remark" placeholder="备注" clearable style="width: 120px" @keyup.enter="handleSearch" />
+          <el-button circle type="success" :icon="Search" @click="handleSearch" />
+        </div>
+      </div>
     </el-card>
 
-    <!-- 记录列表 -->
     <el-card shadow="never">
       <el-table
         v-loading="loading"
         :data="tableData"
-        stripe
+        :header-cell-style="{ background: '#e6e6e6' }"
+        :cell-style="{ textAlign: 'left' }"
         @selection-change="handleSelectionChange"
       >
         <el-table-column type="selection" width="42" />
-        <el-table-column prop="id" label="ID" width="64" />
-        <el-table-column label="会员" min-width="130">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column prop="couponname" label="优惠券名称" min-width="130" show-overflow-tooltip />
+        <el-table-column label="领取人" width="200">
           <template #default="{ row }">
-            {{ row.nickname || '-' }}
-            <span v-if="row.member_phone" class="member-phone">（{{ row.member_phone }}）</span>
+            <div class="member-cell">
+              <img v-if="row.headimg" :src="row.headimg" class="headimg" />
+              <span>{{ row.nickname }}(ID:{{ row.mid }})</span>
+            </div>
           </template>
-        </el-table-column>
-        <el-table-column prop="couponname" label="优惠券" min-width="130" show-overflow-tooltip />
-        <el-table-column label="类型" width="100">
-          <template #default="{ row }">
-            <el-tag size="small" effect="plain">{{ row.type_txt }}</el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="有效期" min-width="200">
-          <template #default="{ row }">{{ periodText(row) }}</template>
         </el-table-column>
         <el-table-column label="领取时间" width="150">
           <template #default="{ row }">{{ formatTime(row.receive_time) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="86">
+        <el-table-column label="到期时间" width="150">
+          <template #default="{ row }">{{ row.endtime ? formatTime(row.endtime) : '-' }}</template>
+        </el-table-column>
+        <el-table-column label="总次数/已使用" width="120">
           <template #default="{ row }">
-            <el-tag size="small" :type="(STATUS_TEXT[row.status] || STATUS_TEXT[0]).type">
-              {{ (STATUS_TEXT[row.status] || STATUS_TEXT[0]).label }}
-            </el-tag>
+            <span v-if="row.type === 3">{{ row.limit_count }} / {{ row.used_count }}</span>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column label="使用时间" width="150">
-          <template #default="{ row }">{{ formatTime(row.use_time) }}</template>
+          <template #default="{ row }">{{ row.use_time ? formatTime(row.use_time) : '' }}</template>
         </el-table-column>
-        <el-table-column prop="remark" label="来源" width="90" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.remark || '主动领取' }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right">
+        <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <template v-if="row.status === 0">
-              <el-button
-                link
-                type="primary"
-                :disabled="row.type === 3"
-                @click="handleVerify(row)"
-              >
-                核销
-              </el-button>
-            </template>
-            <template v-else-if="row.status === 1">
-              <el-button
-                link
-                type="warning"
-                :disabled="row.type === 3"
-                @click="handleUnverify(row)"
-              >
-                反核销
-              </el-button>
-            </template>
-            <span v-else class="expired-tip">-</span>
+            <span :style="{ color: statusText(row).color }">{{ statusText(row).label }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column prop="remark" label="备注" width="120" show-overflow-tooltip />
+        <el-table-column label="操作" width="200">
+          <template #default="{ row }">
+            <div class="op-flex">
+              <el-button v-if="row.status === 0 && row.type !== 3" link type="primary" @click="rowToUsed(row)">改为已使用</el-button>
+              <el-button v-if="row.status === 1 && row.type !== 3" link type="primary" @click="rowToUnused(row)">改为未使用</el-button>
+              <el-button link type="danger" @click="rowDelete(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -303,24 +268,51 @@ onMounted(() => {
 
 <style scoped>
 .toolbar-card {
-  margin-bottom: 16px;
+  margin-bottom: 3px;
 }
 
 .toolbar-card :deep(.el-card__body) {
-  padding-bottom: 2px;
+  padding: 5px;
+}
+
+.toolbar-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.toolbar-left,
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 .pagination {
-  margin-top: 16px;
+  margin-top: 3px;
   justify-content: flex-end;
 }
 
-.member-phone {
-  color: #909399;
-  font-size: 12px;
+.op-flex {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
 }
 
-.expired-tip {
-  color: #c0c4cc;
+.member-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.headimg {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
 }
 </style>

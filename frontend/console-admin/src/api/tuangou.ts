@@ -9,6 +9,7 @@ export interface TuangouSyssetData {
   comment: number // 评价开关
   comment_check: number // 评价审核
   showjd: number // 显示购买进度
+  vipdiscount: number // 会员等级折扣开关
 }
 
 export type TuangouSyssetSaveParams = Partial<TuangouSyssetData>
@@ -64,6 +65,14 @@ export interface TuangouProductItem {
   status: number
   ischecked: number
   check_reason: string
+  freightcontent?: string
+  commissionset?: number
+  commissiondata1?: Record<string, Record<string, string>>
+  commissiondata2?: Record<string, Record<string, string>>
+  commissiondata3?: Record<string, Record<string, string>>
+  vipdiscount?: number
+  showtj_arr?: string[]
+  gettj_arr?: string[]
   comment_score: number
   comment_num: number
   comment_haopercent: number
@@ -126,7 +135,11 @@ export interface TuangouOrderItem {
   express_no: string
   hexiao_code: string
   iscomment: number
+  ispay: number
+  area: string
   paytype: string
+  paytype_text: string
+  platform_text: string
   paytime: number
   send_time: number
   collect_time: number
@@ -139,6 +152,13 @@ export interface TuangouOrderListQuery {
   status?: string | number
   keyword?: string
   bid?: string
+  ordernum?: string
+  linkman?: string
+  tel?: string
+  starttime?: string
+  endtime?: string
+  sortfield?: string
+  sortorder?: string
 }
 
 // 团购评价行
@@ -278,8 +298,19 @@ export function hexiaoTuangouOrder(id: number) {
   return request.post<unknown, null>('/admin/tuangou/order/hexiao', { id })
 }
 
+
+// 删除团购订单（单 id 或批量 ids[]）
+export function deleteTuangouOrder(id: number | number[]) {
+  const payload = Array.isArray(id) ? { ids: id } : { id }
+  return request.post<unknown, null>('/admin/tuangou/order/del', payload)
+}
+
+// 改为已支付（仅未支付）
+export function ispayTuangouOrder(id: number) {
+  return request.post<unknown, null>('/admin/tuangou/order/ispay', { id })
+}
 // 订单导出（blob 下载）
-export async function exportTuangouOrder(params: { status?: string; keyword?: string }) {
+export async function exportTuangouOrder(params: { status?: string; keyword?: string; starttime?: string; endtime?: string }) {
   const res = await request.get('/admin/tuangou/order/export', {
     params,
     responseType: 'blob',
@@ -303,6 +334,10 @@ export function getTuangouCommentList(params: {
   pagesize?: number
   status?: string | number
   proid?: number
+  content?: string
+  starttime?: string
+  endtime?: string
+  sortorder?: string
 }) {
   return request.get<unknown, TuangouListResult<TuangouCommentItem>>('/admin/tuangou/comment/list', {
     params,
@@ -377,3 +412,76 @@ export async function exportTuangouCode(proid: number) {
 export function deleteTuangouCode(ids: number[]) {
   return request.post<unknown, { deleted: number }>('/admin/tuangou/code/delete', { ids })
 }
+
+/* ================= 扩展：分销等级/快递选项/物流/批量发货/运费模板 ================= */
+
+// 可分销会员等级（商品分销设置展开行）
+export function getTuangouAgentLevels() {
+  return request.get<unknown, { id: number; name: string; can_agent: number }[]>('/admin/tuangou/agentLevels')
+}
+
+// 快递公司下拉（手动/批量发货）
+export function getTuangouExpressOptions() {
+  return request.get<unknown, { code: string; name: string }[]>('/admin/tuangou/order/expressOptions')
+}
+
+// 查物流（快递鸟轨迹）
+export function getTuangouOrderTrace(id: number) {
+  return request.get<unknown, { express_com: string; express_no: string; traces: { time: string; station: string }[] }>(
+    '/admin/tuangou/order/trace',
+    { params: { id } },
+  )
+}
+
+// 批量发货（上传 Excel：订单号 + 快递单号）
+export function batchSendTuangouOrder(expressCom: string, file: File) {
+  const fd = new FormData()
+  fd.append('express_com', expressCom)
+  fd.append('file', file)
+  return request.post<unknown, { success: number; fail: number; fail_list: string[] }>(
+    '/admin/tuangou/order/batchSend',
+    fd,
+    { headers: { 'Content-Type': 'multipart/form-data' } },
+  )
+}
+
+// 运费模板列表（选择模板展开）
+export function getTuangouFreightList() {
+  return request.get<unknown, { id: number; name: string }[]>('/admin/freight/list')
+}
+
+// 送货单打印地址（新窗口打开）
+export function tuangouSonghuoUrl(ids: number[]): string {
+  // 由前端 request baseURL + JWT 在新窗口注入较复杂；这里返回相对路径，由调用方拼接
+  return '/admin/tuangou/order/songhuo?ids=' + ids.join(',')
+}
+
+/* ================= 电子面单 / 订单详情 / 导出 ================= */
+
+export interface EwaybillExpressOption {
+  code: string
+  name: string
+  shipperCode?: string
+  expCode?: string
+}
+
+export interface EwaybillPrepareResult {
+  ordercode: string
+  express_options: EwaybillExpressOption[]
+  warm_layer: unknown[]
+  last_order: Record<string, any>
+  is_mock: boolean
+}
+
+// 创建电子面单前置数据（面单订单号 + 快递公司选项 + 上次发件人）
+export function ewaybillPrepare(ordertype: string, orderid: number) {
+  return request.get<unknown, EwaybillPrepareResult>('/admin/ewaybill/prepare', {
+    params: { ordertype, orderid },
+  })
+}
+
+// 创建电子面单（发货）
+export function ewaybillAdd(data: Record<string, any>) {
+  return request.post<unknown, any>('/admin/ewaybill/add', data)
+}
+

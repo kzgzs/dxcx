@@ -1,41 +1,46 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue'
-import { ElMessage, ElMessageBox } from 'element-plus'
-import { deleteCollageTeam, getCollageTeamList } from '../../api/collage'
-import type { CollageTeamItem } from '../../api/types'
-import { formatTime } from '../../utils/time'
+import { getCollageTeamList } from '../../api/collage'
+import CollageOrder from './CollageOrder.vue'
 
-// ============ 列表 ============
 const loading = ref(false)
-const tableData = ref<CollageTeamItem[]>([])
+const tableData = ref<Record<string, any>[]>([])
 const total = ref(0)
-
-// tabs：空=全部（后端排除未支付空团）1进行中 2成功 3失败
-const activeTab = ref('')
 
 const query = reactive({
   page: 1,
   pagesize: 10,
+  ctime: [] as string[],
+  status: '',
 })
+
+// 查看详情：平铺订单列表面板
+const detailVisible = ref(false)
+const detailTeamId = ref(0)
 
 async function fetchList() {
   loading.value = true
   try {
-    const data = await getCollageTeamList({
+    const params: Record<string, any> = {
       page: query.page,
       pagesize: query.pagesize,
-      status: activeTab.value === '' ? undefined : Number(activeTab.value),
-    })
-    tableData.value = data.list || []
-    total.value = data.total || 0
+      status: query.status === '' ? undefined : Number(query.status),
+    }
+    if (query.ctime && query.ctime.length === 2) {
+      params.ctime_start = query.ctime[0]
+      params.ctime_end = query.ctime[1]
+    }
+    const data = await getCollageTeamList(params as any)
+    tableData.value = (data as any).list || []
+    total.value = (data as any).total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器统一提示 */
   } finally {
     loading.value = false
   }
 }
 
-function handleTabChange() {
+function handleSearch() {
   query.page = 1
   fetchList()
 }
@@ -51,110 +56,75 @@ function handleSizeChange(size: number) {
   fetchList()
 }
 
-// 状态标签配色
-function statusTagType(status: number) {
-  if (status === 1) return 'warning'
-  if (status === 2) return 'success'
-  if (status === 3) return 'danger'
-  return 'info'
-}
-
-// 是否已超时（进行中但已过截止时间）
-function isOverdue(row: CollageTeamItem) {
-  return row.status === 1 && row.deadline > 0 && row.deadline * 1000 < Date.now()
-}
-
-// ============ 删除 ============
-function handleDelete(row: CollageTeamItem) {
-  ElMessageBox.confirm(
-    `确定要删除该拼团记录吗？（商品：${row.product_name || row.proid}）删除后不可恢复。`,
-    '删除确认',
-    {
-      confirmButtonText: '删除',
-      cancelButtonText: '取消',
-      type: 'warning',
-    },
-  )
-    .then(async () => {
-      try {
-        await deleteCollageTeam(row.id)
-        ElMessage.success('删除成功')
-        fetchList()
-      } catch {
-        // 错误提示已由 axios 拦截器统一弹出（进行中的团会被后端拒绝删除）
-      }
-    })
-    .catch(() => {})
+function viewOrders(row: Record<string, any>) {
+  detailTeamId.value = row.id
+  detailVisible.value = true
 }
 
 onMounted(fetchList)
 </script>
 
 <template>
-  <div>
-    <el-card shadow="never">
-      <el-tabs v-model="activeTab" @tab-change="handleTabChange">
-        <el-tab-pane label="全部" name="" />
-        <el-tab-pane label="进行中" name="1" />
-        <el-tab-pane label="成团成功" name="2" />
-        <el-tab-pane label="成团失败" name="3" />
-      </el-tabs>
+  <div class="collage-team">
+    <div v-if="!detailVisible" class="page-body">
+      <div class="toolbar">
+        <div class="toolbar-left" />
+        <div class="toolbar-search">
+          <el-date-picker
+            v-model="query.ctime"
+            type="daterange"
+            size="small"
+            range-separator="~"
+            start-placeholder="开团时间"
+            end-placeholder="~"
+            value-format="YYYY-MM-DD"
+            style="width: 230px"
+          />
+          <el-select v-model="query.status" placeholder="状态" size="small" style="width: 110px">
+            <el-option label="全部" value="" />
+            <el-option label="拼团中" value="1" />
+            <el-option label="拼团成功" value="2" />
+            <el-option label="拼团失败" value="3" />
+          </el-select>
+          <button class="search-btn" @click="handleSearch" title="搜索">
+            <svg viewBox="0 0 1024 1024" width="14" height="14"><path fill="#fff" d="M795.904 750.72l124.992 124.928a32 32 0 1 1-45.269 45.269l-124.928-124.992a416 416 0 1 1 45.269-45.269zM480 832a352 352 0 1 0 0-704 352 352 0 0 0 0 704z"/></svg>
+          </button>
+        </div>
+      </div>
 
-      <el-table v-loading="loading" :data="tableData" stripe>
-        <el-table-column prop="id" label="团ID" width="80" />
-        <el-table-column prop="product_name" label="商品" min-width="160" show-overflow-tooltip />
-        <el-table-column label="成团进度" width="120">
+      <el-table v-loading="loading" :data="tableData" border>
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column label="商品信息" min-width="160">
           <template #default="{ row }">
-            <span :class="{ 'text-danger': isOverdue(row) }">
-              {{ row.num }} / {{ row.teamnum }} 人
-            </span>
+            <div class="goods-cell">
+              <el-image v-if="row.product_pic" :src="row.product_pic" fit="cover" class="goods-thumb" />
+              <div class="goods-name">{{ row.product_name || '#' + row.proid }}</div>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column label="参团人" min-width="240">
+          <template #default="{ row }">
+            <div class="member-wrap">
+              <div v-for="(m, i) in row.members" :key="i" class="member-item">
+                <el-avatar :size="32" :src="m.headimg || undefined">
+                  {{ m.headimg ? '' : '?' }}
+                </el-avatar>
+                <div class="member-tel">{{ m.tel_mask || m.nickname || '?' }}</div>
+              </div>
+              <div class="cell-sub">{{ row.num }}/{{ row.teamnum }}</div>
+            </div>
           </template>
         </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }">
-            <el-tag :type="statusTagType(row.status)" size="small">
+            <span :class="['status-tag', row.status === 2 ? 'ok' : row.status === 3 ? 'fail' : 'doing']">
               {{ row.status_text }}
-            </el-tag>
-            <div v-if="isOverdue(row)" class="overdue-tip">待定时任务解散</div>
-          </template>
-        </el-table-column>
-        <el-table-column label="团员" min-width="180">
-          <template #default="{ row }">
-            <div v-if="row.members.length" class="member-row">
-              <el-tooltip
-                v-for="m in row.members"
-                :key="`${row.id}-${m.mid}-${m.nickname}`"
-                :content="m.nickname"
-                placement="top"
-              >
-                <el-avatar :size="28" :src="m.headimg || undefined">
-                  {{ m.nickname.slice(0, 1) }}
-                </el-avatar>
-              </el-tooltip>
-            </div>
-            <span v-else class="text-muted">暂无</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="开团时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
-        </el-table-column>
-        <el-table-column label="截止时间" width="160">
-          <template #default="{ row }">
-            <span :class="{ 'text-danger': isOverdue(row) }">
-              {{ row.deadline ? formatTime(row.deadline) : '-' }}
             </span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="90" fixed="right">
+        <el-table-column label="操作" width="120">
           <template #default="{ row }">
-            <el-button
-              link
-              type="danger"
-              :disabled="row.status === 1"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
+            <el-button link type="primary" size="small" @click="viewOrders(row)">查看详情</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -170,34 +140,111 @@ onMounted(fetchList)
         @current-change="handlePageChange"
         @size-change="handleSizeChange"
       />
-    </el-card>
+    </div>
+
+    <!-- 查看详情：平铺订单列表（右上X关闭） -->
+    <div v-else class="order-panel">
+      <CollageOrder :embedded="true" :teamid="detailTeamId" @close="detailVisible = false" />
+    </div>
   </div>
 </template>
 
 <style scoped>
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
+.collage-team {
+  margin: 3px;
 }
-
-.member-row {
+.toolbar {
   display: flex;
   align-items: center;
-  gap: 4px;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 6px 0;
+}
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.search-btn {
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 4px;
+  background: #67c23a;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+}
+.search-btn:hover {
+  background: #529b2e;
+}
+.pagination {
+  margin-top: 12px;
+  justify-content: flex-end;
+}
+.goods-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.goods-thumb {
+  width: 40px;
+  height: 40px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.goods-name {
+  font-size: 13px;
+}
+.cell-sub {
+  font-size: 12px;
+  color: #909399;
+  margin-top: 2px;
+}
+.member-wrap {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
   flex-wrap: wrap;
 }
-
-.text-danger {
-  color: #f56c6c;
+.member-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
 }
-
-.text-muted {
+.member-tel {
+  font-size: 11px;
+  color: #606266;
+}
+.status-tag {
+  display: inline-block;
+  padding: 2px 10px;
+  font-size: 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 3px;
   color: #909399;
 }
-
-.overdue-tip {
-  margin-top: 2px;
-  color: #f56c6c;
-  font-size: 12px;
+.status-tag.ok {
+  color: #67c23a;
+  border-color: #67c23a;
+  background: #f0f9eb;
+}
+.status-tag.fail {
+  color: #909399;
+  background: #f4f4f5;
+}
+.status-tag.doing {
+  color: #e6a23c;
+  border-color: #e6a23c;
+  background: #fdf6ec;
+}
+:deep(.el-table__header th) {
+  background: #e6e6e6;
+}
+:deep(.el-table .cell) {
+  text-align: left;
 }
 </style>

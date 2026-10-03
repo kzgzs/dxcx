@@ -163,6 +163,27 @@ export function deleteYuyueWorker(id: number) {
 export function setYuyueWorkerStatus(id: number, status: number) {
   return request.post<unknown, null>('/admin/yuyue/worker/status', { id, status })
 }
+// 加余额（money 负为扣除），回读变更后余额
+export function addYuyueWorkerMoney(id: number, money: number, remark: string) {
+  return request.post<unknown, { money: number }>('/admin/yuyue/worker/addMoney', { id, money, remark })
+}
+
+// 查看服务记录（按人员过滤的订单列表）
+export function getYuyueWorkerOrders(params: Record<string, unknown>) {
+  return request.get<unknown, YuyueOrderListResult>('/admin/yuyue/worker/orders', { params })
+}
+
+// 查进度（服务单时间线）
+export function getYuyueWorkerOrderProgress(id: number) {
+  return request.get<unknown, {
+    order_id: number
+    order_num: string
+    status: number
+    reassign: boolean
+    current: number
+    steps: { time: string; text: string }[]
+  }>('/admin/yuyue/worker/orderProgress', { params: { id } })
+}
 
 // ============ 预约订单 ============
 export function getYuyueOrderList(params: YuyueOrderListQuery) {
@@ -174,6 +195,37 @@ export function verifyYuyueOrder(id: number, hexiaoCode: string) {
     id,
     hexiao_code: hexiaoCode,
   })
+}
+
+// 查看进度（时间线）
+export interface YuyueOrderProgressNode {
+  time: string
+  context: string
+}
+export interface YuyueOrderProgressResult {
+  list: YuyueOrderProgressNode[]
+  has_worker_order: boolean
+}
+export function getYuyueOrderProgress(id: number) {
+  return request.get<unknown, YuyueOrderProgressResult>('/admin/yuyue/order/progress', { params: { id } })
+}
+
+// 订单详情
+export function getYuyueOrderDetail(id: number) {
+  return request.get<unknown, { order: Record<string, any>; member: Record<string, any>; worker: Record<string, any> }>(
+    '/admin/yuyue/order/detail',
+    { params: { id } },
+  )
+}
+
+// 服务完成
+export function finishYuyueOrder(id: number) {
+  return request.post<unknown, null>('/admin/yuyue/order/finish', { id })
+}
+
+// 删除订单（软删）
+export function deleteYuyueOrder(id: number) {
+  return request.post<unknown, null>('/admin/yuyue/order/delete', { id })
 }
 
 // ============ 商品服务（任务222） ============

@@ -110,6 +110,7 @@ export function getShortvideoCategoryList(params: {
   page?: number
   pagesize?: number
   keyword?: string
+  status?: string | number
   bid?: string
 }) {
   return request.get<unknown, ShortvideoListResult<ShortvideoCategoryItem>>(
@@ -139,6 +140,10 @@ export function deleteShortvideoCategory(id: number) {
   return request.post<unknown, null>('/admin/shortvideo/category/delete', { id })
 }
 
+export function setShortvideoCategoryStatus(ids: number[], status: number) {
+  return request.post<unknown, null>('/admin/shortvideo/category/status', { ids, status })
+}
+
 /* ================= 视频 ================= */
 
 export function getShortvideoList(params: {
@@ -149,6 +154,7 @@ export function getShortvideoList(params: {
   cid?: number
   bid?: string
   createtime?: string
+  orderby?: string
 }) {
   return request.get<unknown, ShortvideoListResult<ShortvideoItem>>('/admin/shortvideo/video/list', {
     params,
@@ -185,6 +191,8 @@ export function getShortvideoCommentList(params: {
   status?: string | number
   vid?: number
   content?: string
+  createtime?: string
+  orderby?: string
 }) {
   return request.get<unknown, ShortvideoListResult<ShortvideoCommentItem>>(
     '/admin/shortvideo/comment/list',
@@ -212,6 +220,8 @@ export function getShortvideoReplyList(params: {
   status?: string | number
   pid?: number
   content?: string
+  createtime?: string
+  orderby?: string
 }) {
   return request.get<unknown, ShortvideoListResult<ShortvideoReplyItem>>(
     '/admin/shortvideo/reply/list',

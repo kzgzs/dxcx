@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace app\common\service;
 
 use app\common\exception\BusinessException;
+use app\common\Kdniao;
 use think\facade\Db;
 
 /**
@@ -335,6 +336,8 @@ class SeckillService
             'seckill_time' => $seckillTime,
             'starttime'    => $starttime,
             'sellpoint'    => $sellpoint,
+            'video'        => trim((string) ($data['video'] ?? '')),
+            'gettj'        => in_array((string) ($data['gettj'] ?? 'all'), ['all', 'follow', 'vip', 'dealer'], true) ? (string) ($data['gettj'] ?? 'all') : 'all',
         ];
 
         if ($id > 0) {
@@ -763,9 +766,16 @@ class SeckillService
             'tel'         => (string) ($row['tel'] ?? ''),
             'address'     => trim(((string) ($row['area'] ?? '')) . ' ' . ((string) ($row['address'] ?? ''))),
             'paytype'     => (string) ($row['paytype'] ?? ''),
+            'platform'    => (string) ($row['platform'] ?? ''),
+            'freight_type' => (int) ($row['freight_type'] ?? 0),
+            'freight_text' => (string) ($row['freight_text'] ?? ''),
+            'product_price' => (float) ($row['product_price'] ?? $row['sell_price'] ?? 0),
+            'express_com' => (string) ($row['express_com'] ?? ''),
+            'express_no'  => (string) ($row['express_no'] ?? ''),
             'createtime'  => (int) ($row['createtime'] ?? 0),
             'paytime'     => (int) ($row['paytime'] ?? 0),
             'send_time'   => (int) ($row['send_time'] ?? 0),
+            'collect_time' => (int) ($row['collect_time'] ?? 0),
             'remark'      => (string) ($row['remark'] ?? ''),
         ], $rows);
 
@@ -794,6 +804,350 @@ class SeckillService
         }
     }
 
+    /* ================= 订单扩展操作（对齐 canzhao SeckillOrder） ================= */
+
+    /**
+     * 订单详情（含下单会员）
+     *
+     * @return array{order: array, member: array}
+     */
+    public function orderDetail(int $aid, int $orderId): array
+    {
+        $order = ScopeService::query('seckill_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        $member = Db::name('member')->field('id,nickname,headimg,realname,tel')
+            ->where('id', (int) $order['mid'])->find() ?: [];
+        $order['address'] = trim(((string) ($order['area'] ?? '')) . ' ' . ((string) ($order['address'] ?? '')));
+
+        return ['order' => $order, 'member' => $member];
+    }
+
+    /**
+     * 删除订单（单 id 或批量 ids[]；aid 租户隔离）
+     *
+     * @param array<int, int> $ids
+     */
+    public function orderDelete(int $aid, array $ids): void
+    {
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的订单');
+        }
+        ScopeService::query('seckill_order', $aid)->whereIn('id', $ids)->delete();
+    }
+
+    /**
+     * 改为已支付（仅未支付）
+     */
+    public function orderIspay(int $aid, int $orderId): void
+    {
+        $order = ScopeService::query('seckill_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        if (self::STATUS_UNPAID !== (int) $order['status']) {
+            throw new BusinessException('仅未支付订单可改为已支付');
+        }
+        ScopeService::query('seckill_order', $aid)->where('id', $orderId)->update([
+            'status'  => self::STATUS_PAID,
+            'paytime' => time(),
+            'paytype' => '后台支付',
+        ]);
+    }
+
+    /**
+     * 核销并确认收货（status 1已支付 / 2已发货 → 3已收货）
+     */
+    public function orderHexiao(int $aid, int $orderId): void
+    {
+        $order = ScopeService::query('seckill_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        if (!in_array((int) $order['status'], [self::STATUS_PAID, self::STATUS_SHIPPED], true)) {
+            throw new BusinessException('订单状态不符合核销收货要求');
+        }
+        ScopeService::query('seckill_order', $aid)->where('id', $orderId)->update([
+            'status'       => self::STATUS_FINISHED,
+            'collect_time' => time(),
+        ]);
+    }
+
+    /**
+     * 手动发货（已支付→已发货；已发货时更新物流单号）
+     * POST /admin/seckill/order/sendExpress {id, express_com, express_no}
+     */
+    public function orderSendExpress(int $aid, int $orderId, string $expressCom, string $expressNo): void
+    {
+        $order = ScopeService::query('seckill_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        $status = (int) $order['status'];
+        if (!in_array($status, [self::STATUS_PAID, self::STATUS_SHIPPED], true)) {
+            throw new BusinessException('当前订单状态不允许发货');
+        }
+        $expressCom = trim($expressCom);
+        $expressNo  = trim($expressNo);
+        if ('' === $expressCom) {
+            throw new BusinessException('请选择快递公司');
+        }
+        if ('' === $expressNo) {
+            throw new BusinessException('请输入快递单号');
+        }
+
+        ScopeService::query('seckill_order', $aid)->where('id', $orderId)->update([
+            'express_com' => $expressCom,
+            'express_no'  => $expressNo,
+            'send_time'   => time(),
+            'status'      => self::STATUS_SHIPPED,
+        ]);
+    }
+
+    /**
+     * 快递公司下拉（手动发货用，取快递鸟字典 name/remark）
+     */
+    public function expressOptions(): array
+    {
+        $list = [];
+        foreach (Kdniao::expressData() as $code => $info) {
+            $list[] = ['code' => $code, 'name' => (string) ($info['name'] ?? $code)];
+        }
+
+        return $list;
+    }
+
+    /**
+     * 物流轨迹查询（真实对接快递鸟 1002，EWAYBILL.MOCK=1 时返回演示轨迹）
+     *
+     * @return array{express_com:string, express_no:string, traces:array}
+     */
+    public function orderTrace(int $aid, int $orderId): array
+    {
+        $order = ScopeService::query('seckill_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+        $expressNo = trim((string) ($order['express_no'] ?? ''));
+        $expressCom = trim((string) ($order['express_com'] ?? ''));
+        if ('' === $expressNo) {
+            throw new BusinessException('该订单尚未发货，暂无物流轨迹');
+        }
+
+        // 快递公司名称 → 快递鸟 shipper code
+        $shipperCode = '';
+        foreach (Kdniao::expressData() as $code => $info) {
+            if ('' !== $expressCom && ((string) ($info['name'] ?? '') === $expressCom)) {
+                $shipperCode = (string) $code;
+                break;
+            }
+        }
+        // 兜底：若直接存的就是 code（电子面单回写 express_com 为名称）
+        if ('' === $shipperCode) {
+            $shipperCode = $expressCom;
+        }
+
+        $kdniao = new Kdniao($aid, 0);
+        $res    = $kdniao->trace($shipperCode, $expressNo, (string) ($order['ordernum'] ?? ''));
+
+        $traces = [];
+        if (1 === (int) ($res['status'] ?? 0)) {
+            foreach ((array) ($res['data']['Traces'] ?? []) as $t) {
+                $traces[] = [
+                    'time'    => (string) ($t['AcceptTime'] ?? ''),
+                    'station' => (string) ($t['AcceptStation'] ?? ''),
+                ];
+            }
+        } else {
+            throw new BusinessException((string) ($res['msg'] ?? '物流查询失败'));
+        }
+
+        return [
+            'express_com' => $expressCom,
+            'express_no'  => $expressNo,
+            'send_time'   => (int) ($order['send_time'] ?? 0),
+            'traces'       => $traces,
+        ];
+    }
+
+    /**
+     * 送货单数据（按订单自动生成，前端整页打印）
+     */
+    public function orderDeliveryNote(int $aid, int $orderId): array
+    {
+        $order = ScopeService::query('seckill_order', $aid)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在');
+        }
+
+        return [
+            'ordernum'    => (string) $order['ordernum'],
+            'createtime'  => date('Y-m-d H:i', (int) $order['createtime']),
+            'proname'     => (string) $order['proname'],
+            'propic'      => (string) ($order['propic'] ?? ''),
+            'ggname'      => (string) ($order['ggname'] ?: '默认规格'),
+            'num'         => (int) $order['num'],
+            'sell_price'  => (float) $order['sell_price'],
+            'totalprice'  => (float) $order['totalprice'],
+            'linkman'     => (string) $order['linkman'],
+            'tel'         => (string) $order['tel'],
+            'address'     => trim(((string) ($order['area'] ?? '')) . ' ' . ((string) ($order['address'] ?? ''))),
+            'freight_text' => (string) ($order['freight_text'] ?? ''),
+            'express_com' => (string) ($order['express_com'] ?? ''),
+            'express_no'  => (string) ($order['express_no'] ?? ''),
+        ];
+    }
+
+    /**
+     * 订单导出行
+     *
+     * @param array<string, mixed> $filters
+     * @return array<int, array<int, mixed>>
+     */
+    public function orderExportRows(int $aid, array $filters): array
+    {
+        $query = ScopeService::queryAs('seckill_order', $aid, 'o');
+        $status = trim((string) ($filters['status'] ?? ''));
+        if ('' !== $status) {
+            $query->where('o.status', (int) $status);
+        }
+        foreach (['ordernum', 'proname', 'linkman', 'tel'] as $field) {
+            $val = trim((string) ($filters[$field] ?? ''));
+            if ('' !== $val) {
+                $query->whereLike('o.' . $field, '%' . $val . '%');
+            }
+        }
+        $rows = $query->order('o.id', 'desc')->limit(5000)->select()->toArray();
+        $statusText = [0 => '未支付', 1 => '已支付', 2 => '已发货', 3 => '已收货', 4 => '已关闭'];
+        $data = [];
+        foreach ($rows as $vo) {
+            $data[] = [
+                ' ' . (string) $vo['ordernum'],
+                $vo['proname'] ?? '',
+                $vo['ggname'] ?? '',
+                $vo['num'] ?? 1,
+                $vo['sell_price'] ?? '',
+                $vo['totalprice'] ?? '',
+                $vo['paytype'] ?? '',
+                $vo['linkman'] ?? '',
+                $vo['tel'] ?? '',
+                trim(($vo['area'] ?? '') . ' ' . ($vo['address'] ?? '')),
+                $vo['remark'] ?? '',
+                date('Y-m-d H:i:s', (int) ($vo['createtime'] ?? 0)),
+                $statusText[(int) ($vo['status'] ?? 0)] ?? '未知',
+            ];
+        }
+
+        return $data;
+    }
+
+    /* ================= 秒杀评价（对齐 canzhao SeckillComment） ================= */
+
+    /**
+     * 评价列表（status 空=全部 0待审核 1显示 2驳回）
+     *
+     * @param array<string, mixed> $filters
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function commentList(int $aid, int $page, int $pagesize, array $filters): array
+    {
+        $query = ScopeService::queryAs('seckill_comment', $aid, 'c')
+            ->leftJoin('member m', 'm.id = c.mid')
+            ->leftJoin('seckill_product p', 'p.id = c.proid')
+            ->field('c.*, m.nickname, m.headimg, p.name as proname, p.pic as propic');
+
+        $status = trim((string) ($filters['status'] ?? ''));
+        if ('' !== $status) {
+            $query->where('c.status', (int) $status);
+        }
+        $content = trim((string) ($filters['content'] ?? ''));
+        if ('' !== $content) {
+            $query->whereLike('c.content', '%' . $content . '%');
+        }
+        $proid = (int) ($filters['proid'] ?? 0);
+        if ($proid > 0) {
+            $query->where('c.proid', $proid);
+        }
+        $start = trim((string) ($filters['start_date'] ?? ''));
+        if ('' !== $start) {
+            $query->where('c.createtime', '>=', strtotime($start));
+        }
+        $end = trim((string) ($filters['end_date'] ?? ''));
+        if ('' !== $end) {
+            $query->where('c.createtime', '<', strtotime($end) + 86400);
+        }
+
+        $total = (clone $query)->count();
+        $rows = $query->order('c.id', 'desc')->page($page, $pagesize)->select()->toArray();
+
+        $list = array_map(static function (array $r): array {
+            $st = (int) ($r['status'] ?? 0);
+            return [
+                'id'            => (int) $r['id'],
+                'mid'           => (int) $r['mid'],
+                'proid'         => (int) $r['proid'],
+                'proname'       => (string) ($r['proname'] ?? ''),
+                'propic'        => (string) ($r['propic'] ?? ''),
+                'nickname'      => (string) ($r['nickname'] ?? ''),
+                'headimg'       => (string) ($r['headimg'] ?? ''),
+                'score'         => (int) ($r['score'] ?? 5),
+                'content'       => (string) ($r['content'] ?? ''),
+                'content_pic'   => (string) ($r['content_pic'] ?? ''),
+                'reply_content' => (string) ($r['reply_content'] ?? ''),
+                'reply_time'    => (int) ($r['reply_time'] ?? 0),
+                'status'        => $st,
+                'status_text'   => [0 => '待审核', 1 => '已显示', 2 => '已驳回'][$st] ?? '未知',
+                'createtime'    => (int) ($r['createtime'] ?? 0),
+            ];
+        }, $rows);
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pagesize];
+    }
+
+    /**
+     * 评价审核（status 1显示 2驳回；支持批量 ids[]）
+     *
+     * @param array<int, int> $ids
+     */
+    public function commentSetStatus(int $aid, array $ids, int $status): void
+    {
+        if (1 !== $status && 2 !== $status && 0 !== $status) {
+            throw new BusinessException('非法的状态');
+        }
+        if (empty($ids)) {
+            throw new BusinessException('请选择评价');
+        }
+        ScopeService::query('seckill_comment', $aid)->whereIn('id', $ids)->update(['status' => $status]);
+    }
+
+    /**
+     * 评价回复
+     */
+    public function commentReply(int $aid, int $id, string $content): void
+    {
+        $content = trim($content);
+        if ('' === $content) {
+            throw new BusinessException('请输入回复内容');
+        }
+        ScopeService::query('seckill_comment', $aid)->where('id', $id)->update([
+            'reply_content' => $content,
+            'reply_time'    => time(),
+        ]);
+    }
+
+    /**
+     * 删除评价（单 id 或批量 ids[]）
+     *
+     * @param array<int, int> $ids
+     */
+    public function commentDelete(int $aid, array $ids): void
+    {
+        if (empty($ids)) {
+            throw new BusinessException('请选择评价');
+        }
+        ScopeService::query('seckill_comment', $aid)->whereIn('id', $ids)->delete();
+    }
     /* ================= 库存扣减 / 关单核心 ================= */
 
     /**
@@ -1319,6 +1673,10 @@ class SeckillService
                 'name'         => trim((string) ($gg['name'] ?? '')) ?: '默认',
                 'market_price' => $this->money($gg['market_price'] ?? $marketPrice),
                 'sell_price'   => $this->money($gg['sell_price'] ?? $sellPrice),
+                'cost_price'   => $this->money($gg['cost_price'] ?? 0),
+                'weight'       => max(0, (int) ($gg['weight'] ?? 0)),
+                'givescore'    => max(0, (int) ($gg['givescore'] ?? 0)),
+                'pic'          => trim((string) ($gg['pic'] ?? '')),
                 'stock'        => max(0, (int) ($gg['stock'] ?? 0)),
             ];
 

@@ -125,3 +125,25 @@ export function getYuebaoConfig() {
 export function saveYuebaoConfig(data: YuebaoConfig) {
   return request.post<unknown, null>('/admin/yuebao/config', data)
 }
+
+// ============ 任务对齐：余额宝明细/提现 批量删除 / 导出 ============
+
+/** 余额宝明细导出（blob） */
+export function exportYuebaoMoneyLog(params: YuebaoMoneyLogQuery) {
+  return request.get('/admin/yuebao/moneylog/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+
+/** 余额宝明细批量删除（兼容单 id 与 ids[]） */
+export function deleteYuebaoMoneyLog(data: { id?: number; ids?: number[] }) {
+  return request.post<unknown, { deleted: number }>('/admin/yuebao/moneylog/delete', data)
+}
+
+/** 余额宝提现导出（blob） */
+export function exportYuebaoWithdraw(params: YuebaoWithdrawQuery) {
+  return request.get('/admin/yuebao/withdraw/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
+}
+
+/** 余额宝提现批量删除（兼容单 id 与 ids[]） */
+export function deleteYuebaoWithdraw(data: { id?: number; ids?: number[] }) {
+  return request.post<unknown, { deleted: number }>('/admin/yuebao/withdraw/delete', data)
+}

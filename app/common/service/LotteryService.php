@@ -135,12 +135,28 @@ class LotteryService
         $sharedaytimes = max(0, (int) ($data['sharedaytimes'] ?? 0));
         $sharetimes    = max(0, (int) ($data['sharetimes'] ?? 0));
 
+        // 参与条件：all/follow/member/agent 逗号串；空则归 all
+        $joincond = trim((string) ($data['joincond'] ?? 'all'));
+        if ('' === $joincond) {
+            $joincond = 'all';
+        }
+        // 消耗类型：1 消耗积分 / 2 消耗余额
+        $useType = (int) ($data['use_type'] ?? 1);
+        if (!in_array($useType, [1, 2], true)) {
+            $useType = 1;
+        }
+
         $prizes = $this->normalizePrizes($data['prizes'] ?? [], $aid, $id);
 
         $info = array_merge([
             'type'          => $type,
             'name'          => $name,
             'banner'        => trim((string) ($data['banner'] ?? '')),
+            'toppic'        => trim((string) ($data['toppic'] ?? '')),
+            'bgpic'         => trim((string) ($data['bgpic'] ?? '')),
+            'poppic'        => trim((string) ($data['poppic'] ?? '')),
+            'popnote'       => trim((string) ($data['popnote'] ?? '')),
+            'bgcolor'       => trim((string) ($data['bgcolor'] ?? '')),
             'starttime'     => $starttime,
             'endtime'       => $endtime,
             'guize'         => (string) ($data['guize'] ?? ''),
@@ -149,6 +165,12 @@ class LotteryService
             'shareaddnum'   => $shareaddnum,
             'sharedaytimes' => $sharedaytimes,
             'sharetimes'    => $sharetimes,
+            'joincond'      => $joincond,
+            'joinscope'     => (int) ($data['joinscope'] ?? 0) ? 1 : 0,
+            'use_type'      => $useType,
+            'usescore'      => max(0, (int) ($data['usescore'] ?? 0)),
+            'scene_id'      => trim((string) ($data['scene_id'] ?? '')),
+            'formcontent'   => (string) ($data['formcontent'] ?? ''),
             'sharetitle'    => trim((string) ($data['sharetitle'] ?? '')),
             'sharelink'     => trim((string) ($data['sharelink'] ?? '')),
             'sharepic'      => trim((string) ($data['sharepic'] ?? '')),
@@ -227,6 +249,16 @@ class LotteryService
         $jxmc = trim((string) ($filters['jxmc'] ?? ''));
         if ('' !== $jxmc) {
             $query->whereLike('jxmc', '%' . $jxmc . '%');
+        }
+
+        // 兑奖信息：模糊匹配收货人/手机号/核销码
+        $duijiang = trim((string) ($filters['duijiang'] ?? ''));
+        if ('' !== $duijiang) {
+            $query->where(function ($q) use ($duijiang) {
+                $q->whereLike('linkman', '%' . $duijiang . '%')
+                    ->whereOr('tel', 'like', '%' . $duijiang . '%')
+                    ->whereOr('code', 'like', '%' . $duijiang . '%');
+            });
         }
 
         $status = trim((string) ($filters['status'] ?? ''));
@@ -319,6 +351,21 @@ class LotteryService
         return ['code' => $code];
     }
 
+    /**
+     * 删除抽奖记录（单条/批量；未领取/已领取/未中奖均可删）
+     *
+     * @param array<int,int> $ids
+     */
+    public function recordDelete(int $aid, array $ids): void
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $ids))));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+
+        Db::name('choujiang_record')->where('aid', $aid)->whereIn('id', $ids)->delete();
+    }
+
     /* ================= 抽奖核心（概率 + 防超发） ================= */
 
     /**
@@ -364,12 +411,13 @@ class LotteryService
             throw new BusinessException('今日抽奖次数已用完，明天再来吧');
         }
 
-        // 奖池：剩余数量作权重，数量耗尽出局
+        // 奖池：手工概率 jNgl 作权重（>0 时），否则退回剩余库存；数量耗尽出局
         $pool = [];
         for ($i = 1; $i <= self::PRIZE_MAX; $i++) {
             $remain = (int) $act['j' . $i . 'sl'] - (int) $act['j' . $i . 'yj'];
             if ('' !== trim((string) $act['j' . $i . 'mc']) && $remain > 0) {
-                $pool[$i] = $remain;
+                $gl = (float) ($act['j' . $i . 'gl'] ?? 0);
+                $pool[$i] = $gl > 0 ? $gl : $remain;
             }
         }
 
@@ -589,15 +637,27 @@ class LotteryService
             $phase = 'ongoing';
         }
 
+        // 总奖品数 = 真实奖项(j1..j9)库存合计（不含不中奖 j0）
+        $totalPrizes = 0;
+        for ($i = 1; $i <= self::PRIZE_MAX; $i++) {
+            $totalPrizes += (int) ($row['j' . $i . 'sl'] ?? 0);
+        }
+
         $data = [
             'id'            => (int) $row['id'],
             'type'          => (string) ($row['type'] ?? ''),
             'name'          => (string) ($row['name'] ?? ''),
             'banner'        => (string) ($row['banner'] ?? ''),
+            'toppic'        => (string) ($row['toppic'] ?? ''),
+            'bgpic'         => (string) ($row['bgpic'] ?? ''),
+            'poppic'        => (string) ($row['poppic'] ?? ''),
+            'popnote'       => (string) ($row['popnote'] ?? ''),
+            'bgcolor'       => (string) ($row['bgcolor'] ?? ''),
             'starttime'     => $start,
             'endtime'       => $end,
             'phase'         => $phase,
             'status'        => (int) ($row['status'] ?? 1),
+            'totalprizes'   => $totalPrizes,
             'cjnum'         => (int) ($row['cjnum'] ?? 0),
             'zjnum'         => (int) ($row['zjnum'] ?? 0),
             'pertotal'      => (int) ($row['pertotal'] ?? 0),
@@ -610,6 +670,12 @@ class LotteryService
             $data['guize']         = (string) ($row['guize'] ?? '');
             $data['sharedaytimes'] = (int) ($row['sharedaytimes'] ?? 0);
             $data['sharetimes']    = (int) ($row['sharetimes'] ?? 0);
+            $data['joincond']      = (string) ($row['joincond'] ?? 'all');
+            $data['joinscope']     = (int) ($row['joinscope'] ?? 0);
+            $data['use_type']      = (int) ($row['use_type'] ?? 1);
+            $data['usescore']      = (int) ($row['usescore'] ?? 0);
+            $data['scene_id']      = (string) ($row['scene_id'] ?? '');
+            $data['formcontent']   = (string) ($row['formcontent'] ?? '');
             $data['sharetitle']    = (string) ($row['sharetitle'] ?? '');
             $data['sharelink']     = (string) ($row['sharelink'] ?? '');
             $data['sharepic']      = (string) ($row['sharepic'] ?? '');
@@ -628,10 +694,11 @@ class LotteryService
     protected function parsePrizes(array $row): array
     {
         $prizes = [];
-        $sum    = 0;
 
         for ($i = self::PRIZE_NONE; $i <= self::PRIZE_MAX; $i++) {
             $sl = (int) ($row['j' . $i . 'sl'] ?? 0);
+            // 中奖概率：优先取手工录入的 jNgl；未录入时按数量占比推导（兼容旧数据）
+            $glRaw = isset($row['j' . $i . 'gl']) ? (float) $row['j' . $i . 'gl'] : -1.0;
             $prizes[] = [
                 'index' => $i,
                 'mc'    => (string) ($row['j' . $i . 'mc'] ?? ''),
@@ -639,15 +706,28 @@ class LotteryService
                 'tp'    => $i > 0 ? (int) ($row['j' . $i . 'tp'] ?? 1) : 1,
                 'sl'    => $sl,
                 'yj'    => (int) ($row['j' . $i . 'yj'] ?? 0),
+                'gl'    => $glRaw,
             ];
-            $sum += $sl;
         }
 
-        // 概率 = 数量/总数（保留两位，参考系统口径）
-        foreach ($prizes as &$prize) {
-            $prize['gl'] = $sum > 0 ? round($prize['sl'] / $sum * 100, 2) : 0.0;
+        // 手工概率全为空（旧数据）时，按数量占比推导，保证页面有值
+        $anyManual = false;
+        foreach ($prizes as $p) {
+            if ($p['gl'] > 0) {
+                $anyManual = true;
+                break;
+            }
         }
-        unset($prize);
+        if (!$anyManual) {
+            $sum = 0;
+            foreach ($prizes as $p) {
+                $sum += $p['sl'];
+            }
+            foreach ($prizes as &$prize) {
+                $prize['gl'] = $sum > 0 ? round($prize['sl'] / $sum * 100, 2) : 0.0;
+            }
+            unset($prize);
+        }
 
         return $prizes;
     }
@@ -672,13 +752,14 @@ class LotteryService
 
             $mc = trim((string) ($one['mc'] ?? ''));
             $sl = max(0, (int) ($one['sl'] ?? 0));
+            $gl = round(max(0.0, (float) ($one['gl'] ?? 0)), 2);
             $tp = (int) ($one['tp'] ?? 1);
 
             if (self::PRIZE_NONE === $i) {
                 // j0 不中奖槽位恒存在
                 $mc = '' === $mc ? '谢谢参与' : $mc;
             } else {
-                if (!in_array($tp, [1, 2], true)) {
+                if (!in_array($tp, [1, 2, 3, 4], true)) {
                     $tp = 1;
                 }
                 // 编辑校验：数量不能低于已出奖数，防奖品凭空超发
@@ -695,6 +776,7 @@ class LotteryService
                     $flat['j' . $i . 'pic'] = null;
                     $flat['j' . $i . 'tp']  = 1;
                     $flat['j' . $i . 'sl']  = null;
+                    $flat['j' . $i . 'gl']  = 0;
                     continue;
                 }
                 if ('' === $mc) {
@@ -707,6 +789,7 @@ class LotteryService
             $flat['j' . $i . 'sl']  = $sl;
             if ($i > 0) {
                 $flat['j' . $i . 'tp'] = $tp;
+                $flat['j' . $i . 'gl'] = $gl;
             }
         }
 

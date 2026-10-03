@@ -6,6 +6,7 @@ namespace app\admin\controller;
 
 use app\BaseController;
 use app\common\service\BargainService;
+use app\common\service\ExcelHelper;
 use app\common\service\ScopeService;
 
 /**
@@ -326,5 +327,87 @@ class Kanjia extends BaseController
         $code = trim((string) $this->request->post('code', ''));
 
         return $this->success($this->bargainService->hexiao($aid, $code), '核销成功');
+    }
+    /* ================= 订单扩展操作（对齐 canzhao KanjiaOrder） ================= */
+
+    /**
+     * 订单详情（含下单会员）
+     * GET /admin/kanjia/order/detail?id=
+     */
+    public function orderDetail()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success($this->bargainService->orderDetail($aid, (int) $this->request->get('id', 0)));
+    }
+
+    /**
+     * 删除订单（单 id 或批量 ids[]）
+     * POST /admin/kanjia/order/del {id | ids[]}
+     */
+    public function orderDelete()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $ids = (array) $this->request->post('ids', []);
+        if (empty($ids)) {
+            $ids = [(int) $this->request->post('id', 0)];
+        }
+
+        $this->bargainService->orderDelete($aid, $ids);
+
+        return $this->success([], '删除成功');
+    }
+
+    /**
+     * 改为已支付（仅未支付）
+     * POST /admin/kanjia/order/ispay {id}
+     */
+    public function orderIspay()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $this->bargainService->orderIspay($aid, (int) $this->request->post('id', 0));
+
+        return $this->success([], '操作成功');
+    }
+
+    /**
+     * 核销并确认收货（status 1/2 → 3）
+     * POST /admin/kanjia/order/hexiao {id}
+     */
+    public function orderHexiao()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $this->bargainService->orderHexiao($aid, (int) $this->request->post('id', 0));
+
+        return $this->success([], '核销成功');
+    }
+
+    /**
+     * 订单导出（真实 xlsx）
+     * GET /admin/kanjia/order/export?status&ordernum&proname&linkman&tel&start_date&end_date
+     */
+    public function orderExport()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $filters = [
+            'status'     => trim((string) $this->request->get('status', '')),
+            'ordernum'   => trim((string) $this->request->get('ordernum', '')),
+            'proname'    => trim((string) $this->request->get('proname', '')),
+            'linkman'    => trim((string) $this->request->get('linkman', '')),
+            'tel'        => trim((string) $this->request->get('tel', '')),
+            'start_date' => trim((string) $this->request->get('start_date', '')),
+            'end_date'   => trim((string) $this->request->get('end_date', '')),
+        ];
+
+        $rows = $this->bargainService->orderExportRows($aid, $filters);
+
+        return ExcelHelper::download('砍价订单_' . date('YmdHis'), [
+            '订单号', '商品名称', '原价', '商品价', '实付款', '支付方式', '收货人', '手机号',
+            '收货地址', '配送方式', '快递信息', '备注', '下单时间', '状态', '退款状态',
+        ], $rows);
     }
 }

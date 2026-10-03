@@ -160,6 +160,27 @@ class Maidan extends BaseController
         ExcelUtil::export($titles, $rows, '买单记录_' . date('YmdHis'));
     }
 
+    /**
+     * 买单记录批量删除
+     * POST /admin/maidan/logdel {ids: [id,...]}
+     */
+    public function logdel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $ids = $this->request->post('ids/a', []);
+        $ids = array_map('intval', $ids);
+        $ids = array_filter($ids, fn($v) => $v > 0);
+
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的记录');
+        }
+
+        $this->maidanService->deleteByIds($aid, $ids);
+
+        return $this->success([], '删除成功');
+    }
+
     /* ================= 聚合收款码设置 ================= */
 
     /**
@@ -175,7 +196,7 @@ class Maidan extends BaseController
 
     /**
      * 收款码设置保存
-     * POST /admin/maidan/saveSet {maidan_login, maidan_getlocation, maidan_payaftertourl}
+     * POST /admin/maidan/saveSet {maidan_login, maidan_getlocation, maidan_payaftertourl, maidan_score_discount}
      */
     public function saveSet()
     {
@@ -187,5 +208,28 @@ class Maidan extends BaseController
         $this->maidanService->saveSet($aid, $data);
 
         return $this->success([], '设置成功');
+    }
+
+    /**
+     * 上传域名校验文件（微信txt/支付宝html）
+     * POST /admin/maidan/uploadJstxt  (multipart: file)
+     */
+    public function uploadJstxt()
+    {
+        $file = $this->request->file('file');
+
+        if (null === $file) {
+            throw new BusinessException('请选择文件');
+        }
+
+        $fileArr = [
+            'name'     => $file->getOriginalName(),
+            'type'     => $file->getMime(),
+            'tmp_name' => $file->getPathname(),
+        ];
+
+        $this->maidanService->uploadJstxt($fileArr);
+
+        return $this->success([], '上传成功');
     }
 }

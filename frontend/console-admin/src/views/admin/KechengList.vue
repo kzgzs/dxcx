@@ -1,7 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import type { FormInstance, FormRules } from 'element-plus'
 import {
   deleteKechengCourse,
   getKechengCategoryList,
@@ -17,6 +16,18 @@ import type {
   MemberLevelOption,
 } from '../../api/kecheng'
 import { formatTime } from '../../utils/time'
+import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import LinkAddressModal from '../../components/LinkAddressModal.vue'
+import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
+import type { DesignerModule } from '../../api/designer'
+import { defaultModule } from './designerModules'
+import KechengChapter from './KechengChapter.vue'
+import KechengTiku from './KechengTiku.vue'
+import KechengRecord from './KechengRecord.vue'
+
+const kctypeText: Record<number, string> = { 1: '图文', 2: '音频', 3: '视频', 4: '综合' }
+/** 点券派生口径：1元 = 100点券（截图内价格×100，如11→1100、6.6→660） */
+const pointOf = (v: number | string | undefined) => Math.round(Number(v ?? 0) * 100)
 
 // ============ 列表 ============
 const loading = ref(false)
@@ -25,11 +36,16 @@ const total = ref(0)
 const page = ref(1)
 const pagesize = ref(20)
 const keyword = ref('')
-const filterStatus = ref<string>('')
+const filterStatus = ref<string | number>('')
 const filterCid = ref<number | undefined>(undefined)
+const checkedIds = ref<Set<number>>(new Set())
 
 const categories = ref<KechengCategoryItem[]>([])
 const memberLevels = ref<MemberLevelOption[]>([])
+
+/** 价格会员价表用全部等级；分销展开用具有分销权限(can_agent>0)的等级 */
+const priceLevels = computed(() => memberLevels.value)
+const agentLevels = computed(() => memberLevels.value.filter((l) => (l.can_agent || 0) > 0))
 
 async function fetchOptions() {
   try {
@@ -37,7 +53,7 @@ async function fetchOptions() {
     categories.value = catData.list || []
     memberLevels.value = Array.isArray(lvData) ? lvData : lvData.list || []
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器统一提示 */
   }
 }
 
@@ -54,7 +70,7 @@ async function fetchList() {
     tableData.value = data.list || []
     total.value = data.total || 0
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器统一提示 */
   } finally {
     loading.value = false
   }
@@ -70,25 +86,46 @@ function categoryNames(cid: string) {
     .split(',')
     .filter((v) => v && v !== '0')
     .map(Number)
-  return ids
-    .map((id) => categories.value.find((v) => v.id === id)?.name || '')
-    .filter(Boolean)
-    .join(' / ') || '-'
+  return (
+    ids
+      .map((id) => categories.value.find((v) => v.id === id)?.name || '')
+      .filter(Boolean)
+      .join(' / ') || '-'
+  )
 }
 
-// ============ 上下架 ============
-async function handleStatus(row: KechengCourseItem) {
+function onCheckChange(row: KechengCourseItem, v: boolean) {
+  if (v) checkedIds.value.add(row.id)
+  else checkedIds.value.delete(row.id)
+}
+
+// ============ 上下架 / 删除 ============
+async function rowStatus(row: KechengCourseItem, st: number) {
+  await setKechengCourseStatus(row.id, st)
+  row.status = st
+}
+
+function handleToggleStatus(row: KechengCourseItem) {
   const next = row.status === 1 ? 0 : 1
+  rowStatus(row, next)
+    .then(() => ElMessage.success(next === 1 ? '已上架' : '已下架'))
+    .catch(() => {})
+}
+
+async function batchStatus(st: number) {
+  if (!checkedIds.value.size) return
   try {
-    await setKechengCourseStatus(row.id, next)
-    row.status = next
-    ElMessage.success(next === 1 ? '已上架' : '已下架')
+    for (const id of Array.from(checkedIds.value)) {
+      await setKechengCourseStatus(id, st)
+    }
+    checkedIds.value.clear()
+    ElMessage.success(st === 1 ? '已上架' : '已下架')
+    fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    /* 拦截器统一提示 */
   }
 }
 
-// ============ 删除 ============
 function handleDelete(row: KechengCourseItem) {
   ElMessageBox.confirm(`确定要删除课程「${row.name}」吗？`, '删除确认', {
     confirmButtonText: '删除',
@@ -101,18 +138,65 @@ function handleDelete(row: KechengCourseItem) {
         ElMessage.success('删除成功')
         fetchList()
       } catch {
-        // 错误提示已由 axios 拦截器统一弹出
+        /* 拦截器统一提示 */
       }
     })
     .catch(() => {})
 }
 
-// ============ 新增 / 编辑弹窗 ============
-const dialogVisible = ref(false)
-const isEdit = ref(false)
-const formRef = ref<FormInstance>()
+function handleBatchDelete() {
+  if (!checkedIds.value.size) return
+  ElMessageBox.confirm(`确定要删除选中的 ${checkedIds.value.size} 门课程吗？`, '批量删除', {
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      try {
+        for (const id of Array.from(checkedIds.value)) {
+          await deleteKechengCourse(id)
+        }
+        checkedIds.value.clear()
+        ElMessage.success('删除成功')
+        fetchList()
+      } catch {
+        /* 拦截器统一提示 */
+      }
+    })
+    .catch(() => {})
+}
+
+// ============ 查看链接 ============
+const linkVisible = ref(false)
+const linkPath = ref('')
+function openLink(row: KechengCourseItem) {
+  linkPath.value = `/activity/kecheng/product?id=${row.id}`
+  linkVisible.value = true
+}
+
+// ============ 嵌入：章节 / 题库 / 答题记录 ============
+const embedded = ref<'' | 'chapter' | 'tiku' | 'record'>('')
+const embeddedProid = ref<number>(0)
+const embeddedRowName = ref('')
+const embeddedTitle = computed(() => {
+  const map: Record<string, string> = { chapter: '章节', tiku: '题库', record: '答题记录' }
+  return `${map[embedded.value]} - ${embeddedRowName.value}`
+})
+
+function openEmbedded(kind: 'chapter' | 'tiku' | 'record', row: KechengCourseItem) {
+  embedded.value = kind
+  embeddedProid.value = row.id
+  embeddedRowName.value = row.name
+}
+function closeEmbedded() {
+  embedded.value = ''
+}
+
+// ============ 增改平铺 ============
+const editing = ref(false)
+const editId = ref(0)
+const activeTab = ref<'info' | 'detail'>('info')
 const submitting = ref(false)
-const activeTab = ref('base')
 
 interface LevelCommission {
   commission1: number
@@ -121,147 +205,79 @@ interface LevelCommission {
 }
 
 const form = reactive({
-  id: 0,
   name: '',
+  kctype: 1,
   pic: '',
   pics: '',
-  cidArr: [] as number[],
-  kctype: 4,
   price: 0,
   market_price: 0,
-  detail_text: '',
-  detail_pics: '',
-  sort: 0,
-  status: 1,
+  lvprice: 0,
+  cid: undefined as number | undefined,
   join_num: 0,
-  // 购买权限 / 显示权限
-  gettjMode: '-1',
-  gettjLevels: [] as number[],
-  gettjurl: '',
-  gettjtip: '',
-  showtjMode: '-1',
-  showtjLevels: [] as number[],
-  // 分销
+  isdt: 1,
+  dtnum: 10,
+  sxdate: 60,
+  hgscore: 60,
   commissionset: 0,
   commissiondata1: {} as Record<string, LevelCommission>,
   commissiondata2: {} as Record<string, LevelCommission>,
   commissiondata3: {} as Record<string, LevelCommission>,
-  // 会员价
-  lvprice: 0,
   lvprice_data: {} as Record<string, { money_price: number }>,
-  // 答题参数
-  sxdate: 0,
-  isdt: 1,
-  dtnum: 5,
-  hgscore: 60,
-  // 学习设置
-  orderlearn: 0,
-  learnhg: 0,
+  sort: 0,
+  status: 1,
+  detailModules: [defaultModule('richtext')] as DesignerModule[],
 })
 
-const rules: FormRules = {
-  name: [{ required: true, message: '请输入课程名称', trigger: 'blur' }],
-}
-
 function resetForm() {
-  Object.assign(form, {
-    id: 0,
-    name: '',
-    pic: '',
-    pics: '',
-    cidArr: [],
-    kctype: 4,
-    price: 0,
-    market_price: 0,
-    detail_text: '',
-    detail_pics: '',
-    sort: 0,
-    status: 1,
-    join_num: 0,
-    gettjMode: '-1',
-    gettjLevels: [],
-    gettjurl: '',
-    gettjtip: '',
-    showtjMode: '-1',
-    showtjLevels: [],
-    commissionset: 0,
-    commissiondata1: {},
-    commissiondata2: {},
-    commissiondata3: {},
-    lvprice: 0,
-    lvprice_data: {},
-    sxdate: 0,
-    isdt: 1,
-    dtnum: 5,
-    hgscore: 60,
-    orderlearn: 0,
-    learnhg: 0,
-  })
+  form.name = ''
+  form.kctype = 1
+  form.pic = ''
+  form.pics = ''
+  form.price = 0
+  form.market_price = 0
+  form.lvprice = 0
+  form.cid = undefined
+  form.join_num = 0
+  form.isdt = 1
+  form.dtnum = 10
+  form.sxdate = 60
+  form.hgscore = 60
+  form.commissionset = 0
+  form.commissiondata1 = {}
+  form.commissiondata2 = {}
+  form.commissiondata3 = {}
+  form.lvprice_data = {}
+  form.sort = 0
+  form.status = 1
+  form.detailModules = [defaultModule('richtext')]
 }
 
 function openAdd() {
-  isEdit.value = false
-  activeTab.value = 'base'
   resetForm()
-  dialogVisible.value = true
+  editId.value = 0
+  activeTab.value = 'info'
+  editing.value = true
 }
 
-async function openEdit(row: KechengCourseItem) {
-  isEdit.value = true
-  activeTab.value = 'base'
-  resetForm()
-  dialogVisible.value = true
-  try {
-    const d = await getKechengCourseDetail(row.id)
-    const gettj = String(d.gettj ?? '-1')
-    const showtj = String(d.showtj ?? '-1')
-    Object.assign(form, {
-      id: d.id,
-      name: d.name,
-      pic: d.pic,
-      pics: d.pics,
-      cidArr: String(d.cid || '')
-        .split(',')
-        .filter((v) => v && v !== '0')
-        .map(Number),
-      kctype: d.kctype,
-      price: Number(d.price),
-      market_price: Number(d.market_price),
-      detail_text: d.detail_text,
-      detail_pics: d.detail_pics,
-      sort: d.sort,
-      status: d.status,
-      join_num: d.join_num,
-      gettjMode: gettj === '-1' || gettj === '0' ? gettj : 'level',
-      gettjLevels:
-        gettj !== '-1' && gettj !== '0' ? gettj.split(',').map(Number) : [],
-      gettjurl: d.gettjurl,
-      gettjtip: d.gettjtip,
-      showtjMode: showtj === '-1' || showtj === '0' ? showtj : 'level',
-      showtjLevels:
-        showtj !== '-1' && showtj !== '0' ? showtj.split(',').map(Number) : [],
-      commissionset: d.commissionset,
-      commissiondata1: normalizeCommission(d.commissiondata1),
-      commissiondata2: normalizeCommission(d.commissiondata2),
-      commissiondata3: normalizeCommission(d.commissiondata3),
-      lvprice: d.lvprice,
-      lvprice_data: normalizeLvprice(d.lvprice_data),
-      sxdate: d.sxdate,
-      isdt: d.isdt,
-      dtnum: d.dtnum,
-      hgscore: d.hgscore,
-      orderlearn: d.orderlearn,
-      learnhg: d.learnhg,
-    })
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+/** detail 列（模块数组 JSON）还原为 DIY 模块数组；兼容旧 HTML 包裹成富文本模块 */
+function parseDetailModules(raw: unknown): DesignerModule[] {
+  const str = typeof raw === 'string' ? raw.trim() : ''
+  if (str) {
+    try {
+      const parsed = JSON.parse(str)
+      if (Array.isArray(parsed)) return parsed as DesignerModule[]
+    } catch {
+      /* 落到包裹 */
+    }
+    const m = defaultModule('richtext')
+    ;(m as Record<string, unknown>).content = str
+    return [m]
   }
+  return [defaultModule('richtext')]
 }
 
-function normalizeCommission(
-  raw:
-    | Record<string, { commission1?: number | string; commission2?: number | string; commission3?: number | string }>
-    | undefined,
+function normCommission(
+  raw: Record<string, { commission1?: number | string; commission2?: number | string; commission3?: number | string }> | undefined,
 ): Record<string, LevelCommission> {
   const out: Record<string, LevelCommission> = {}
   for (const [k, v] of Object.entries(raw || {})) {
@@ -274,96 +290,115 @@ function normalizeCommission(
   return out
 }
 
-function normalizeLvprice(
-  raw: Record<string, { money_price?: number | string }> | undefined,
-): Record<string, { money_price: number }> {
-  const out: Record<string, { money_price: number }> = {}
-  for (const [k, v] of Object.entries(raw || {})) {
-    out[k] = { money_price: Number(v?.money_price ?? 0) }
+async function openEdit(row: KechengCourseItem) {
+  resetForm()
+  editId.value = row.id
+  activeTab.value = 'info'
+  editing.value = true
+  try {
+    const d = await getKechengCourseDetail(row.id)
+    form.name = d.name
+    form.kctype = Number(d.kctype) || 1
+    form.pic = d.pic || ''
+    form.pics = d.pics || ''
+    form.price = Number(d.price) || 0
+    form.market_price = Number(d.market_price) || 0
+    form.lvprice = Number(d.lvprice) || 0
+    const cidNum = String(d.cid || '')
+      .split(',')
+      .filter((v) => v && v !== '0')
+      .map(Number)[0]
+    form.cid = cidNum || undefined
+    form.join_num = Number(d.join_num) || 0
+    form.isdt = Number(d.isdt) === 0 ? 0 : 1
+    form.dtnum = Number(d.dtnum) || 10
+    form.sxdate = Number(d.sxdate) || 60
+    form.hgscore = Number(d.hgscore) || 60
+    form.commissionset = Number(d.commissionset) || 0
+    form.commissiondata1 = normCommission(d.commissiondata1)
+    form.commissiondata2 = normCommission(d.commissiondata2)
+    form.commissiondata3 = normCommission(d.commissiondata3)
+    const lv: Record<string, { money_price: number }> = {}
+    for (const [k, v] of Object.entries(d.lvprice_data || {})) {
+      lv[k] = { money_price: Number(v?.money_price ?? 0) }
+    }
+    form.lvprice_data = lv
+    form.sort = Number(d.sort) || 0
+    form.status = Number(d.status) === 0 ? 0 : 1
+    form.detailModules = parseDetailModules(d.detail)
+  } catch {
+    /* 拦截器统一提示 */
   }
-  return out
 }
 
 function commissionRow(lvId: number, key: 'commissiondata1' | 'commissiondata2' | 'commissiondata3') {
   const k = String(lvId)
-  if (!form[key][k]) {
-    form[key][k] = { commission1: 0, commission2: 0, commission3: 0 }
-  }
+  if (!form[key][k]) form[key][k] = { commission1: 0, commission2: 0, commission3: 0 }
   return form[key][k]
 }
 
 function lvpriceRow(lvId: number) {
   const k = String(lvId)
-  if (!form.lvprice_data[k]) {
-    form.lvprice_data[k] = { money_price: 0 }
-  }
+  if (!form.lvprice_data[k]) form.lvprice_data[k] = { money_price: 0 }
   return form.lvprice_data[k]
 }
 
-function buildTj(mode: string, levels: number[]) {
-  return mode === 'level' ? levels.join(',') : mode
+/** 分销展开单位：1=比例% 2=金额元 3=积分 */
+const commissionUnit = computed(() => (form.commissionset === 1 ? '%' : form.commissionset === 2 ? '元' : '积分'))
+
+// 选图
+const pickerVisible = ref(false)
+const pickerKind = ref<'main' | 'gallery'>('main')
+function openPicker(kind: 'main' | 'gallery') {
+  pickerKind.value = kind
+  pickerVisible.value = true
+}
+function onPickImage(urls: string[]) {
+  if (pickerKind.value === 'main') form.pic = urls[0] ?? ''
+  else form.pics = urls.join(',')
+  pickerVisible.value = false
 }
 
 async function handleSubmit() {
-  if (!formRef.value) return
-  await formRef.value.validate(async (valid) => {
-    if (!valid) return
-    submitting.value = true
-    try {
-      await saveKechengCourse({
-        id: form.id,
-        name: form.name,
-        pic: form.pic,
-        pics: form.pics,
-        cid: form.cidArr.join(','),
-        kctype: form.kctype,
-        price: form.price,
-        market_price: form.market_price,
-        detail_text: form.detail_text,
-        detail_pics: form.detail_pics,
-        sort: form.sort,
-        status: form.status,
-        join_num: form.join_num,
-        gettj: buildTj(form.gettjMode, form.gettjLevels),
-        gettjurl: form.gettjurl,
-        gettjtip: form.gettjtip,
-        showtj: buildTj(form.showtjMode, form.showtjLevels),
-        commissionset: form.commissionset,
-        commissiondata1: form.commissiondata1,
-        commissiondata2: form.commissiondata2,
-        commissiondata3: form.commissiondata3,
-        lvprice: form.lvprice,
-        lvprice_data: form.lvprice_data,
-        sxdate: form.sxdate,
-        isdt: form.isdt,
-        dtnum: form.dtnum,
-        hgscore: form.hgscore,
-        orderlearn: form.orderlearn,
-        learnhg: form.learnhg,
-      })
-      ElMessage.success('保存成功')
-      dialogVisible.value = false
-      fetchList()
-    } catch {
-      // 错误提示已由 axios 拦截器统一弹出
-    } finally {
-      submitting.value = false
-    }
-  })
-}
-
-const commissionTip = computed(() => {
-  switch (form.commissionset) {
-    case 1:
-      return '按商品比例：佣金 = 实付金额 × 比例%，按上级会员等级分别配置一/二/三级'
-    case 2:
-      return '固定金额：每成交一单按固定金额返佣，按上级会员等级分别配置一/二/三级'
-    case 3:
-      return '积分返佣：每成交一单赠送积分，按上级会员等级分别配置一/二/三级'
-    default:
-      return '按等级：返佣比例/金额在「会员等级」页统一配置，此处无需设置'
+  if (!form.name.trim()) {
+    ElMessage.warning('请输入课程名称')
+    return
   }
-})
+  submitting.value = true
+  try {
+    await saveKechengCourse({
+      id: editId.value || undefined,
+      name: form.name.trim(),
+      kctype: form.kctype,
+      pic: form.pic,
+      pics: form.pics,
+      price: form.price,
+      market_price: form.market_price,
+      lvprice: form.lvprice,
+      lvprice_data: form.lvprice_data,
+      cid: String(form.cid || 0),
+      join_num: form.join_num,
+      isdt: form.isdt,
+      dtnum: form.dtnum,
+      sxdate: form.sxdate,
+      hgscore: form.hgscore,
+      commissionset: form.commissionset,
+      commissiondata1: form.commissiondata1,
+      commissiondata2: form.commissiondata2,
+      commissiondata3: form.commissiondata3,
+      sort: form.sort,
+      status: form.status,
+      detail: JSON.stringify(form.detailModules || []),
+    })
+    ElMessage.success('保存成功')
+    editing.value = false
+    fetchList()
+  } catch {
+    /* 拦截器统一提示 */
+  } finally {
+    submitting.value = false
+  }
+}
 
 onMounted(() => {
   fetchOptions()
@@ -372,324 +407,400 @@ onMounted(() => {
 </script>
 
 <template>
-  <div>
-    <!-- 工具栏 -->
-    <el-card shadow="never" class="toolbar-card">
-      <el-form inline @submit.prevent>
-        <el-form-item label="关键词">
-          <el-input
-            v-model="keyword"
-            placeholder="课程名称"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="分类">
-          <el-select v-model="filterCid" placeholder="全部分类" clearable style="width: 150px">
+  <div class="page">
+    <!-- ============ 列表态 ============ -->
+    <template v-if="!editing && !embedded">
+      <div class="page-head"><span class="page-title">课程列表</span></div>
+
+      <div class="toolbar">
+        <el-button type="primary" @click="openAdd">添加</el-button>
+        <el-button type="danger" :disabled="!checkedIds.size" @click="handleBatchDelete">删除</el-button>
+        <el-button type="success" :disabled="!checkedIds.size" @click="batchStatus(1)">上架</el-button>
+        <el-button type="warning" :disabled="!checkedIds.size" @click="batchStatus(0)">下架</el-button>
+
+        <div class="search-bar">
+          <el-select v-model="filterCid" placeholder="课程分类" class="search-select" clearable @change="handleSearch">
+            <el-option label="全部" :value="undefined" />
             <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
           </el-select>
-        </el-form-item>
-        <el-form-item label="状态">
-          <el-select v-model="filterStatus" style="width: 120px">
+          <el-input v-model="keyword" placeholder="课程名称" class="search-input" @keyup.enter="handleSearch" />
+          <el-select v-model="filterStatus" placeholder="状态" class="search-select" @change="handleSearch">
             <el-option label="全部" value="" />
-            <el-option label="上架" :value="1" />
-            <el-option label="下架" :value="0" />
+            <el-option label="已上架" :value="1" />
+            <el-option label="未上架" :value="0" />
           </el-select>
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">查询</el-button>
-        </el-form-item>
-        <el-form-item style="float: right">
-          <el-button type="success" @click="openAdd">新增课程</el-button>
-        </el-form-item>
-      </el-form>
-    </el-card>
+          <el-button type="primary" @click="handleSearch">搜索</el-button>
+        </div>
+      </div>
 
-    <!-- 课程列表 -->
-    <el-card shadow="never">
-      <el-table v-loading="loading" :data="tableData" stripe>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="封面" width="90">
-          <template #default="{ row }">
-            <el-image
-              v-if="row.pic"
-              :src="row.pic"
-              style="width: 48px; height: 48px"
-              fit="cover"
+      <el-table v-loading="loading" :data="tableData" border size="small" class="data-table">
+        <el-table-column width="42">
+          <template #header>
+            <el-checkbox
+              :model-value="tableData.length > 0 && tableData.every((r) => checkedIds.has(r.id))"
+              @change="(v: boolean) => (v ? tableData.forEach((r) => checkedIds.add(r.id)) : checkedIds.clear())"
             />
-            <span v-else>-</span>
+          </template>
+          <template #default="{ row }">
+            <el-checkbox
+              :model-value="checkedIds.has(row.id)"
+              @change="(v: boolean) => onCheckChange(row, v)"
+            />
           </template>
         </el-table-column>
-        <el-table-column prop="name" label="课程名称" min-width="180" show-overflow-tooltip />
-        <el-table-column label="分类" width="140">
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column label="所属分类" width="110">
           <template #default="{ row }">{{ categoryNames(row.cid) }}</template>
         </el-table-column>
-        <el-table-column label="价格" width="100">
-          <template #default="{ row }">¥{{ Number(row.price).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="join_num" label="学习人数" width="100" />
-        <el-table-column prop="chapter_count" label="章节数" width="90" />
-        <el-table-column label="上架" width="80">
+        <el-table-column label="课程信息" min-width="220">
           <template #default="{ row }">
-            <el-switch
-              :model-value="row.status === 1"
-              @change="handleStatus(row)"
-            />
+            <div class="course-cell">
+              <img v-if="row.pic" :src="row.pic" class="course-thumb" />
+              <div class="course-meta">
+                <div class="course-name">{{ row.name }}</div>
+                <div class="course-sub">{{ kctypeText[row.kctype] }} · 价格¥{{ Number(row.price) }} · 点券{{ pointOf(row.price) }}</div>
+              </div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="160">
+        <el-table-column prop="chapter_count" label="章节数" width="70" />
+        <el-table-column label="是否答题" width="80">
+          <template #default="{ row }">{{ Number(row.isdt) === 1 ? '是' : '否' }}</template>
+        </el-table-column>
+        <el-table-column label="课程类型" width="80">
+          <template #default="{ row }">{{ kctypeText[row.kctype] || '-' }}</template>
+        </el-table-column>
+        <el-table-column prop="join_num" label="参与人数" width="80" />
+        <el-table-column prop="sort" label="序号" width="70" />
+        <el-table-column label="创建时间" width="110">
           <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="130" fixed="right">
+        <el-table-column label="状态" width="80">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <span v-if="row.status === 1" class="st-on">已上架</span>
+            <span v-else class="st-off">未上架</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" min-width="300">
+          <template #default="{ row }">
+            <el-button link type="primary" size="small" @click="openLink(row)">查看链接</el-button>
+            <el-button link type="primary" size="small" @click="openEmbedded('chapter', row)">章节</el-button>
+            <el-button link type="primary" size="small" @click="openEmbedded('tiku', row)">题库</el-button>
+            <el-button link type="primary" size="small" @click="openEmbedded('record', row)">答题记录</el-button>
+            <el-button link type="primary" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button link type="danger" size="small" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="warning" size="small" @click="handleToggleStatus(row)">
+              {{ row.status === 1 ? '下架' : '上架' }}
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
+
       <el-pagination
-        class="pager"
         v-model:current-page="page"
         v-model:page-size="pagesize"
         :total="total"
-        :page-sizes="[20, 50, 100]"
-        layout="total, sizes, prev, pager, next"
+        layout="prev, pager, next, jumper, total"
+        class="pager"
         @current-change="fetchList"
         @size-change="handleSearch"
       />
-    </el-card>
+    </template>
 
-    <!-- 新增 / 编辑弹窗 -->
-    <el-dialog v-model="dialogVisible" :title="isEdit ? '编辑课程' : '新增课程'" width="760px" top="6vh">
-      <el-tabs v-model="activeTab">
-        <el-tab-pane label="基本信息" name="base">
-          <el-form ref="formRef" :model="form" :rules="rules" label-width="100px" label-position="left">
-            <el-form-item label="课程名称" prop="name">
-              <el-input v-model="form.name" placeholder="请输入课程名称" />
-            </el-form-item>
-            <el-form-item label="封面图">
-              <el-input v-model="form.pic" placeholder="图片地址" />
-            </el-form-item>
-            <el-form-item label="轮播图">
-              <el-input v-model="form.pics" placeholder="多张图片地址用英文逗号分隔" />
-            </el-form-item>
-            <el-form-item label="所属分类">
-              <el-select v-model="form.cidArr" multiple placeholder="请选择分类" style="width: 100%">
-                <el-option v-for="c in categories" :key="c.id" :label="c.name" :value="c.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="课程类型">
-              <el-radio-group v-model="form.kctype">
-                <el-radio :value="4">综合课程</el-radio>
-                <el-radio :value="1">图文</el-radio>
-                <el-radio :value="2">音频</el-radio>
-                <el-radio :value="3">视频</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item label="销售价">
-              <el-input-number v-model="form.price" :min="0" :precision="2" :step="1" />
-            </el-form-item>
-            <el-form-item label="市场价">
-              <el-input-number v-model="form.market_price" :min="0" :precision="2" :step="1" />
-            </el-form-item>
-            <el-form-item label="虚拟销量">
-              <el-input-number v-model="form.join_num" :min="0" :precision="0" :step="1" />
-            </el-form-item>
-            <el-form-item label="简介">
-              <el-input v-model="form.detail_text" type="textarea" :rows="3" placeholder="课程简介" />
-            </el-form-item>
-            <el-form-item label="详情图">
-              <el-input v-model="form.detail_pics" placeholder="详情图片地址用英文逗号分隔" />
-            </el-form-item>
-            <el-form-item label="排序">
-              <el-input-number v-model="form.sort" :min="0" :precision="0" :step="1" />
-            </el-form-item>
-            <el-form-item label="上架">
-              <el-switch v-model="form.status" :active-value="1" :inactive-value="0" />
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
+    <!-- ============ 嵌入态：章节 / 题库 / 答题记录（左侧菜单仍停课程列表） ============ -->
+    <template v-else-if="embedded">
+      <div class="embedded-head">
+        <el-button size="small" @click="closeEmbedded">← 返回课程列表</el-button>
+        <span class="embedded-title">{{ embeddedTitle }}</span>
+      </div>
+      <KechengChapter v-if="embedded === 'chapter'" :embedded-proid="embeddedProid" @back="closeEmbedded" />
+      <KechengTiku v-else-if="embedded === 'tiku'" :embedded-proid="embeddedProid" @back="closeEmbedded" />
+      <KechengRecord v-else :embedded-proid="embeddedProid" @back="closeEmbedded" />
+    </template>
 
-        <el-tab-pane label="购买权限" name="gettj">
-          <el-form label-width="100px" label-position="left">
-            <el-form-item label="购买权限">
-              <el-radio-group v-model="form.gettjMode">
-                <el-radio value="-1">全部会员</el-radio>
-                <el-radio value="0">仅关注会员</el-radio>
-                <el-radio value="level">指定等级</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item v-if="form.gettjMode === 'level'" label="可购等级">
-              <el-select v-model="form.gettjLevels" multiple placeholder="请选择会员等级" style="width: 100%">
-                <el-option v-for="lv in memberLevels" :key="lv.id" :label="lv.name" :value="lv.id" />
-              </el-select>
-            </el-form-item>
-            <el-form-item label="引导链接">
-              <el-input v-model="form.gettjurl" placeholder="无权限时跳转链接（可选）" />
-            </el-form-item>
-            <el-form-item label="提示文案">
-              <el-input v-model="form.gettjtip" placeholder="无购买权限提示文案（可选）" />
-            </el-form-item>
-            <el-form-item label="显示权限">
-              <el-radio-group v-model="form.showtjMode">
-                <el-radio value="-1">全部可见</el-radio>
-                <el-radio value="0">仅关注可见</el-radio>
-                <el-radio value="level">指定等级可见</el-radio>
-              </el-radio-group>
-            </el-form-item>
-            <el-form-item v-if="form.showtjMode === 'level'" label="可见等级">
-              <el-select v-model="form.showtjLevels" multiple placeholder="请选择会员等级" style="width: 100%">
-                <el-option v-for="lv in memberLevels" :key="lv.id" :label="lv.name" :value="lv.id" />
-              </el-select>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
+    <!-- ============ 增改平铺面板 ============ -->
+    <template v-else>
+      <div class="goods-edit">
+        <div class="ge-head">
+          <span class="ge-title">{{ editId ? '编辑课程内容' : '添加课程内容' }}</span>
+          <button class="ge-close" @click="editing = false">×</button>
+        </div>
 
-        <el-tab-pane label="分销设置" name="commission">
-          <el-form label-width="100px" label-position="left">
-            <el-form-item label="分销模式">
+        <div class="tab-bar">
+          <span :class="['tab', { active: activeTab === 'info' }]" @click="activeTab = 'info'">课程信息</span>
+          <span :class="['tab', { active: activeTab === 'detail' }]" @click="activeTab = 'detail'">课程详情</span>
+        </div>
+
+        <!-- 课程信息 -->
+        <div v-if="activeTab === 'info'" class="ge-body">
+          <div class="form-row">
+            <label class="form-label"><span class="req">*</span>课程名称：</label>
+            <el-input v-model="form.name" class="form-control" placeholder="请输入课程名称" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">课程类型：</label>
+            <el-radio-group v-model="form.kctype">
+              <el-radio :value="1">图文</el-radio>
+              <el-radio :value="2">音频</el-radio>
+              <el-radio :value="3">视频</el-radio>
+              <el-radio :value="4">综合</el-radio>
+            </el-radio-group>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">课程主图：</label>
+            <div>
+              <el-button size="small" @click="openPicker('main')">上传图片</el-button>
+              <span class="hint">建议尺寸：640x640像素</span>
+              <div v-if="form.pic" class="img-preview"><img :src="form.pic" /></div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">课程图片：</label>
+            <div>
+              <el-button size="small" @click="openPicker('gallery')">批量上传</el-button>
+              <span class="hint">建议尺寸：640x640像素</span>
+              <div v-if="form.pics" class="img-row">
+                <img v-for="(p, i) in form.pics.split(',').filter(Boolean)" :key="i" :src="p" class="img-item" />
+              </div>
+            </div>
+          </div>
+
+          <!-- 课程价格 -->
+          <div class="form-row">
+            <label class="form-label">课程价格：</label>
+            <div class="price-block">
+              <el-button size="small" @click="form.lvprice = form.lvprice === 1 ? 0 : 1">
+                {{ form.lvprice === 1 ? '关闭会员价' : '开启会员价' }}
+              </el-button>
+
+              <!-- 关闭会员价：销售价 + 划线价 -->
+              <table v-if="form.lvprice === 0" class="price-table">
+                <thead>
+                  <tr><th>销售价(元)</th><th>划线价(元)</th></tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>
+                      <el-input-number v-model="form.price" :min="0" :precision="2" controls-position="right" size="small" />
+                      <div class="point-tip">点券 {{ pointOf(form.price) }}</div>
+                    </td>
+                    <td>
+                      <el-input-number v-model="form.market_price" :min="0" :precision="2" controls-position="right" size="small" />
+                      <div class="point-tip">点券 {{ pointOf(form.market_price) }}</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <!-- 开启会员价：按会员等级定价 + 划线价 -->
+              <table v-else class="price-table">
+                <thead>
+                  <tr>
+                    <th>等级</th>
+                    <th v-for="lv in priceLevels" :key="lv.id">{{ lv.name }}</th>
+                    <th>划线价(元)</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>价格(元)</td>
+                    <td v-for="lv in priceLevels" :key="lv.id">
+                      <el-input-number v-model="lvpriceRow(lv.id).money_price" :min="0" :precision="2" controls-position="right" size="small" />
+                      <div class="point-tip">点券 {{ pointOf(lvpriceRow(lv.id).money_price) }}</div>
+                    </td>
+                    <td>
+                      <el-input-number v-model="form.market_price" :min="0" :precision="2" controls-position="right" size="small" />
+                      <div class="point-tip">点券 {{ pointOf(form.market_price) }}</div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+
+              <div class="price-note">
+                注意：当开启会员价时，不同的会员等级存在价格差；<br />
+                虚拟商品微信小程序需要用虚拟支付，兑换比例1人民币=100点券；<br />
+                IOS有版本和价格限制，IOS版本需要15以上，微信版本微信客户端升级至8.0.68及以上，价格最低支付金额为1元，若低于1元则以1元价格购买
+              </div>
+            </div>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label"><span class="req">*</span>课程分类：</label>
+            <el-select v-model="form.cid" class="form-control" placeholder="—请选择—">
+              <el-option v-for="c in categories.filter((x) => Number(x.pid) === 0)" :key="c.id" :label="c.name" :value="c.id" />
+              <template v-for="c in categories.filter((x) => Number(x.pid) === 0)" :key="'c' + c.id">
+                <el-option
+                  v-for="ch in categories.filter((x) => Number(x.pid) === Number(c.id))"
+                  :key="ch.id"
+                  :label="'　' + ch.name"
+                  :value="ch.id"
+                />
+              </template>
+            </el-select>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">学习人数：</label>
+            <el-input-number v-model="form.join_num" :min="0" :precision="0" controls-position="right" />
+          </div>
+
+          <div class="form-row">
+            <label class="form-label">开启答题：</label>
+            <el-radio-group v-model="form.isdt">
+              <el-radio :value="1">开启</el-radio>
+              <el-radio :value="0">关闭</el-radio>
+            </el-radio-group>
+          </div>
+
+          <div v-if="form.isdt === 1" class="form-row">
+            <label class="form-label"></label>
+            <div class="answer-block">
+              <div class="form-row">
+                <label class="form-label sm">出题数量：</label>
+                <el-input-number v-model="form.dtnum" :min="1" :precision="0" controls-position="right" size="small" />
+                <span class="hint">每次答题出题的数量</span>
+              </div>
+              <div class="form-row">
+                <label class="form-label sm">答题时长：</label>
+                <el-input-number v-model="form.sxdate" :min="1" :precision="0" controls-position="right" size="small" />
+                <span class="hint">分钟</span>
+              </div>
+              <div class="form-row">
+                <label class="form-label sm">合格分数：</label>
+                <el-input-number v-model="form.hgscore" :min="1" :max="100" :precision="0" controls-position="right" size="small" />
+                <span class="hint">分</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- 分销设置 -->
+          <div class="form-row">
+            <label class="form-label">分销设置：</label>
+            <div class="comm-block">
               <el-radio-group v-model="form.commissionset">
-                <el-radio :value="0">按等级</el-radio>
-                <el-radio :value="1">按商品比例</el-radio>
-                <el-radio :value="2">固定金额</el-radio>
-                <el-radio :value="3">积分返佣</el-radio>
+                <el-radio :value="0">按照会员等级</el-radio>
+                <el-radio :value="1">单独设置提成比例</el-radio>
+                <el-radio :value="2">单独设置提成金额</el-radio>
+                <el-radio :value="3">分销送积分</el-radio>
+                <el-radio :value="-1">不参与分销</el-radio>
               </el-radio-group>
-            </el-form-item>
-            <el-alert class="tip" type="info" :closable="false" :title="commissionTip" />
-            <el-table v-if="form.commissionset > 0" :data="memberLevels" stripe class="commission-table">
-              <el-table-column prop="name" label="会员等级" width="140" />
-              <el-table-column :label="form.commissionset === 3 ? '一级积分' : form.commissionset === 2 ? '一级金额' : '一级比例(%)'">
-                <template #default="{ row }">
-                  <el-input-number
-                    v-model="commissionRow(row.id, ['commissiondata1', 'commissiondata2', 'commissiondata3'][form.commissionset] as 'commissiondata1' | 'commissiondata2' | 'commissiondata3').commission1"
-                    :min="0"
-                    :precision="2"
-                    size="small"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column :label="form.commissionset === 3 ? '二级积分' : form.commissionset === 2 ? '二级金额' : '二级比例(%)'">
-                <template #default="{ row }">
-                  <el-input-number
-                    v-model="commissionRow(row.id, ['commissiondata1', 'commissiondata2', 'commissiondata3'][form.commissionset] as 'commissiondata1' | 'commissiondata2' | 'commissiondata3').commission2"
-                    :min="0"
-                    :precision="2"
-                    size="small"
-                  />
-                </template>
-              </el-table-column>
-              <el-table-column :label="form.commissionset === 3 ? '三级积分' : form.commissionset === 2 ? '三级金额' : '三级比例(%)'">
-                <template #default="{ row }">
-                  <el-input-number
-                    v-model="commissionRow(row.id, ['commissiondata1', 'commissiondata2', 'commissiondata3'][form.commissionset] as 'commissiondata1' | 'commissiondata2' | 'commissiondata3').commission3"
-                    :min="0"
-                    :precision="2"
-                    size="small"
-                  />
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-form>
-        </el-tab-pane>
+              <div class="price-note">
+                按照会员等级：按照会员等级中设置的提成比例进行提成分配，提成=对应会员等级的提成比例×购买数量<br />
+                单独设置提成比例：按照单独设置的提成比例进行提成分配，提成=设置的百分比×购买数量<br />
+                单独设置提成金额：按照单独设置的提成金额进行提成分配，提成=提成金额×购买数量<br />
+                分销送积分：分销提成不给佣金而是给积分，得到的积分=提成积分×购买数量
+              </div>
 
-        <el-tab-pane label="会员价" name="lvprice">
-          <el-form label-width="100px" label-position="left">
-            <el-form-item label="启用会员价">
-              <el-switch v-model="form.lvprice" :active-value="1" :inactive-value="0" />
-            </el-form-item>
-            <el-alert
-              v-if="form.lvprice === 1"
-              class="tip"
-              type="info"
-              :closable="false"
-              title="按会员等级设置专属价格；未填等级价时按会员等级折扣（会员等级页 kecheng_discount）计算"
-            />
-            <el-table v-if="form.lvprice === 1" :data="memberLevels" stripe class="commission-table">
-              <el-table-column prop="name" label="会员等级" width="140" />
-              <el-table-column label="会员价(元)">
-                <template #default="{ row }">
-                  <el-input-number
-                    v-model="lvpriceRow(row.id).money_price"
-                    :min="0"
-                    :precision="2"
-                    size="small"
-                  />
-                </template>
-              </el-table-column>
-            </el-table>
-          </el-form>
-        </el-tab-pane>
+              <div v-if="form.commissionset === 1 || form.commissionset === 2 || form.commissionset === 3" class="comm-fields">
+                <div v-for="lv in agentLevels" :key="lv.id" class="comm-row">
+                  <label class="form-label sm">{{ lv.name }}：</label>
+                  <div class="comm-inputs">
+                    <span class="comm-item">一级({{ commissionUnit }})
+                      <el-input-number v-model="commissionRow(lv.id, ('commissiondata' + form.commissionset) as 'commissiondata1' | 'commissiondata2' | 'commissiondata3').commission1" :min="0" :precision="2" controls-position="right" size="small" />
+                    </span>
+                    <span v-if="(lv.can_agent || 0) >= 2" class="comm-item">二级({{ commissionUnit }})
+                      <el-input-number v-model="commissionRow(lv.id, ('commissiondata' + form.commissionset) as 'commissiondata1' | 'commissiondata2' | 'commissiondata3').commission2" :min="0" :precision="2" controls-position="right" size="small" />
+                    </span>
+                    <span v-if="(lv.can_agent || 0) >= 3" class="comm-item">三级({{ commissionUnit }})
+                      <el-input-number v-model="commissionRow(lv.id, ('commissiondata' + form.commissionset) as 'commissiondata1' | 'commissiondata2' | 'commissiondata3').commission3" :min="0" :precision="2" controls-position="right" size="small" />
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-        <el-tab-pane label="答题参数" name="dt">
-          <el-form label-width="120px" label-position="left">
-            <el-alert
-              class="tip"
-              type="info"
-              :closable="false"
-              title="章节考试参数：有效期=0 不限；答题开关关闭时章节无需考试；合格分数用于判定章节是否解锁下一章"
-            />
-            <el-form-item label="考试有效期(天)">
-              <el-input-number v-model="form.sxdate" :min="0" :precision="0" :step="1" />
-            </el-form-item>
-            <el-form-item label="开启答题">
-              <el-switch v-model="form.isdt" :active-value="1" :inactive-value="0" />
-            </el-form-item>
-            <el-form-item label="每次题量">
-              <el-input-number v-model="form.dtnum" :min="1" :precision="0" :step="1" />
-            </el-form-item>
-            <el-form-item label="合格分数">
-              <el-input-number v-model="form.hgscore" :min="1" :max="100" :precision="0" :step="1" />
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
+          <div class="form-row">
+            <label class="form-label">序号：</label>
+            <el-input-number v-model="form.sort" :min="0" :precision="0" controls-position="right" />
+            <span class="hint">用于排序，越大越靠前</span>
+          </div>
 
-        <el-tab-pane label="学习设置" name="learn">
-          <el-form label-width="120px" label-position="left">
-            <el-form-item label="顺序学习">
-              <el-switch v-model="form.orderlearn" :active-value="1" :inactive-value="0" />
-              <span class="form-tip">开启后须按章节顺序学习，未学完上一章不能进入下一章</span>
-            </el-form-item>
-            <el-form-item label="考试解锁">
-              <el-switch v-model="form.learnhg" :active-value="1" :inactive-value="0" />
-              <span class="form-tip">开启后章节考试合格才能解锁下一章（需配置题库）</span>
-            </el-form-item>
-          </el-form>
-        </el-tab-pane>
-      </el-tabs>
-      <template #footer>
-        <el-button @click="dialogVisible = false">取消</el-button>
-        <el-button type="primary" :loading="submitting" @click="handleSubmit">确定</el-button>
-      </template>
-    </el-dialog>
+          <div class="form-row">
+            <label class="form-label">状态：</label>
+            <el-radio-group v-model="form.status">
+              <el-radio :value="1">已上架</el-radio>
+              <el-radio :value="0">未上架</el-radio>
+            </el-radio-group>
+          </div>
+
+          <div class="form-row">
+            <label class="form-label"></label>
+            <el-button type="primary" @click="activeTab = 'detail'">下一步：编辑课程详情</el-button>
+            <el-button type="danger" :loading="submitting" @click="handleSubmit">提交</el-button>
+          </div>
+        </div>
+
+        <!-- 课程详情（DIY 装修器） -->
+        <div v-else class="ge-body">
+          <GoodsDetailEditor v-model="form.detailModules" title="课程详情" />
+          <div class="form-row detail-btns">
+            <el-button type="primary" @click="activeTab = 'info'">上一步：编辑课程信息</el-button>
+            <el-button type="danger" :loading="submitting" @click="handleSubmit">提交</el-button>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <ImgIconPicker v-model:visible="pickerVisible" :multi="pickerKind === 'gallery'" @pick="onPickImage" />
+
+    <LinkAddressModal v-model:visible="linkVisible" name="课程" :path="linkPath" />
   </div>
 </template>
 
 <style scoped>
-.toolbar-card {
-  margin-bottom: 16px;
-}
+.page { padding: 3px; }
+.page-head { margin-bottom: 3px; }
+.page-title { font-weight: 600; font-size: 15px; }
+.toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 3px; flex-wrap: wrap; }
+.search-bar { margin-left: auto; display: flex; gap: 6px; align-items: center; }
+.search-input { width: 160px; }
+.search-select { width: 130px; }
+.data-table :deep(th) { background: #e6e6e6; }
+.course-cell { display: flex; gap: 8px; align-items: center; }
+.course-thumb { width: 44px; height: 44px; object-fit: cover; border-radius: 3px; }
+.course-name { font-size: 13px; }
+.course-sub { color: #666; font-size: 12px; margin-top: 2px; }
+.st-on { color: #1ab0a0; }
+.st-off { color: #909399; }
+.pager { margin-top: 8px; justify-content: flex-end; }
 
-.toolbar-card :deep(.el-card__body) {
-  padding-bottom: 2px;
-}
+.embedded-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.embedded-title { font-weight: 600; }
 
-.pager {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
+/* 平铺面板 */
+.goods-edit { border: 1px solid #e6e6e6; border-radius: 4px; background: #fff; }
+.ge-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; border-bottom: 1px solid #eee; }
+.ge-title { font-weight: 600; }
+.ge-close { border: none; background: transparent; font-size: 22px; cursor: pointer; color: #666; }
+.tab-bar { display: flex; gap: 24px; padding: 10px 14px; border-bottom: 1px solid #eee; }
+.tab { cursor: pointer; padding-bottom: 6px; color: #333; }
+.tab.active { color: #f56c6c; border-bottom: 2px solid #f56c6c; font-weight: 600; }
+.ge-body { padding: 16px; }
+.form-row { display: flex; align-items: flex-start; gap: 10px; margin-bottom: 14px; }
+.form-label { width: 110px; text-align: right; color: #333; flex-shrink: 0; line-height: 32px; }
+.form-label.sm { width: 90px; }
+.form-control { flex: 0 1 340px; text-align: left; }
+.req { color: #f56c6c; margin-right: 2px; }
+.hint { color: #999; font-size: 12px; line-height: 32px; }
+.img-preview img { width: 80px; height: 80px; object-fit: cover; border: 1px solid #eee; border-radius: 3px; }
+.img-row { display: flex; gap: 6px; margin-top: 6px; }
+.img-item { width: 56px; height: 56px; object-fit: cover; border: 1px solid #eee; border-radius: 3px; }
 
-.tip {
-  margin-bottom: 12px;
-}
+.price-block { flex: 1; }
+.price-table { border-collapse: collapse; margin-top: 8px; }
+.price-table th, .price-table td { border: 1px solid #ebeef5; padding: 6px 10px; font-size: 12px; text-align: center; }
+.point-tip { color: #909399; font-size: 11px; margin-top: 2px; }
+.price-note { color: #909399; font-size: 12px; margin-top: 10px; line-height: 1.7; }
 
-.commission-table {
-  width: 100%;
-}
-
-.form-tip {
-  margin-left: 12px;
-  color: #909399;
-  font-size: 12px;
-}
+.answer-block { flex: 1; }
+.comm-block { flex: 1; }
+.comm-fields { margin-top: 10px; }
+.comm-row { display: flex; align-items: flex-start; gap: 8px; margin-bottom: 10px; }
+.comm-inputs { display: flex; gap: 16px; flex-wrap: wrap; align-items: center; }
+.comm-item { font-size: 12px; color: #333; display: inline-flex; align-items: center; gap: 4px; }
+.detail-btns { margin-top: 16px; }
 </style>

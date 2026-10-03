@@ -845,8 +845,8 @@ async function fetchUnreadCount() {
 
 /* ===== 通用列 ===== */
 .menu-col {
-  background-color: #ffffff;
-  border-right: 1px solid #ececf5;
+  background-color: #1e2128;
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
   overflow: hidden;
   transition: width 0.2s;
@@ -869,7 +869,7 @@ async function fetchUnreadCount() {
   display: flex;
   align-items: center;
   justify-content: center;
-  border-bottom: 1px solid #ececf5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   flex-shrink: 0;
   cursor: pointer;
   overflow: hidden;
@@ -877,7 +877,7 @@ async function fetchUnreadCount() {
 }
 
 .admin-logo-text {
-  color: #303133;
+  color: #e4e6eb;
   font-size: 14px;
   font-weight: 600;
   letter-spacing: 1px;
@@ -916,7 +916,7 @@ async function fetchUnreadCount() {
   justify-content: center;
   gap: 6px;
   padding: 0;
-  color: #3a3d4a;
+  color: #8b909a;
   cursor: pointer;
   white-space: nowrap;
   position: relative;
@@ -941,12 +941,12 @@ async function fetchUnreadCount() {
 
 .top-item:hover {
   color: var(--primary);
-  background-color: rgba(var(--primary-rgb), 0.08);
+  background-color: rgba(var(--primary-rgb), 0.12);
 }
 
 .top-item.is-active {
   color: var(--primary);
-  background-color: rgba(var(--primary-rgb), 0.1);
+  background-color: rgba(var(--primary-rgb), 0.18);
 }
 
 .top-item.is-active::before {
@@ -963,7 +963,7 @@ async function fetchUnreadCount() {
 /* 底部固定区：控制台入口（仅超管渲染） */
 .bottom-list {
   flex-shrink: 0;
-  border-top: 1px solid #ececf5;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
   padding: 4px 0;
 }
 
@@ -995,14 +995,14 @@ async function fetchUnreadCount() {
   align-items: center;
   justify-content: space-between;
   padding: 0 6px 0 12px;
-  border-bottom: 1px solid #ececf5;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   box-sizing: border-box;
 }
 
 .sub-title {
   font-size: 14px;
   font-weight: 600;
-  color: #303133;
+  color: #e4e6eb;
   white-space: nowrap;
   overflow: hidden;
 }
@@ -1016,7 +1016,7 @@ async function fetchUnreadCount() {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: #909399;
+  color: #6b7078;
   font-size: 15px;
   cursor: pointer;
   flex-shrink: 0;
@@ -1040,7 +1040,7 @@ async function fetchUnreadCount() {
   align-items: center;
   justify-content: space-between;
   padding-right: 10px;
-  color: #606266;
+  color: #a0a4b0;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
@@ -1054,20 +1054,20 @@ async function fetchUnreadCount() {
 
 .sub-item:hover {
   color: var(--primary);
-  background-color: rgba(var(--primary-rgb), 0.08);
+  background-color: rgba(var(--primary-rgb), 0.12);
 }
 
 .sub-item.is-active {
   color: var(--primary);
   font-weight: 600;
-  background-color: rgba(var(--primary-rgb), 0.12);
+  background-color: rgba(var(--primary-rgb), 0.18);
 }
 
 /* 分组头（含三级）：弱底色区分，箭头指示开合 */
 .sub-group {
   font-weight: 600;
-  color: #1f2329;
-  background-color: rgba(var(--primary-rgb), 0.05);
+  color: #c8cdd4;
+  background-color: rgba(255, 255, 255, 0.04);
 }
 
 .sub-group.is-open,
@@ -1096,8 +1096,8 @@ async function fetchUnreadCount() {
 .admin-header {
   height: 50px;
   flex-shrink: 0;
-  background-color: #ffffff;
-  border-bottom: 1px solid #ececf5;
+  background-color: #1e2128;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -1120,7 +1120,7 @@ async function fetchUnreadCount() {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: #606266;
+  color: #a0a4b0;
   font-size: 18px;
   cursor: pointer;
 }
@@ -1141,7 +1141,7 @@ async function fetchUnreadCount() {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: #606266;
+  color: #a0a4b0;
   /* 与超管壳顶栏图标同尺寸（16px），两端视觉一致 */
   font-size: 16px;
   cursor: pointer;
@@ -1167,7 +1167,7 @@ async function fetchUnreadCount() {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: #606266;
+  color: #a0a4b0;
   font-size: 13px;
   cursor: pointer;
   white-space: nowrap;
@@ -1230,12 +1230,12 @@ async function fetchUnreadCount() {
 
 .user-arrow {
   font-size: 14px;
-  color: #909399;
+  color: #6b7078;
   flex-shrink: 0;
 }
 
 .company-name {
-  color: #303133;
+  color: #e4e6eb;
   font-weight: 600;
   font-size: 14px;
   overflow: hidden;
@@ -1253,7 +1253,7 @@ async function fetchUnreadCount() {
   border: none;
   background: transparent;
   border-radius: 6px;
-  color: #606266;
+  color: #a0a4b0;
   font-size: 18px;
   cursor: pointer;
   flex-shrink: 0;
@@ -1296,7 +1296,7 @@ async function fetchUnreadCount() {
 .admin-header-title {
   font-size: 15px;
   font-weight: 600;
-  color: #303133;
+  color: #e4e6eb;
 }
 
 .admin-header-right {
@@ -1308,12 +1308,12 @@ async function fetchUnreadCount() {
 }
 
 .admin-company {
-  color: #303133;
+  color: #e4e6eb;
   font-weight: 600;
 }
 
 .admin-expire {
-  color: #909399;
+  color: #6b7078;
   font-size: 13px;
 }
 
@@ -1347,7 +1347,7 @@ async function fetchUnreadCount() {
   border-radius: 8px;
   cursor: pointer;
   transition: all 0.2s;
-  color: #606266;
+  color: #a0a4b0;
   font-size: 14px;
   white-space: nowrap;
 }
@@ -1370,7 +1370,7 @@ async function fetchUnreadCount() {
 
 .quick-remove {
   display: none;
-  color: #909399;
+  color: #6b7078;
   font-size: 16px;
   padding: 0 4px;
   flex-shrink: 0;

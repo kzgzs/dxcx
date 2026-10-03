@@ -807,6 +807,8 @@ export interface CouponRecordQuery {
   status?: number | ''
   page?: number
   pagesize?: number
+  field?: string
+  order?: string
 }
 
 // ============ 租户后台：优惠券管理补全（参考口径） ============
@@ -833,13 +835,26 @@ export interface CouponManageItem {
   end_stamp: number
   phase: string // not_started/ongoing/ended
   gettj: string
-  isgive: number
+  showtj: string
+  isgive: number // 0仅自用 1自用+转赠 2仅转赠
   tolist: number
-  fwtype: number // 0全场 1类目 2商品
+  fwtype: number // 0所有商品 1指定类目 2指定商品 4指定服务商品
   categoryids: string
   productids: string
+  yuyue_productids: string
   price: number
   score: number
+  paygive: number
+  buyprogive: number
+  buyproids: string
+  buypro_give_num: string
+  buyyuyueprogive: number
+  buyyuyueproids: string
+  buyyuyuepro_give_num: string
+  give_num_type: number
+  font_color: string
+  title_color: string
+  bg_color: string
   limit_count: number
   value: number
   gettips: string
@@ -855,6 +870,8 @@ export interface CouponManageListQuery {
   keyword?: string
   page?: number
   pagesize?: number
+  field?: string
+  order?: string
 }
 
 export interface CouponManageListResult {
@@ -880,13 +897,26 @@ export interface CouponManageSaveParams {
   starttime: number
   endtime: number
   gettj: string
+  showtj?: string
   isgive: number
   tolist: number
   fwtype: number
   categoryids: string
   productids: string
+  yuyue_productids?: string
   price: number
   score: number
+  paygive?: number
+  buyprogive?: number
+  buyproids?: string
+  buypro_give_num?: string
+  buyyuyueprogive?: number
+  buyyuyueproids?: string
+  buyyuyuepro_give_num?: string
+  give_num_type?: number
+  font_color?: string
+  title_color?: string
+  bg_color?: string
   limit_count?: number
   gettips?: string
   usetips?: string
@@ -907,6 +937,8 @@ export interface CouponManageRecordItem {
   minprice: number
   type: number
   type_txt: string
+  limit_count: number
+  used_count: number
   status: number // 0未使用 1已使用 2已过期
   starttime: number
   endtime: number
@@ -922,10 +954,13 @@ export interface CouponManageRecordQuery {
   mid?: number
   status?: number | ''
   keyword?: string
+  remark?: string
   start_time?: number
   end_time?: number
   page?: number
   pagesize?: number
+  field?: string
+  order?: string
 }
 
 export interface CouponManageRecordResult {
@@ -979,6 +1014,7 @@ export interface SignSetData {
   guize: string
   style: number
   bgpic: string
+  rewardedvideoad: string
 }
 
 export interface SignRecordItem {
@@ -1006,6 +1042,8 @@ export interface SignRecordQuery {
   end_time?: number
   page?: number
   pagesize?: number
+  field?: string
+  order?: string
 }
 
 export interface SignRecordResult {
@@ -1509,6 +1547,8 @@ export interface HotelRoomListQuery {
   hotel_id?: number | ''
   page?: number
   pagesize?: number
+  field?: string
+  order?: string
 }
 
 export interface HotelRoomSaveParams {
@@ -1566,6 +1606,9 @@ export interface YuyueCategoryItem {
   status?: number
   create_time?: number
   product_count?: number
+  pid?: number
+  depth?: number
+  children?: YuyueCategoryItem[]
 }
 
 export interface YuyueCategoryListResult {
@@ -1648,17 +1691,23 @@ export interface YuyueWorkerListResult {
 export interface YuyueWorkerListQuery {
   page?: number
   pagesize?: number
-  keyword?: string
+  realname?: string
   status?: number | ''
 }
 
 export interface YuyueWorkerSaveParams {
   id?: number
-  name: string
-  pic: string
-  phone: string
-  desc: string
-  status: number
+  un?: string
+  pwd?: string
+  mid?: number
+  realname?: string
+  tel?: string
+  cid?: number
+  headimg?: string
+  jineng?: string
+  desc?: string
+  sort?: number
+  status?: number
 }
 
 export interface YuyueOrderItem {
@@ -1987,6 +2036,8 @@ export interface RestaurantTableListQuery {
   area_id?: number | ''
   page?: number
   pagesize?: number
+  field?: string
+  order?: string
 }
 
 export interface RestaurantTableSaveParams {
@@ -2334,10 +2385,10 @@ export interface MemberLevelSaveParams {
   icon: string
   sort: number
   discount: number
-  isdefault: number
-  up_ordermoney: number
-  up_rechargemoney: number
-  up_orderprice: number
+  isdefault?: number
+  up_ordermoney?: number
+  up_rechargemoney?: number
+  up_orderprice?: number
   maxnum?: number
   // ---- 申请设置组（主动申请升级） ----
   can_up?: number
@@ -2404,6 +2455,12 @@ export interface MemberLevelSaveParams {
   up_give_commission?: number
   up_give_money?: number
   up_give_parent_money?: number
+  // ---- 自己拿一级提成 / 我的团队权限 / 特权说明 ----
+  commission1own?: number
+  team_showtel?: number
+  team_givemoney?: number
+  team_givescore?: number
+  explain?: string
 }
 
 // 等级编辑详情（GET /admin/member/level/detail，P19-2）
@@ -2707,7 +2764,9 @@ export interface CollageSyssetData {
   teamhour: number // 默认成团时限（小时）
   leadermoney: number // 默认团长优惠金额
   autoshdays: number // 自动收货天数
+  comment: number // 商品评价开关 0关 1开
   comment_check: number // 评价审核 0关 1开
+  showjd: number // 进店及咨询 0关 1开
   timeset: string // 场次配置
   team_refund: number // 团长退款是否解散团 0否 1是
   pics: string // 活动说明图
