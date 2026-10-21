@@ -45,4 +45,52 @@ class CashierStat extends BaseController
 
         return $this->success(app(CashierService::class)->jiaoban($aid, $uid, $iat));
     }
+
+    /**
+     * 订单统计（对齐点大 tongji：type=1 按商品 / type=2 按规格；
+     * 下单/付款时间范围、服务端排序、分页、page=1 返回汇总）
+     * GET /admin/cashier/stat/tongji
+     */
+    public function tongji()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $filters = [
+            'type'         => (int) $this->request->get('type', 1),
+            'ctime_start'  => (string) $this->request->get('ctime_start', ''),
+            'ctime_end'    => (string) $this->request->get('ctime_end', ''),
+            'paytime_start' => (string) $this->request->get('paytime_start', ''),
+            'paytime_end'  => (string) $this->request->get('paytime_end', ''),
+            'field'        => (string) $this->request->get('field', ''),
+            'order'        => (string) $this->request->get('order', ''),
+        ];
+        $page     = max(1, (int) $this->request->get('page', 1));
+        $pageSize = (int) $this->request->get('pagesize', 20);
+        if ($pageSize < 1 || $pageSize > 100) {
+            $pageSize = 20;
+        }
+
+        return $this->success(app(CashierService::class)->tongji($aid, $filters, $page, $pageSize));
+    }
+
+    /**
+     * 订单统计导出（对齐点大 tjexcel：返回 title+data，前端生成 CSV 下载）
+     * GET /admin/cashier/stat/tjexcel
+     */
+    public function tjexcel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $filters = [
+            'type'         => (int) $this->request->get('type', 1),
+            'ctime_start'  => (string) $this->request->get('ctime_start', ''),
+            'ctime_end'    => (string) $this->request->get('ctime_end', ''),
+            'paytime_start' => (string) $this->request->get('paytime_start', ''),
+            'paytime_end'  => (string) $this->request->get('paytime_end', ''),
+            'field'        => (string) $this->request->get('field', ''),
+            'order'        => (string) $this->request->get('order', ''),
+        ];
+
+        return $this->success(app(CashierService::class)->tongjiExcel($aid, $filters));
+    }
 }

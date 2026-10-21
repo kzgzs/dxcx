@@ -125,7 +125,7 @@ onMounted(load)
     <el-dialog v-model="addVisible" title="" width="500px" :show-close="false" append-to-body>
       <div class="add-row">
         <span class="add-label">会员ID或openid：</span>
-        <el-input v-model="openidInput" style="width: 180px" />
+        <el-input v-model="openidInput" class="field-md" />
         <el-link type="primary" :underline="false" @click="openPicker">查找会员ID</el-link>
       </div>
       <template #footer>
@@ -190,7 +190,7 @@ onMounted(load)
   display: flex;
   align-items: center;
   gap: 10px;
-  margin: 30px 20px;
+  margin: 6px 0;
 }
 .add-label {
   white-space: nowrap;

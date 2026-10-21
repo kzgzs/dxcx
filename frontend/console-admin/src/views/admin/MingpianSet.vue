@@ -1,10 +1,10 @@
 <script setup lang="ts">
 /**
- * 名片 - 名片设置（mingpian_set 单行）
- * - GET /admin/mingpian/set 回显 / POST saveMingpianSet 保存
- * - 状态 radio；背景按钮色 radio（0默认/1跟随系统）；bgpics 多图上传（建议 700×480）
- * - createtj 创建权限：'-1' 所有人 + 会员等级多选
- * - field_list 联系信息字段表（isshow/name/icon/required）
+ * 名片 - 名片系统设置（mingpian_set 单行，对标 canzhao app/view/mingpian/set.html）
+ * - 状态 radio 开启/关闭；系统背景图批量上传（建议 700×480，缩略图带×删除）
+ * - 背景|按钮颜色 radio 默认/跟随系统（默认则保持原样，头部背景及底部按钮是蓝色；跟随系统则颜色变为系统颜色）
+ * - 创建条件：所有人(-1) + 会员等级多选（createtj 逗号 implode 保存）
+ * - 联系信息表：状态(开启|关闭)/字段名称(固定7字段只读、field1-5 可编辑)/图标(缩略+上传)/是否必填(是|否)
  */
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
@@ -12,6 +12,9 @@ import { getMingpianSet, saveMingpianSet } from '../../api/mingpian'
 import type { MingpianFieldItem } from '../../api/mingpian'
 import { getMemberLevelList } from '../../api/member'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+
+/** 固定字段：名称只读（口径同 canzhao set.html in_array 判断） */
+const FIXED_FIELDS = ['tel', 'weixin', 'address', 'email', 'douyin', 'weibo', 'toutiao']
 
 const loading = ref(false)
 const saving = ref(false)
@@ -48,7 +51,7 @@ function onLevelChange(checked: boolean) {
   }
 }
 
-// ============ 选图（ImgIconPicker 统一选图） ============
+// ============ 选图（ImgIconPicker 统一选图；背景图批量、图标单张） ============
 const imgPickerVisible = ref(false)
 const imgPickerMulti = ref(false)
 let imgPickerSetter: ((urls: string[]) => void) | null = null
@@ -125,53 +128,52 @@ onMounted(() => {
 </script>
 
 <template>
-  <div v-loading="loading">
-    <el-card shadow="never">
-      <template #header>
-        <div class="set-header">
-          <span>名片设置</span>
-          <el-button type="primary" :loading="saving" @click="handleSave">保存设置</el-button>
-        </div>
-      </template>
+  <div v-loading="loading" class="mp-set-page">
+    <div class="page-title"><span class="title-bar">≡</span>名片系统设置</div>
 
-      <el-form label-width="160px" label-position="left" class="set-form">
-        <el-form-item label="名片功能">
+    <el-card shadow="never">
+      <el-form label-width="110px" label-position="left" class="set-form">
+        <el-form-item label="状态">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">开启</el-radio>
             <el-radio :value="0">关闭</el-radio>
           </el-radio-group>
         </el-form-item>
 
-        <el-form-item label="背景按钮颜色">
-          <el-radio-group v-model="form.bgbtncolor">
-            <el-radio :value="0">默认</el-radio>
-            <el-radio :value="1">跟随系统主题色</el-radio>
-          </el-radio-group>
-        </el-form-item>
-
-        <el-form-item label="名片背景图">
-          <div class="bgpic-line">
-            <div v-for="(pic, idx) in form.bgpics" :key="idx" class="bgpic-item">
-              <el-image :src="pic" class="bgpic-thumb" fit="cover" />
-              <el-button link type="danger" class="bgpic-del" @click="removeBgpic(idx)">删除</el-button>
+        <el-form-item label="系统背景图">
+          <div class="bgpic-block">
+            <div class="bgpic-line">
+              <div v-for="(pic, idx) in form.bgpics" :key="idx" class="bgpic-item">
+                <el-image :src="pic" class="bgpic-thumb" fit="cover" />
+                <span class="bgpic-close" title="删除" @click="removeBgpic(idx)">&times;</span>
+              </div>
             </div>
-            <div
-              class="bgpic-add"
-              @click="
-                openImgPicker((urls) => {
-                  urls.forEach((u) => {
-                    if (!form.bgpics.includes(u)) form.bgpics.push(u)
-                  })
-                }, true)
-              "
-            >
-              +
+            <div class="bgpic-actions">
+              <el-button
+                @click="
+                  openImgPicker((urls) => {
+                    urls.forEach((u) => {
+                      if (!form.bgpics.includes(u)) form.bgpics.push(u)
+                    })
+                  }, true)
+                "
+              >批量上传</el-button>
+              <span class="form-tip">建议尺寸：700×480像素</span>
             </div>
           </div>
-          <div class="form-tip">建议尺寸 700×480 像素，可上传多张供用户切换</div>
         </el-form-item>
 
-        <el-form-item label="允许创建名片">
+        <el-form-item label="背景|按钮颜色">
+          <div class="color-line">
+            <el-radio-group v-model="form.bgbtncolor">
+              <el-radio :value="0">默认</el-radio>
+              <el-radio :value="1">跟随系统</el-radio>
+            </el-radio-group>
+            <span class="form-tip">默认则保持原样，头部背景及底部按钮是蓝色；跟随系统则颜色变为系统颜色</span>
+          </div>
+        </el-form-item>
+
+        <el-form-item label="创建条件">
           <div class="createtj-line">
             <el-checkbox :model-value="allChecked()" @change="onAllChange">所有人</el-checkbox>
             <template v-for="lv in levelOptions" :key="lv.id">
@@ -184,41 +186,42 @@ onMounted(() => {
               </el-checkbox>
             </template>
           </div>
-          <div class="form-tip">勾选「所有人」时全部会员可创建；也可按会员等级限定</div>
         </el-form-item>
 
-        <el-divider content-position="left">联系信息字段配置</el-divider>
-        <el-table :data="form.field_list" border stripe style="max-width: 860px">
-          <el-table-column prop="field" label="字段标识" width="120" />
-          <el-table-column label="显示" width="80">
-            <template #default="{ row }">
-              <el-switch v-model="row.isshow" :active-value="1" :inactive-value="0" />
-            </template>
-          </el-table-column>
-          <el-table-column label="字段名称" min-width="160">
-            <template #default="{ row }">
-              <el-input v-model="row.name" placeholder="字段名称" maxlength="20" />
-            </template>
-          </el-table-column>
-          <el-table-column label="图标" min-width="180">
-            <template #default="{ row }">
-              <div class="icon-cell">
-                <el-image v-if="row.icon" :src="row.icon" class="icon-thumb" fit="contain" />
-                <el-button size="small" @click="openImgPicker((urls) => {
-                  if (urls[0]) row.icon = urls[0]
-                })">{{ row.icon ? '更换' : '选择图片' }}</el-button>
-              </div>
-            </template>
-          </el-table-column>
-          <el-table-column label="必填" width="80">
-            <template #default="{ row }">
-              <el-switch v-model="row.required" :active-value="1" :inactive-value="0" />
-            </template>
-          </el-table-column>
-        </el-table>
+        <el-form-item label="联系信息">
+          <el-table :data="form.field_list" border :header-cell-style="{ background: '#e6e6e6' }" class="field-table">
+            <el-table-column label="状态" width="130" align="left" header-align="left">
+              <template #default="{ row }">
+                <el-switch v-model="row.isshow" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
+              </template>
+            </el-table-column>
+            <el-table-column label="字段名称" min-width="180" align="left" header-align="left">
+              <template #default="{ row }">
+                <span v-if="FIXED_FIELDS.includes(row.field)">{{ row.name }}</span>
+                <el-input v-else v-model="row.name" placeholder="请填写字段名称" maxlength="20" />
+              </template>
+            </el-table-column>
+            <el-table-column label="图标" min-width="170" align="left" header-align="left">
+              <template #default="{ row }">
+                <div class="icon-cell">
+                  <el-image v-if="row.icon" :src="row.icon" class="icon-thumb" fit="contain" />
+                  <el-button size="small" @click="openImgPicker((urls) => {
+                    if (urls[0]) row.icon = urls[0]
+                  })">上传</el-button>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column label="是否必填" width="120" align="left" header-align="left">
+              <template #default="{ row }">
+                <el-switch v-model="row.required" :active-value="1" :inactive-value="0" active-text="是" inactive-text="否" />
+              </template>
+            </el-table-column>
+            <template #empty>暂无数据</template>
+          </el-table>
+        </el-form-item>
 
-        <el-form-item class="save-line">
-          <el-button type="primary" :loading="saving" @click="handleSave">保存设置</el-button>
+        <el-form-item>
+          <el-button type="primary" :loading="saving" @click="handleSave">提 交</el-button>
         </el-form-item>
       </el-form>
     </el-card>
@@ -233,79 +236,91 @@ onMounted(() => {
 </template>
 
 <style scoped>
-.set-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.mp-set-page {
+  padding: 3px;
 }
-
+.page-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+  padding: 4px 2px 8px;
+}
+.title-bar {
+  margin-right: 4px;
+}
 .set-form {
   max-width: 960px;
 }
-
-.form-tip {
-  font-size: 12px;
-  color: #909399;
-  line-height: 1.6;
+.set-form :deep(.el-form-item) {
+  margin-bottom: 12px;
 }
-
+.form-tip {
+  color: #909399;
+  font-size: 12px;
+}
+.bgpic-block {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
 .bgpic-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 3px;
   align-items: center;
 }
-
 .bgpic-item {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 2px;
+  position: relative;
+  width: 100px;
+  height: 50px;
 }
-
 .bgpic-thumb {
-  width: 105px;
-  height: 72px;
+  width: 100px;
+  height: 50px;
   border: 1px solid var(--el-border-color-lighter);
-  border-radius: 4px;
+  border-radius: 2px;
 }
-
-.bgpic-add {
-  width: 105px;
-  height: 72px;
-  border: 1px dashed var(--el-border-color);
-  border-radius: 4px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 22px;
-  color: #909399;
+.bgpic-close {
+  position: absolute;
+  top: -7px;
+  right: -7px;
+  width: 16px;
+  height: 16px;
+  line-height: 14px;
+  text-align: center;
+  border-radius: 50%;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 12px;
   cursor: pointer;
 }
-
-.bgpic-add:hover {
-  border-color: var(--el-color-primary);
-  color: var(--el-color-primary);
+.bgpic-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-
+.color-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+  white-space: nowrap;
+}
 .createtj-line {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 12px;
+  gap: 3px 12px;
 }
-
+.field-table {
+  max-width: 700px;
+}
 .icon-cell {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-
 .icon-thumb {
-  width: 28px;
-  height: 28px;
-}
-
-.save-line {
-  margin-top: 20px;
+  width: 34px;
+  height: 34px;
 }
 </style>

@@ -1,13 +1,12 @@
 <script setup lang="ts">
-// 微信代认证 - 认证订单（批次7-8 任务216）
-// 全流程：创建（主体类型）→名称校验→企业/联系人资料→资质上传→提交→状态流转→进度查询
+// 微信代认证 - 认证列表（对齐点大：提示框 + 两行搜索 + 规定列；添加/重新提交/查看详情平铺主区域）
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
+import { useAuthStore } from '../../stores/auth'
 import {
   checkNickName,
   chooseIdentity,
-  deleteProxyverifyOrders,
   getProxyverifyAuthorizerList,
   getProxyverifyOrderList,
   queryTaskStatus,
@@ -19,7 +18,10 @@ import {
   type ProxyverifyOrderQuery,
 } from '../../api/wxproxyverify'
 
-// ============ 常量（状态文案与后端对齐） ============
+const authStore = useAuthStore()
+const isPlatform = computed(() => authStore.adminProfile?.super === 1)
+
+// ============ 常量 ============
 const CUSTOMER_TYPES = [
   { value: 1, label: '企业' },
   { value: 12, label: '个体工商户' },
@@ -52,29 +54,21 @@ const APPLY_STATUS_OPTIONS = [
   { value: 5, label: '认证最终失败' },
 ]
 const PAY_TYPES = [
-  { value: 1, label: '消耗服务商预购包（代缴额度）' },
+  { value: 1, label: '消耗服务商预购包' },
   { value: 2, label: '小程序开发者自行支付' },
 ]
 
-function taskTagType(status: number) {
-  if ([5, 8, 11, 14].includes(status)) return 'danger'
-  if ([6, 9, 12].includes(status)) return 'success'
-  if (status === 15) return 'warning'
-  return 'info'
-}
-function applyTagType(status: number) {
-  if (status === 4) return 'success'
-  if (status === 5) return 'danger'
-  if (status === 3) return 'warning'
-  if (status === 2 || status === 1) return 'primary'
-  return 'info'
-}
+const CUSTOMER_TYPE_MAP: Record<number, string> = { 1: '企业', 12: '个体工商户', 15: '个人' }
+const INVOICE_MAP: Record<number, string> = { 1: '不开发票', 2: '电子发票', 4: '增值税专票（数电类型）' }
+const ACCOUNT_NAME_TYPE_MAP: Record<number, string> = { 1: '基于自选词汇命名', 2: '基于商标命名' }
+const PAY_TYPE_MAP: Record<number, string> = { 1: '消耗服务商预购包', 2: '小程序开发者自行支付' }
 
 // ============ 列表 ============
 const loading = ref(false)
 const list = ref<ProxyverifyOrder[]>([])
 const total = ref(0)
-const query = reactive<ProxyverifyOrderQuery>({ page: 1, pagesize: 20 })
+const query = reactive<ProxyverifyOrderQuery>({ page: 1, pagesize: 10 })
+const presetAppid = ref('')
 
 async function load() {
   loading.value = true
@@ -90,33 +84,39 @@ function handleSearch() {
   query.page = 1
   load()
 }
-function resetSearch() {
-  Object.assign(query, {
-    page: 1,
-    customer_type: '',
-    contact_name: '',
-    account_name: '',
-    pay_type: '',
-    task_status: '',
-    apply_status: '',
-  })
+function handlePage(p: number) {
+  query.page = p
+  load()
+}
+function handleSize(s: number) {
+  query.pagesize = s
+  query.page = 1
   load()
 }
 
-// ============ 进度查询 / 删除 / 备注 ============
 async function handleQueryStatus(row: ProxyverifyOrder) {
   const res = await queryTaskStatus(row.id)
   ElMessage.success(`进度已更新：${res.task_status_name} / ${res.apply_status_name}`)
   load()
 }
 
-async function handleDelete(row: ProxyverifyOrder) {
-  await ElMessageBox.confirm(`确定删除认证订单 #${row.id}？`, '提示', { type: 'warning' })
-  await deleteProxyverifyOrders([row.id])
-  ElMessage.success('删除成功')
-  load()
+function copyAuthUrl(url: string) {
+  const ta = document.createElement('textarea')
+  ta.value = url
+  ta.style.position = 'fixed'
+  ta.style.opacity = '0'
+  document.body.appendChild(ta)
+  ta.select()
+  try {
+    document.execCommand('copy')
+    ElMessage.success('复制成功')
+  } catch {
+    ElMessage.warning('复制失败，请手动选择复制')
+  }
+  document.body.removeChild(ta)
 }
 
+// ============ 备注（小弹窗） ============
 const remarkVisible = ref(false)
 const remarkSaving = ref(false)
 const remarkForm = reactive({ id: 0, account_name: '', remark: '' })
@@ -138,16 +138,10 @@ async function handleRemarkSave() {
   }
 }
 
-// ============ 详情 ============
-const detailVisible = ref(false)
-const detail = ref<ProxyverifyOrder | null>(null)
-function openDetail(row: ProxyverifyOrder) {
-  detail.value = row
-  detailVisible.value = true
-}
-
-// ============ 创建/编辑向导 ============
-const wizardVisible = ref(false)
+// ============ 添加 / 重新提交 / 查看详情（平铺主区域） ============
+const viewMode = ref<'list' | 'edit'>('list')
+const editReadonly = ref(false)
+const editTitle = ref('添加认证')
 const step = ref(0)
 const submitting = ref(false)
 const authorizers = ref<ProxyverifyAuthorizer[]>([])
@@ -192,7 +186,7 @@ async function loadAuthorizers() {
 async function openCreate() {
   Object.assign(form, {
     id: 0,
-    authorizer_appid: sessionStorage.getItem('wx_pv_new_appid') || '',
+    authorizer_appid: presetAppid.value || sessionStorage.getItem('wx_pv_new_appid') || '',
     customer_type: 1,
     company_name: '',
     company_pic: '',
@@ -223,11 +217,14 @@ async function openCreate() {
   sessionStorage.removeItem('wx_pv_new_nick')
   nameCheckTip.value = ''
   step.value = 0
+  editReadonly.value = false
+  editTitle.value = '添加认证'
   await loadAuthorizers()
-  wizardVisible.value = true
+  viewMode.value = 'edit'
 }
 
-function openEdit(row: ProxyverifyOrder) {
+function openOrder(row: ProxyverifyOrder) {
+  const resubmit = row.task_status === -1 || row.apply_status === 3
   Object.assign(form, {
     id: row.id,
     authorizer_appid: row.authorizer_appid,
@@ -259,9 +256,16 @@ function openEdit(row: ProxyverifyOrder) {
   })
   nameCheckTip.value = ''
   step.value = 0
+  editReadonly.value = !resubmit
+  editTitle.value = resubmit ? '重新提交认证' : '查看详情'
   loadAuthorizers().then(() => {
-    wizardVisible.value = true
+    viewMode.value = 'edit'
   })
+}
+
+function backToList() {
+  viewMode.value = 'list'
+  load()
 }
 
 const isCompany = computed(() => form.customer_type === 1 || form.customer_type === 12)
@@ -304,7 +308,7 @@ function nextFromName() {
   step.value = 2
 }
 
-// ============ 选图（ImgIconPicker 统一选图，提交时后端转微信 mediaid） ============
+// ============ 选图 ============
 const imgPickerVisible = ref(false)
 const imgPickerMulti = ref(false)
 let imgPickerSetter: ((urls: string[]) => void) | null = null
@@ -360,322 +364,371 @@ async function handleSubmit() {
       auth_ident_material: form.auth_ident_material.join(','),
     })
     ElMessage.success(`提交成功，认证任务号：${res.taskid}`)
-    wizardVisible.value = false
-    load()
+    backToList()
   } finally {
     submitting.value = false
   }
 }
 
-onMounted(load)
+onMounted(() => {
+  presetAppid.value = sessionStorage.getItem('wx_pv_new_appid') || ''
+  load()
+})
 </script>
 
 <template>
   <div class="wxpv-order">
-    <div class="toolbar">
-      <el-select v-model="query.customer_type" placeholder="主体类型" clearable style="width: 130px">
-        <el-option v-for="t in CUSTOMER_TYPES" :key="t.value" :label="t.label" :value="String(t.value)" />
-      </el-select>
-      <el-select v-model="query.task_status" placeholder="任务状态" clearable style="width: 170px">
-        <el-option v-for="s in TASK_STATUS_OPTIONS" :key="s.value" :label="s.label" :value="String(s.value)" />
-      </el-select>
-      <el-select v-model="query.apply_status" placeholder="审核单状态" clearable style="width: 140px">
-        <el-option v-for="s in APPLY_STATUS_OPTIONS" :key="s.value" :label="s.label" :value="String(s.value)" />
-      </el-select>
-      <el-select v-model="query.pay_type" placeholder="支付方式" clearable style="width: 130px">
-        <el-option label="服务商预购包" value="1" />
-        <el-option label="开发者自付" value="2" />
-      </el-select>
-      <el-input v-model="query.account_name" placeholder="小程序名称" clearable style="width: 150px" />
-      <el-button type="primary" @click="handleSearch">搜索</el-button>
-      <el-button @click="resetSearch">重置</el-button>
-      <div style="flex: 1" />
-      <el-button type="primary" @click="openCreate">发起认证</el-button>
-    </div>
-
-    <el-table v-loading="loading" :data="list" border>
-      <el-table-column prop="id" label="ID" width="70" />
-      <el-table-column prop="account_name" label="小程序名称" min-width="140" show-overflow-tooltip />
-      <el-table-column prop="customer_type_name" label="主体类型" width="110" />
-      <el-table-column prop="contact_name" label="联系人" width="100" />
-      <el-table-column prop="pay_type_name" label="支付方式" width="150" show-overflow-tooltip />
-      <el-table-column label="任务状态" min-width="170">
-        <template #default="{ row }">
-          <el-tag :type="taskTagType(row.task_status)" size="small">{{ row.task_status_name }}</el-tag>
+    <!-- ============ 列表 ============ -->
+    <template v-if="viewMode === 'list'">
+      <el-alert type="warning" :closable="false" class="notice">
+        <template #title>
+          <div class="notice-lines">
+            <template v-if="isPlatform">
+              <div>认证功能要使用需要设置几处：</div>
+              <div>1、扩展-微信代认证-系统设置-状态及各类型代缴次数设置；</div>
+              <div>2、控制台-系统设置-微信认证统一设置；</div>
+              <div>3、控制台-用户列表-操作-微信认证中单独设置（此处给子平台使用，若不给使用则无需设置）</div>
+              <div>4、控制台-服务商配置，这里服务商主体需要和服务市场账号主体一致；</div>
+            </template>
+            <div>认证任务创建后需要在24小时内完成授权与支付，过期后需要重新创建任务</div>
+            <div>如果授权任务已经到达支付页面，为了避免临界情况支付完成事件延迟，该小程序在6小时内不能重新创建认证任务，即使上个任务已经超过24小时</div>
+          </div>
         </template>
-      </el-table-column>
-      <el-table-column label="审核单状态" width="110">
-        <template #default="{ row }">
-          <el-tag :type="applyTagType(row.apply_status)" size="small">{{ row.apply_status_name }}</el-tag>
-        </template>
-      </el-table-column>
-      <el-table-column prop="service_money" label="服务费" width="90" />
-      <el-table-column prop="createtime_text" label="创建时间" width="150" />
-      <el-table-column label="操作" width="250" fixed="right">
-        <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="row.taskid && row.apply_status >= 0 && row.apply_status < 4" link type="primary" @click="handleQueryStatus(row)">查询进度</el-button>
-          <el-button v-if="row.apply_status === 3" link type="warning" @click="openEdit(row)">重新提交</el-button>
-          <el-button link type="primary" @click="openRemark(row)">备注</el-button>
-          <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
-        </template>
-      </el-table-column>
-      <template #empty>暂无认证订单</template>
-    </el-table>
+      </el-alert>
 
-    <div class="pager">
-      <el-pagination
-        v-model:current-page="query.page"
-        v-model:page-size="query.pagesize"
-        :total="total"
-        :page-sizes="[10, 20, 50]"
-        layout="total, sizes, prev, pager, next"
-        @current-change="load"
-        @size-change="handleSearch"
-      />
-    </div>
+      <el-card v-if="presetAppid" shadow="never" class="add-bar">
+        <el-button type="success" @click="openCreate">添加认证</el-button>
+      </el-card>
 
-    <!-- ============ 创建/编辑向导 ============ -->
-    <el-dialog v-model="wizardVisible" :title="form.id ? '重新提交认证' : '发起微信认证'" width="780px" destroy-on-close>
-      <el-steps :active="step" finish-status="success" simple style="margin-bottom: 16px">
+      <el-card shadow="never" class="search-card">
+        <div class="search-row">
+          <el-select v-model="query.customer_type" placeholder="机构类型" class="field-xs" clearable>
+            <el-option label="全部" value="" />
+            <el-option v-for="t in CUSTOMER_TYPES" :key="t.value" :label="t.label" :value="String(t.value)" />
+          </el-select>
+          <el-input v-model="query.contact_name" placeholder="认证联系人姓名" class="field-sm" clearable @keyup.enter="handleSearch" />
+          <el-input v-model="query.account_name" placeholder="小程序账号名称" class="field-sm" clearable @keyup.enter="handleSearch" />
+          <el-select v-model="query.pay_type" placeholder="支付方式" class="field-sm" clearable>
+            <el-option label="全部" value="" />
+            <el-option v-for="p in PAY_TYPES" :key="p.value" :label="p.label" :value="String(p.value)" />
+          </el-select>
+          <el-select v-model="query.task_status" placeholder="任务状态" class="field-md" clearable>
+            <el-option label="全部" value="" />
+            <el-option v-for="s in TASK_STATUS_OPTIONS" :key="s.value" :label="s.label" :value="String(s.value)" />
+          </el-select>
+        </div>
+        <div class="search-row">
+          <el-select v-model="query.apply_status" placeholder="审核单状态" class="field-sm" clearable>
+            <el-option label="全部" value="" />
+            <el-option v-for="s in APPLY_STATUS_OPTIONS" :key="s.value" :label="s.label" :value="String(s.value)" />
+          </el-select>
+          <el-date-picker
+            v-model="query.ctime"
+            type="daterange"
+            range-separator="~"
+            start-placeholder="开始日期"
+            end-placeholder="结束日期"
+            value-format="YYYY-MM-DD"
+            class="field-range"
+          />
+          <el-button type="success" circle @click="handleSearch">
+            <svg viewBox="0 0 1024 1024" width="15" height="15" fill="currentColor"><path d="M908.1 353.1l-253.9-36.9L540.7 86.1c-3.1-6.3-8.2-11.4-14.5-14.5-15.8-7.8-35-1.3-42.9 14.5L369.8 316.2l-253.9 36.9c-7 1-13.4 4.3-18.3 9.3a32.05 32.05 0 0 0 .6 45.3l183.7 179.1-43.4 252.9a31.95 31.95 0 0 0 46.4 33.7L512 754l227.1 119.4c6.2 3.3 13.4 3.2 19.4-.2 6-3.4 10.4-9.3 12-16 .7-2.9.7-6.1 0-9.2l-43.4-252.9 183.7-179.1a32 32 0 0 0-10.7-52.9z" /></svg>
+          </el-button>
+        </div>
+      </el-card>
+
+      <el-card shadow="never">
+        <el-table v-loading="loading" :data="list" border>
+          <el-table-column type="selection" width="40" align="center" />
+          <el-table-column label="机构类型" width="90">
+            <template #default="{ row }">{{ CUSTOMER_TYPE_MAP[Number(row.customer_type)] || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="认证联系人信息" min-width="150">
+            <template #default="{ row }">
+              <div class="contact-cell">
+                <div>认证联系人姓名：</div>
+                <div>{{ row.contact_name || '-' }}</div>
+                <div>认证联系人邮箱：</div>
+                <div>{{ row.contact_email || '-' }}</div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="发票类型" min-width="150">
+            <template #default="{ row }">{{ INVOICE_MAP[Number(row.invoice_type)] || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="小程序账号类型" width="140">
+            <template #default="{ row }">{{ ACCOUNT_NAME_TYPE_MAP[Number(row.account_name_type)] || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="account_name" label="小程序账号名称" min-width="140" show-overflow-tooltip />
+          <el-table-column label="支付方式" min-width="150">
+            <template #default="{ row }">{{ PAY_TYPE_MAP[Number(row.pay_type)] || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="任务状态" min-width="200">
+            <template #default="{ row }">
+              <div>{{ row.task_status_name }}</div>
+              <div v-if="row.auth_url" class="auth-url-block">
+                <div class="auth-url-label">小程序管理员授权链接：</div>
+                <div class="auth-url-text">{{ row.auth_url }}</div>
+                <el-button size="small" @click="copyAuthUrl(row.auth_url)">一键复制</el-button>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="审核单状态" min-width="170">
+            <template #default="{ row }">
+              <div class="apply-cell">
+                <span :class="row.apply_status === 4 ? 'ck-pass' : ''">{{ row.apply_status_name }}</span>
+                <el-button
+                  v-if="row.apply_status >= 1 && row.apply_status <= 3"
+                  link
+                  class="refresh-btn"
+                  title="刷新状态"
+                  @click="handleQueryStatus(row)"
+                >
+                  <svg viewBox="0 0 1024 1024" width="14" height="14" fill="currentColor"><path d="M909.1 209.3l-56.4 44.1C775.8 155.1 656.2 92 521.9 92 289 92 99.5 281.3 99.2 513.9c-.3 232.8 189 422.1 421.9 422.1 188.4 0 347.5-123.4 404.4-297 1.5-4.7-.9-9.8-5.6-11.4l-33.3-11.2c-4.7-1.5-9.8.9-11.4 5.6-48.1 147.7-183.9 252.1-354.1 252.1-200 0-362.1-162.1-362.1-362.1S321.9 150 521.9 150c113.7 0 215.3 52.5 283 134.7l-65.7-11.3c-5.2-.9-10.1 2.8-10.8 8-.7 5.2 2.8 10.1 8 10.8l161.8 27.9c4.6.8 9.2-1.5 11.1-5.8l78.7-136.3c2.6-4.7.9-10.7-3.9-13.3-4.6-2.6-10.7-.9-13.3 3.9z" /></svg>
+                </el-button>
+              </div>
+              <div v-if="row.apply_status === 3 && row.refill_reason" class="reason-text">{{ row.refill_reason }}</div>
+              <div v-if="row.apply_status === 5 && row.fail_reason" class="reason-text">{{ row.fail_reason }}</div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip />
+          <el-table-column prop="createtime_text" label="提交时间" width="140" />
+          <el-table-column label="操作" width="150">
+            <template #default="{ row }">
+              <div class="row-ops">
+                <el-button link type="primary" @click="openOrder(row)">
+                  {{ row.task_status === -1 || row.apply_status === 3 ? '重新提交' : '查看详情' }}
+                </el-button>
+                <el-button link type="primary" @click="openRemark(row)">备注</el-button>
+              </div>
+            </template>
+          </el-table-column>
+          <template #empty>无数据</template>
+        </el-table>
+        <el-pagination
+          class="pagination"
+          background
+          layout="total, sizes, prev, pager, next"
+          :total="total"
+          :current-page="query.page"
+          :page-size="query.pagesize"
+          :page-sizes="[10, 20, 50]"
+          @current-change="handlePage"
+          @size-change="handleSize"
+        />
+      </el-card>
+    </template>
+
+    <!-- ============ 添加/编辑/详情（平铺主区域） ============ -->
+    <div v-else class="goods-edit">
+      <div class="ge-head">
+        <div class="ge-title">{{ editTitle }}</div>
+        <el-button class="ge-close" circle @click="backToList">
+          <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M764.288 214.595 512 466.883 259.712 214.595a32 32 0 0 0-45.248 45.248L466.752 512 214.464 764.288a32 32 0 1 0 45.248 45.248L512 557.117l252.288 252.419a32 32 0 0 0 45.248-45.248L557.248 512l252.288-252.157a32 32 0 0 0-45.248-45.248z" /></svg>
+        </el-button>
+      </div>
+
+      <el-steps :active="step" finish-status="success" simple class="edit-steps">
         <el-step title="选择主体类型" />
         <el-step title="名称校验" />
         <el-step title="填写资料并提交" />
       </el-steps>
 
-      <!-- 步骤1：主体类型 -->
-      <el-form v-if="step === 0" label-width="110px">
-        <el-form-item label="授权小程序" required>
-          <el-select v-model="form.authorizer_appid" placeholder="请选择已授权小程序" style="width: 320px">
-            <el-option
-              v-for="a in authorizers"
-              :key="a.id"
-              :label="`${a.nick_name || '-'}（${a.authorizer_appid}）`"
-              :value="a.authorizer_appid"
-            />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="主体类型" required>
-          <el-radio-group v-model="form.customer_type">
-            <el-radio v-for="t in CUSTOMER_TYPES" :key="t.value" :value="t.value">{{ t.label }}</el-radio>
-          </el-radio-group>
-        </el-form-item>
-      </el-form>
-
-      <!-- 步骤2：名称校验 -->
-      <el-form v-if="step === 1" label-width="110px">
-        <el-form-item label="账号名称" required>
-          <div style="display: flex; gap: 8px">
-            <el-input v-model="form.account_name" maxlength="30" show-word-limit style="width: 300px" />
-            <el-button type="primary" plain @click="handleCheckName">校验名称</el-button>
-          </div>
-          <div v-if="nameCheckTip" class="name-tip">{{ nameCheckTip }}</div>
-        </el-form-item>
-        <el-form-item label="命名类型">
-          <el-radio-group v-model="form.account_name_type">
-            <el-radio :value="1">基于自选词汇命名</el-radio>
-            <el-radio :value="2">基于商标命名</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <el-form-item label="命名补充材料">
-          <div class="upload-block">
-            <el-image
-              v-for="(img, i) in form.account_supplemental"
-              :key="img"
-              :src="img"
-              class="up-img"
-              :preview-src-list="form.account_supplemental"
-              :initial-index="i"
-            />
-            <el-button size="small" @click="openImgPicker((urls) => { urls.forEach((u) => { if (!form.account_supplemental.includes(u)) form.account_supplemental.push(u) }) }, true)">选择图片</el-button>
-          </div>
-          <div class="form-tip">名称命中关键词或基于商标命名时需提供（如商标注册证）</div>
-        </el-form-item>
-      </el-form>
-
-      <!-- 步骤3：资料填写 -->
-      <el-form v-if="step === 2" label-width="110px">
-        <template v-if="isCompany">
-          <el-divider content-position="left">企业信息</el-divider>
-          <el-form-item label="企业名称">
-            <el-input v-model="form.company_name" maxlength="100" />
-          </el-form-item>
-          <el-form-item label="营业执照" required>
-            <div class="upload-block">
-              <el-image v-if="form.company_pic" :src="form.company_pic" class="up-img" :preview-src-list="[form.company_pic]" />
-              <el-button size="small" @click="openImgPicker((urls) => { if (urls[0]) form.company_pic = urls[0] })">{{ form.company_pic ? '更换' : '选择图片' }}</el-button>
-            </div>
-          </el-form-item>
-          <el-form-item label="信用代码">
-            <el-input v-model="form.company_license_number" maxlength="50" placeholder="统一社会信用代码" />
-          </el-form-item>
-          <el-form-item label="企业地址">
-            <el-input v-model="form.company_address" maxlength="100" />
-          </el-form-item>
-          <el-form-item label="企业电话">
-            <el-input v-model="form.company_tel" maxlength="30" />
-          </el-form-item>
-          <el-form-item label="其他证明材料">
-            <div class="upload-block">
-              <el-image
-                v-for="(img, i) in form.qualification_other"
-                :key="img"
-                :src="img"
-                class="up-img"
-                :preview-src-list="form.qualification_other"
-                :initial-index="i"
+      <fieldset :disabled="editReadonly" class="edit-fieldset">
+        <!-- 步骤1：主体类型 -->
+        <el-form v-if="step === 0" label-width="110px" class="ge-form">
+          <el-form-item label="授权小程序" required>
+            <el-select v-model="form.authorizer_appid" placeholder="请选择已授权小程序" style="width: 320px">
+              <el-option
+                v-for="a in authorizers"
+                :key="a.id"
+                :label="`${a.nick_name || '-'}（${a.authorizer_appid}）`"
+                :value="a.authorizer_appid"
               />
-              <el-button size="small" @click="openImgPicker((urls) => { urls.forEach((u) => { if (!form.qualification_other.includes(u)) form.qualification_other.push(u) }) }, true)">选择图片</el-button>
-            </div>
-          </el-form-item>
-        </template>
-
-        <template v-else>
-          <el-divider content-position="left">个人认证身份</el-divider>
-          <el-form-item label="认证身份">
-            <el-select v-model="form.auth_identification" placeholder="可选，从身份选项树选择" clearable style="width: 300px">
-              <el-option v-for="n in identityOptions" :key="n.id" :label="n.name" :value="n.name">
-                <span>{{ n.showname }}</span>
-                <span v-if="n.desc" style="color: #999; font-size: 12px; margin-left: 8px">{{ n.desc }}</span>
-              </el-option>
             </el-select>
           </el-form-item>
-          <el-form-item label="身份证明材料">
+          <el-form-item label="主体类型" required>
+            <el-radio-group v-model="form.customer_type">
+              <el-radio v-for="t in CUSTOMER_TYPES" :key="t.value" :value="t.value">{{ t.label }}</el-radio>
+            </el-radio-group>
+          </el-form-item>
+        </el-form>
+
+        <!-- 步骤2：名称校验 -->
+        <el-form v-if="step === 1" label-width="110px" class="ge-form">
+          <el-form-item label="账号名称" required>
+            <div class="inline-block">
+              <el-input v-model="form.account_name" maxlength="30" show-word-limit style="width: 300px" />
+              <el-button type="primary" plain @click="handleCheckName">校验名称</el-button>
+            </div>
+            <div v-if="nameCheckTip" class="name-tip">{{ nameCheckTip }}</div>
+          </el-form-item>
+          <el-form-item label="命名类型">
+            <el-radio-group v-model="form.account_name_type">
+              <el-radio :value="1">基于自选词汇命名</el-radio>
+              <el-radio :value="2">基于商标命名</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="命名补充材料">
             <div class="upload-block">
               <el-image
-                v-for="(img, i) in form.auth_ident_material"
+                v-for="(img, i) in form.account_supplemental"
                 :key="img"
                 :src="img"
                 class="up-img"
-                :preview-src-list="form.auth_ident_material"
+                :preview-src-list="form.account_supplemental"
                 :initial-index="i"
               />
-              <el-button size="small" @click="openImgPicker((urls) => { urls.forEach((u) => { if (!form.auth_ident_material.includes(u)) form.auth_ident_material.push(u) }) }, true)">选择图片</el-button>
+              <el-button size="small" @click="openImgPicker((urls) => { urls.forEach((u) => { if (!form.account_supplemental.includes(u)) form.account_supplemental.push(u) }) }, true)">选择图片</el-button>
             </div>
-            <div class="form-tip">选择了认证身份时必须上传对应证明材料</div>
+            <div class="form-tip">名称命中关键词或基于商标命名时需提供（如商标注册证）</div>
           </el-form-item>
+        </el-form>
+
+        <!-- 步骤3：资料填写 -->
+        <el-form v-if="step === 2" label-width="110px" class="ge-form">
+          <template v-if="isCompany">
+            <el-divider content-position="left">企业信息</el-divider>
+            <el-form-item label="企业名称">
+              <el-input v-model="form.company_name" maxlength="100" style="width: 320px" />
+            </el-form-item>
+            <el-form-item label="营业执照" required>
+              <div class="upload-block">
+                <el-image v-if="form.company_pic" :src="form.company_pic" class="up-img" :preview-src-list="[form.company_pic]" />
+                <el-button size="small" @click="openImgPicker((urls) => { if (urls[0]) form.company_pic = urls[0] })">{{ form.company_pic ? '更换' : '选择图片' }}</el-button>
+              </div>
+            </el-form-item>
+            <el-form-item label="信用代码">
+              <el-input v-model="form.company_license_number" maxlength="50" style="width: 320px" placeholder="统一社会信用代码" />
+            </el-form-item>
+            <el-form-item label="企业地址">
+              <el-input v-model="form.company_address" maxlength="100" style="width: 320px" />
+            </el-form-item>
+            <el-form-item label="企业电话">
+              <el-input v-model="form.company_tel" maxlength="30" style="width: 320px" />
+            </el-form-item>
+            <el-form-item label="其他证明材料">
+              <div class="upload-block">
+                <el-image
+                  v-for="(img, i) in form.qualification_other"
+                  :key="img"
+                  :src="img"
+                  class="up-img"
+                  :preview-src-list="form.qualification_other"
+                  :initial-index="i"
+                />
+                <el-button size="small" @click="openImgPicker((urls) => { urls.forEach((u) => { if (!form.qualification_other.includes(u)) form.qualification_other.push(u) }) }, true)">选择图片</el-button>
+              </div>
+            </el-form-item>
+          </template>
+          <template v-else>
+            <el-divider content-position="left">个人认证身份</el-divider>
+            <el-form-item label="认证身份">
+              <el-select v-model="form.auth_identification" placeholder="可选，从身份选项树选择" clearable style="width: 300px">
+                <el-option v-for="n in identityOptions" :key="n.id" :label="n.name" :value="n.name">
+                  <span>{{ n.showname }}</span>
+                  <span v-if="n.desc" style="color: #999; font-size: 12px; margin-left: 8px">{{ n.desc }}</span>
+                </el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="身份证明材料">
+              <div class="upload-block">
+                <el-image
+                  v-for="(img, i) in form.auth_ident_material"
+                  :key="img"
+                  :src="img"
+                  class="up-img"
+                  :preview-src-list="form.auth_ident_material"
+                  :initial-index="i"
+                />
+                <el-button size="small" @click="openImgPicker((urls) => { urls.forEach((u) => { if (!form.auth_ident_material.includes(u)) form.auth_ident_material.push(u) }) }, true)">选择图片</el-button>
+              </div>
+              <div class="form-tip">选择了认证身份时必须上传对应证明材料</div>
+            </el-form-item>
+          </template>
+
+          <el-divider content-position="left">联系人信息</el-divider>
+          <el-form-item label="联系人姓名" required>
+            <el-input v-model="form.contact_name" maxlength="30" style="width: 260px" />
+          </el-form-item>
+          <el-form-item label="联系人邮箱" required>
+            <el-input v-model="form.contact_email" maxlength="60" style="width: 260px" />
+          </el-form-item>
+          <el-form-item label="联系人手机">
+            <el-input v-model="form.contact_mobile" maxlength="20" style="width: 260px" placeholder="打回重填时必填" />
+          </el-form-item>
+
+          <el-divider content-position="left">发票信息</el-divider>
+          <el-form-item label="发票类型">
+            <el-radio-group v-model="form.invoice_type">
+              <el-radio :value="1">不开发票</el-radio>
+              <el-radio :value="2">电子发票</el-radio>
+              <el-radio :value="4">增值税专票（数电）</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <template v-if="form.invoice_type === 2">
+            <el-form-item label="纳税识别号" required>
+              <el-input v-model="form.electronic_id" maxlength="20" style="width: 260px" placeholder="15/17/18/20位" />
+            </el-form-item>
+            <el-form-item label="发票备注">
+              <el-input v-model="form.electronic_desc" maxlength="100" style="width: 320px" />
+            </el-form-item>
+          </template>
+          <template v-if="form.invoice_type === 4">
+            <el-form-item label="企业电话" required>
+              <el-input v-model="form.vat_enterprise_phone" maxlength="30" style="width: 260px" />
+            </el-form-item>
+            <el-form-item label="纳税识别号" required>
+              <el-input v-model="form.vat_id" maxlength="20" style="width: 260px" />
+            </el-form-item>
+            <el-form-item label="注册地址" required>
+              <el-input v-model="form.vat_enterprise_address" maxlength="100" style="width: 320px" />
+            </el-form-item>
+            <el-form-item label="开户银行">
+              <el-input v-model="form.vat_bank_name" maxlength="50" style="width: 320px" />
+            </el-form-item>
+            <el-form-item label="银行账号">
+              <el-input v-model="form.vat_bank_account" maxlength="50" style="width: 320px" />
+            </el-form-item>
+            <el-form-item label="发票备注">
+              <el-input v-model="form.vat_desc" maxlength="100" style="width: 320px" />
+            </el-form-item>
+          </template>
+
+          <el-divider content-position="left">支付方式</el-divider>
+          <el-form-item label="支付方式" required>
+            <el-radio-group v-model="form.pay_type">
+              <el-radio v-for="p in PAY_TYPES" :key="p.value" :value="p.value">{{ p.label }}</el-radio>
+            </el-radio-group>
+            <div class="form-tip">选择服务商预购包将消耗系统设置中的代缴额度</div>
+          </el-form-item>
+        </el-form>
+      </fieldset>
+
+      <div class="edit-actions">
+        <el-button @click="backToList">{{ editReadonly ? '关闭' : '取消' }}</el-button>
+        <template v-if="!editReadonly">
+          <el-button v-if="step > 0" @click="step--">上一步</el-button>
+          <el-button v-if="step === 0" type="primary" @click="nextFromType">下一步</el-button>
+          <el-button v-if="step === 1" type="primary" @click="nextFromName">下一步</el-button>
+          <el-button v-if="step === 2" type="success" :loading="submitting" @click="handleSubmit">提交认证</el-button>
         </template>
+      </div>
+    </div>
 
-        <el-divider content-position="left">联系人信息</el-divider>
-        <el-form-item label="联系人姓名" required>
-          <el-input v-model="form.contact_name" maxlength="30" style="width: 260px" />
-        </el-form-item>
-        <el-form-item label="联系人邮箱" required>
-          <el-input v-model="form.contact_email" maxlength="60" style="width: 260px" />
-        </el-form-item>
-        <el-form-item label="联系人手机">
-          <el-input v-model="form.contact_mobile" maxlength="20" style="width: 260px" placeholder="打回重填时必填" />
-        </el-form-item>
-
-        <el-divider content-position="left">发票信息</el-divider>
-        <el-form-item label="发票类型">
-          <el-radio-group v-model="form.invoice_type">
-            <el-radio :value="1">不开发票</el-radio>
-            <el-radio :value="2">电子发票</el-radio>
-            <el-radio :value="4">增值税专票（数电）</el-radio>
-          </el-radio-group>
-        </el-form-item>
-        <template v-if="form.invoice_type === 2">
-          <el-form-item label="纳税识别号" required>
-            <el-input v-model="form.electronic_id" maxlength="20" style="width: 260px" placeholder="15/17/18/20位" />
-          </el-form-item>
-          <el-form-item label="发票备注">
-            <el-input v-model="form.electronic_desc" maxlength="100" />
-          </el-form-item>
-        </template>
-        <template v-if="form.invoice_type === 4">
-          <el-form-item label="企业电话" required>
-            <el-input v-model="form.vat_enterprise_phone" maxlength="30" style="width: 260px" />
-          </el-form-item>
-          <el-form-item label="纳税识别号" required>
-            <el-input v-model="form.vat_id" maxlength="20" style="width: 260px" />
-          </el-form-item>
-          <el-form-item label="注册地址" required>
-            <el-input v-model="form.vat_enterprise_address" maxlength="100" />
-          </el-form-item>
-          <el-form-item label="开户银行">
-            <el-input v-model="form.vat_bank_name" maxlength="50" />
-          </el-form-item>
-          <el-form-item label="银行账号">
-            <el-input v-model="form.vat_bank_account" maxlength="50" />
-          </el-form-item>
-          <el-form-item label="发票备注">
-            <el-input v-model="form.vat_desc" maxlength="100" />
-          </el-form-item>
-        </template>
-
-        <el-divider content-position="left">支付方式</el-divider>
-        <el-form-item label="支付方式" required>
-          <el-radio-group v-model="form.pay_type">
-            <el-radio v-for="p in PAY_TYPES" :key="p.value" :value="p.value">{{ p.label }}</el-radio>
-          </el-radio-group>
-          <div class="form-tip">选择服务商预购包将消耗系统设置中的代缴额度</div>
-        </el-form-item>
-      </el-form>
-
-      <template #footer>
-        <el-button @click="wizardVisible = false">取消</el-button>
-        <el-button v-if="step > 0" @click="step--">上一步</el-button>
-        <el-button v-if="step === 0" type="primary" @click="nextFromType">下一步</el-button>
-        <el-button v-if="step === 1" type="primary" @click="nextFromName">下一步</el-button>
-        <el-button v-if="step === 2" type="primary" :loading="submitting" @click="handleSubmit">提交认证</el-button>
-      </template>
-    </el-dialog>
-
-    <!-- ============ 详情 ============ -->
-    <el-dialog v-model="detailVisible" :title="`认证订单详情 #${detail?.id || ''}`" width="720px" destroy-on-close>
-      <el-descriptions v-if="detail" :column="2" border>
-        <el-descriptions-item label="小程序名称">{{ detail.account_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="授权AppID">{{ detail.authorizer_appid }}</el-descriptions-item>
-        <el-descriptions-item label="主体类型">{{ detail.customer_type_name }}</el-descriptions-item>
-        <el-descriptions-item label="支付方式">{{ detail.pay_type_name }}</el-descriptions-item>
-        <el-descriptions-item label="任务状态">
-          <el-tag :type="taskTagType(detail.task_status)" size="small">{{ detail.task_status_name }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="审核单状态">
-          <el-tag :type="applyTagType(detail.apply_status)" size="small">{{ detail.apply_status_name }}</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="任务号">{{ detail.taskid || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="认证订单号">{{ detail.orderid || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="服务费">{{ detail.service_money }}</el-descriptions-item>
-        <el-descriptions-item label="服务市场appid">{{ detail.service_appid || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="联系人">{{ detail.contact_name }} / {{ detail.contact_email }}</el-descriptions-item>
-        <el-descriptions-item label="联系电话">{{ detail.contact_mobile || '-' }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.company_name" label="企业名称" :span="2">{{ detail.company_name }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.company_license_number" label="信用代码" :span="2">{{ detail.company_license_number }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.company_pic" label="营业执照" :span="2">
-          <el-image :src="detail.company_pic" style="width: 120px; height: 80px" fit="cover" :preview-src-list="[detail.company_pic]" />
-        </el-descriptions-item>
-        <el-descriptions-item v-if="detail.auth_identification" label="认证身份" :span="2">{{ detail.auth_identification }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.auth_url" label="管理员授权链接" :span="2">
-          <a :href="detail.auth_url" target="_blank" rel="noopener">{{ detail.auth_url }}</a>
-        </el-descriptions-item>
-        <el-descriptions-item v-if="detail.apply_status === 3 && detail.refill_reason" label="打回原因" :span="2">
-          <span style="color: #e6a23c">{{ detail.refill_reason }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item v-if="detail.apply_status === 5 && detail.fail_reason" label="失败原因" :span="2">
-          <span style="color: #f56c6c">{{ detail.fail_reason }}</span>
-        </el-descriptions-item>
-        <el-descriptions-item v-if="detail.errmsg" label="错误信息" :span="2">{{ detail.errmsg }}</el-descriptions-item>
-        <el-descriptions-item label="创建时间">{{ detail.createtime_text }}</el-descriptions-item>
-        <el-descriptions-item label="更新时间">{{ detail.updatetime_text }}</el-descriptions-item>
-        <el-descriptions-item v-if="detail.remark" label="备注" :span="2">{{ detail.remark }}</el-descriptions-item>
-      </el-descriptions>
-    </el-dialog>
-
-    <!-- ============ 备注 ============ -->
-    <el-dialog v-model="remarkVisible" title="修改备注" width="460px" destroy-on-close>
+    <!-- ============ 备注（小弹窗） ============ -->
+    <el-dialog v-model="remarkVisible" title="设置备注" width="460px" destroy-on-close>
       <el-form label-width="90px">
         <el-form-item label="小程序名称">
           <span>{{ remarkForm.account_name }}</span>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="remarkForm.remark" maxlength="100" show-word-limit />
+          <el-input v-model="remarkForm.remark" maxlength="100" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="remarkVisible = false">取消</el-button>
-        <el-button type="primary" :loading="remarkSaving" @click="handleRemarkSave">保存</el-button>
+        <el-button type="primary" :loading="remarkSaving" @click="handleRemarkSave">确定</el-button>
       </template>
     </el-dialog>
 
@@ -685,41 +738,34 @@ onMounted(load)
 
 <style scoped>
 .wxpv-order {
-  padding: 12px;
-}
-.toolbar {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 12px;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 3px;
 }
-.pager {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 12px;
-}
-.name-tip {
-  color: #e6a23c;
-  font-size: 12px;
-  line-height: 1.6;
-  margin-top: 4px;
-}
-.form-tip {
-  color: #999;
-  font-size: 12px;
-  line-height: 1.6;
-}
-.upload-block {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.up-img {
-  width: 80px;
-  height: 60px;
-  border: 1px solid #eee;
-  border-radius: 4px;
-}
+.notice { margin: 0; }
+.notice-lines { line-height: 1.7; }
+.add-bar :deep(.el-card__body) { padding: 3px 6px; }
+.search-card :deep(.el-card__body) { padding: 3px 6px; display: flex; flex-direction: column; gap: 3px; }
+.search-row { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.contact-cell { line-height: 1.6; }
+.auth-url-block { margin-top: 4px; line-height: 1.6; }
+.auth-url-label { color: #606266; }
+.auth-url-text { word-break: break-all; color: #409eff; }
+.apply-cell { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.refresh-btn { padding: 0; color: #c0c4cc; }
+.ck-pass { color: #67c23a; }
+.reason-text { color: #e6a23c; font-size: 12px; line-height: 1.6; word-break: break-all; }
+.pagination { display: flex; justify-content: flex-end; margin-top: 3px; }
+.goods-edit { background: #fff; border-radius: 6px; padding: 3px 6px; }
+.ge-head { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ebeef5; margin-bottom: 6px; min-height: 34px; }
+.ge-title { font-size: 15px; font-weight: 600; }
+.edit-steps { margin-bottom: 8px; }
+.edit-fieldset { border: none; padding: 0; margin: 0; }
+.ge-form { max-width: 760px; }
+.inline-block { display: flex; gap: 8px; }
+.edit-actions { display: flex; gap: 8px; justify-content: center; padding: 8px 0; border-top: 1px solid #ebeef5; margin-top: 6px; }
+.name-tip { color: #e6a23c; font-size: 12px; line-height: 1.6; margin-top: 4px; }
+.form-tip { color: #999; font-size: 12px; line-height: 1.6; }
+.upload-block { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.up-img { width: 80px; height: 60px; border: 1px solid #eee; border-radius: 4px; }
 </style>

@@ -685,10 +685,10 @@ onMounted(() => { fetchCategories(); fetchList() })
             </div>
           </el-form-item>
           <el-form-item label="开始时间">
-            <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" />
+            <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" class="field-date" />
           </el-form-item>
           <el-form-item label="结束时间">
-            <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" />
+            <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" class="field-date" />
           </el-form-item>
 
           <!-- 会员等级折扣 -->

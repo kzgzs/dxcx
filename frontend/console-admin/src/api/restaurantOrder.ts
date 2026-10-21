@@ -100,21 +100,6 @@ export interface TakeawayOrderListResult {
   pagesize: number
 }
 
-export interface RemarkItem {
-  id: number
-  content: string
-  sort: number
-  status: number
-  create_time: number
-}
-
-export interface RemarkListResult {
-  list: RemarkItem[]
-  total: number
-  page: number
-  pagesize: number
-}
-
 // ============ 堂食订单 ============
 export function getShopOrderList(params: Record<string, unknown>) {
   return request.get<unknown, ShopOrderListResult>('/admin/restaurant/shopOrder/list', { params })
@@ -167,17 +152,4 @@ export function closeTakeawayOrder(id: number) {
 
 export function sendTakeawayOrderExpress(id: number, express_com: string, express_no: string) {
   return request.post<unknown, null>('/admin/restaurant/takeawayOrder/sendExpress', { id, express_com, express_no })
-}
-
-// ============ 常用备注预置 ============
-export function getRemarkList(params: Record<string, unknown> = {}) {
-  return request.get<unknown, RemarkListResult>('/admin/restaurant/remark/list', { params })
-}
-
-export function saveRemark(data: { id?: number; content: string; sort?: number; status?: number }) {
-  return request.post<unknown, null>('/admin/restaurant/remark/save', data)
-}
-
-export function deleteRemark(id: number) {
-  return request.post<unknown, null>('/admin/restaurant/remark/del', { id })
 }

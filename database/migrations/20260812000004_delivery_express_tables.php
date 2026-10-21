@@ -103,7 +103,7 @@ class DeliveryExpressTables extends Migrator
   `print_shop` tinyint(1) DEFAULT \'1\' COMMENT \'打印商品\',
   `print_shop_content` varchar(255) DEFAULT NULL COMMENT \'打印内容\',
   `createtime` int(11) DEFAULT NULL COMMENT \'创建时间\',
-  `status` tinyint(1) DEFAULT \'0\' COMMENT \'状态：0关闭 1开启\',
+  `status` tinyint(1) DEFAULT \'1\' COMMENT \'状态：0关闭 1开启\',
   PRIMARY KEY (`id`),
   KEY `aid` (`aid`),
   KEY `bid` (`bid`)

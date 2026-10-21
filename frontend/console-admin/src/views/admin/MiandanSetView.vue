@@ -49,7 +49,7 @@ onMounted(load)
       <span class="subpage-close" @click="$emit('close')">✕</span>
     </div>
     <div v-loading="loading" class="subpage-body">
-      <el-form label-width="160px" style="max-width: 680px" @submit.prevent>
+      <el-form label-width="210px" style="max-width: 720px" @submit.prevent>
         <el-form-item label="状态：">
           <el-radio-group v-model="form.status">
             <el-radio :value="1">开启</el-radio>

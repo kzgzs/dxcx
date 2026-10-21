@@ -40,3 +40,5 @@ frontend/*/dist/
 frontend/*/.vscode/
 frontend/uniapp-client/.env
 frontend/uniapp-client/unpackage/
+
+/canzhao-old/

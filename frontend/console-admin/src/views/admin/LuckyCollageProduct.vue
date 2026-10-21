@@ -993,7 +993,7 @@ onMounted(() => {
           </el-form-item>
 
           <el-form-item label="设置规格">
-            <div class="spec-wrap">
+            <div class="spec-wrap spec-table-auto">
               <table class="gg-table">
                 <thead>
                   <tr>

@@ -262,7 +262,7 @@ onMounted(() => {
             <span v-else class="inactive-tag">未激活</span>
           </el-form-item>
           <el-form-item v-if="form.id" label="门店编码">
-            <el-input v-model="form.shop_no" readonly />
+            <el-input v-model="form.shop_no" readonly style="max-width: 420px" />
           </el-form-item>
           <el-form-item label="*门店名称" prop="shop_name" :rules="[{ required: true, message: '请输入门店名称', trigger: 'blur' }]">
             <el-input v-model="form.shop_name" placeholder="门店名称" style="max-width: 420px" />

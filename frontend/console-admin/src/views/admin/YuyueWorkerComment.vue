@@ -156,7 +156,7 @@ onMounted(() => {
           </template>
         </el-table-column>
         <el-table-column label="商家" min-width="110">
-          <template #default="{ row }">{{ row.bname || '点大商城' }}</template>
+          <template #default="{ row }">{{ row.bname || '鼎极商城' }}</template>
         </el-table-column>
         <el-table-column label="评价人信息" min-width="150">
           <template #default="{ row }">
@@ -197,7 +197,7 @@ onMounted(() => {
     <el-dialog v-model="detailVisible" title="评价详情" width="520px">
       <div v-loading="detailLoading" class="detail-body">
         <div class="drow"><span class="dlab">人员</span><span>{{ detail.worker_name || '-' }}<span v-if="detail.worker_tel" class="sub">（{{ detail.worker_tel }}）</span></span></div>
-        <div class="drow"><span class="dlab">商家</span><span>{{ detail.bname || '点大商城' }}</span></div>
+        <div class="drow"><span class="dlab">商家</span><span>{{ detail.bname || '鼎极商城' }}</span></div>
         <div class="drow"><span class="dlab">评价人</span><span>{{ detail.nickname || '-' }}</span></div>
         <div class="drow"><span class="dlab">订单号</span><span>{{ detail.ordernum || '-' }}</span></div>
         <div class="drow"><span class="dlab">评分</span><el-rate :model-value="Number(detail.score || 0)" disabled size="small" /></div>

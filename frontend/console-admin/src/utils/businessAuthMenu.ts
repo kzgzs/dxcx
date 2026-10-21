@@ -204,7 +204,6 @@ export const businessAuthGroups: AuthGroup[] = [
         name: '收银台',
         leaves: [
           { name: '收银设置', value: 'CashierSet/index' },
-          { name: '收银台操作', value: 'Cashier/index' },
           { name: '收银订单', value: 'CashierOrder/index' },
           { name: '订单统计', value: 'CashierOrder/tongji' },
         ],

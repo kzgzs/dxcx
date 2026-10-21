@@ -336,6 +336,10 @@ class MerchantService
             $row['name'] = $name;
         }
 
+        if ($has('pic')) {
+            $row['pic'] = trim((string) ($data['pic'] ?? ''));
+        }
+
         if ($has('contacts')) {
             $row['contacts'] = trim((string) ($data['contacts'] ?? ''));
         }
@@ -422,6 +426,7 @@ class MerchantService
             'merchant_id'   => (int) ($row['merchant_id'] ?? 0),
             'merchant_name' => (string) ($row['merchant_name'] ?? ''),
             'name'          => (string) ($row['name'] ?? ''),
+            'pic'           => (string) ($row['pic'] ?? ''),
             'contacts'      => (string) ($row['contacts'] ?? ''),
             'phone'         => (string) ($row['tel'] ?? ''),
             'province'      => (string) ($row['province'] ?? ''),

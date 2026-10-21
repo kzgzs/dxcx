@@ -34,6 +34,8 @@ export interface FormItem {
   form_query_txtcolor: string
   submit_tourl: string
   st0count?: number
+  // detail 附加：默认分类下具有分销权限的会员等级
+  aglevellist?: { id: number; name: string; can_agent: number }[]
 }
 
 // 提交记录行（form0~form50 动态字段）
@@ -48,11 +50,14 @@ export interface FormOrderItem {
   createtime: number
   isudel: number
   paystatus: number
+  paynum: string
   money: string
   ordernum: string
   paytime: number
   platform: string
   reason: string
+  isrefund: number
+  is_send_commission: number
   nickname?: string
   headimg?: string
   [key: string]: unknown
@@ -104,15 +109,15 @@ export function getFormRecordDetail(id: number) {
   return request.get<unknown, FormOrderItem & { formdef: FormItem | null }>('/admin/form/recorddetail', { params: { id } })
 }
 
-export function formRecordSetst(ids: number[], st: number, reason = '') {
-  return request.post<unknown, null>('/admin/form/recordsetst', { ids, st, reason })
+export function formRecordSetst(ids: number[], st: number, reason = '', istuikuan = 0) {
+  return request.post<unknown, null>('/admin/form/recordsetst', { ids, st, reason, istuikuan })
 }
 
 export function formRecordDel(ids: number[]) {
   return request.post<unknown, null>('/admin/form/recorddel', { ids })
 }
 
-// 表单数据新增/编辑（对照 canzhao recordsave）
+// 表单数据新增/编辑
 export function saveFormRecord(data: Record<string, unknown>) {
   return request.post<unknown, null>('/admin/form/recordsave', data)
 }

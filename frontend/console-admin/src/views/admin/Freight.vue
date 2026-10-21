@@ -678,37 +678,25 @@ onMounted(() => {
         <el-table-column label="配送方式" width="110">
           <template #default="{ row }">{{ PSTYPE_TEXT[row.pstype] || '未知' }}</template>
         </el-table-column>
-        <el-table-column label="计费规则" min-width="220">
+        <el-table-column label="区域及价格" min-width="220">
           <template #default="{ row }">{{ priceSummary(row) }}</template>
         </el-table-column>
-        <el-table-column label="配送时段" width="100">
+        <el-table-column label="满额包邮" width="100">
           <template #default="{ row }">
-            {{ row.pstimeset === 1 ? `已开启` : '关闭' }}
+            {{ row.manjianbaoyou === 1 ? '已开启' : '不开启' }}
           </template>
         </el-table-column>
-        <el-table-column label="附加表单" width="100">
-          <template #default="{ row }">
-            {{ (row.formdata || []).length }} 项
-          </template>
-        </el-table-column>
-        <el-table-column prop="sort" label="排序" width="80" />
+        <el-table-column prop="sort" label="序号" width="80" />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="row.status === 1 ? 'success' : 'info'">
-              {{ row.status === 1 ? '启用' : '停用' }}
+              {{ row.status === 1 ? '开启' : '关闭' }}
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" width="120" fixed="right">
           <template #default="{ row }">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button
-              v-if="row.status === 1"
-              link
-              type="warning"
-              @click="handleStatus(row, 0)"
-            >停用</el-button>
-            <el-button v-else link type="success" @click="handleStatus(row, 1)">启用</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
           </template>
         </el-table-column>

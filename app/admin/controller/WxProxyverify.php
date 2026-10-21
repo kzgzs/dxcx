@@ -5,6 +5,8 @@ declare(strict_types=1);
 namespace app\admin\controller;
 
 use app\BaseController;
+use app\common\exception\BusinessException;
+use app\common\service\OpenPlatformService;
 use app\common\service\ScopeService;
 use app\common\service\WxProxyverifyService;
 
@@ -17,8 +19,11 @@ use app\common\service\WxProxyverifyService;
  */
 class WxProxyverify extends BaseController
 {
-    public function __construct(\think\App $app, protected WxProxyverifyService $proxyverify)
-    {
+    public function __construct(
+        \think\App $app,
+        protected WxProxyverifyService $proxyverify,
+        protected OpenPlatformService $open,
+    ) {
         parent::__construct($app);
     }
 
@@ -36,8 +41,32 @@ class WxProxyverify extends BaseController
             $aid,
             max(1, (int) $this->request->get('page', 1)),
             max(1, min(100, (int) $this->request->get('pagesize', 20))),
-            (string) $this->request->get('keyword', '')
+            [
+                'authorizer_appid' => trim((string) $this->request->get('authorizer_appid', '')),
+                'nick_name'        => trim((string) $this->request->get('nick_name', '')),
+                'principal_name'   => trim((string) $this->request->get('principal_name', '')),
+                'verify_status'    => trim((string) $this->request->get('verify_status', '')),
+                'ctime'            => trim((string) $this->request->get('ctime', '')),
+                'field'            => trim((string) $this->request->get('field', '')),
+                'order'            => trim((string) $this->request->get('order', '')),
+            ]
         ));
+    }
+
+    /**
+     * 授权绑定：返回微信第三方平台扫码授权 URL（前端新窗口打开）
+     * GET /admin/wxproxyverify/authbind
+     */
+    public function authbind()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        try {
+            $url = $this->open->buildAuthUrl(2, $aid);
+        } catch (BusinessException $e) {
+            return $this->error($e->getMessage());
+        }
+
+        return $this->success(['url' => $url]);
     }
 
     /**
@@ -104,6 +133,7 @@ class WxProxyverify extends BaseController
                 'pay_type'      => (string) $this->request->get('pay_type', ''),
                 'task_status'   => (string) $this->request->get('task_status', ''),
                 'apply_status'  => (string) $this->request->get('apply_status', ''),
+                'ctime'         => trim((string) $this->request->get('ctime', '')),
             ]
         ));
     }

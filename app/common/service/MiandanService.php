@@ -157,6 +157,39 @@ class MiandanService
         $waybillIdReal = $order['waybill_id'] ?? $waybillId;
         $shopGoodsName = $order['shop_goods_name'] ?? '';
 
+        // 寄件人信息（真实落库；缺省回退到商户发货地址）
+        $senderCompany = $order['sender_company'] ?: ($order['sender_name'] ?: '鼎极商城');
+        $senderMobile  = $order['sender_mobile'] ?: $order['sender_tel'] ?: '17811111111';
+        $senderArea    = trim(($order['sender_province'] ?? '') . ($order['sender_city'] ?? '') . ($order['sender_area'] ?? ''));
+        $senderAddress = $order['sender_address'] ?: '安徽省合肥市瑶海区西乡大道宝运达物流中心A2-102档';
+
+        // 商品明细（cargo_detail_list JSON：[{name,count}]）
+        $goodsList = [];
+        if (!empty($order['cargo_detail_list'])) {
+            $decoded = json_decode((string) $order['cargo_detail_list'], true);
+            if (is_array($decoded)) {
+                foreach ($decoded as $g) {
+                    if (!empty($g['name'])) {
+                        $goodsList[] = ['name' => $g['name'], 'count' => (int) ($g['count'] ?? 1)];
+                    }
+                }
+            }
+        }
+        if (empty($goodsList) && $shopGoodsName) {
+            $goodsList = [['name' => $shopGoodsName, 'count' => (int) ($order['shop_goods_count'] ?? 1)]];
+        }
+        $goodsText = implode('；', array_map(fn($g) => $g['name'] . ' x' . $g['count'], $goodsList));
+
+        // 重量 / 件数 / 付款方式
+        $weight = (float) ($order['cargo_weight'] ?? 0);
+        if ($weight <= 0) { $weight = 1.00; }
+        $packageCount = max(1, (int) ($order['cargo_count'] ?? 1));
+        // 现付=寄付；含「到付」字样则为到付
+        $payText = (false !== mb_strpos((string) $deliveryName, '到付')) ? '到付' : '寄付';
+
+        // 路由码（面单模板路由标识，对标截图 010W-010）
+        $routeCode = '010W-010';
+
         // 手机号中间四位脱敏（对齐截图 156****6666）
         $maskMobile = '';
         if ($receiverMobile) {
@@ -167,35 +200,95 @@ class MiandanService
 
         if ($this->isMock()) {
             $barcode = $waybillIdReal ?: 'NO-WAYBILL';
-            // 面单 HTML：按截图「运单详情」样式渲染（公司 logo/电话/母单号/条码/收件人），数据来自真实落库订单
+
+            // 伪条码：按运单号字符生成竖条（打印态视觉，非真实扫码）
+            $bars = '';
+            foreach (str_split($barcode) as $ch) {
+                $w = (ord($ch) % 3) + 1;
+                $bars .= '<span style="display:inline-block;width:' . $w . 'px;height:64px;background:#000;"></span>';
+            }
+            // 伪二维码：按运单号 hash 生成 12x12 点阵
+            $qr = '<div style="width:120px;height:120px;display:grid;grid-template-columns:repeat(12,1fr);grid-template-rows:repeat(12,1fr);border:1px solid #999;padding:4px;box-sizing:border-box;">';
+            $h = crc32($barcode);
+            for ($i = 0; $i < 144; $i++) {
+                $on = (($h >> ($i % 24)) & 1) === 1;
+                $qr .= '<span style="background:' . ($on ? '#000' : '#fff') . ';"></span>';
+            }
+            $qr .= '</div>';
+
+            $printTime = date('Y/m/d H:i:s');
+            $recvLine = trim($receiverName . '  ' . $maskMobile);
+            $recvAddr = trim($receiverArea . ' ' . $receiverAddress);
+            $senderLine = trim($senderCompany . '  ' . $senderMobile);
+            $senderAddr = trim($senderArea . ' ' . $senderAddress);
+            $insured = trim((string) ($order['insured_value'] ?? ''));
+
+            // SF 雷达小标（寄方表底行右列）
+            $radar = '<div style="width:46px;height:46px;border-radius:50%;border:3px solid #666;position:relative;margin:0 auto;">'
+                . '<div style="position:absolute;inset:6px;border-radius:50%;border:2px solid #666;"></div>'
+                . '<div style="position:absolute;left:50%;top:50%;width:6px;height:6px;background:#1e88e5;border-radius:50%;transform:translate(-50%,-50%);"></div></div>';
+
+            // 面单 HTML：收方一张表 + 寄方一张表（border-collapse，边框连续），数据来自真实落库订单
             $html = '<!DOCTYPE html><html><head><meta charset="utf-8"><style>'
-                . 'body{font-family:"微软雅黑",Arial,sans-serif;color:#222;margin:0;padding:16px;width:680px;}'
-                . '.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #333;padding-bottom:8px;}'
-                . '.logo{font-size:30px;font-weight:800;letter-spacing:2px;}'
-                . '.tel{font-size:26px;font-weight:800;text-align:right;}'
-                . '.sub{font-size:13px;text-align:right;color:#555;}'
-                . '.meta{display:flex;justify-content:space-between;font-size:14px;margin:10px 0;color:#333;}'
+                . 'body{font-family:"微软雅黑",Arial,sans-serif;color:#111;margin:0;padding:14px;width:680px;box-sizing:border-box;}'
+                . '.hd{display:flex;justify-content:space-between;align-items:center;border-bottom:2px solid #333;padding-bottom:6px;}'
+                . '.logo-block{display:flex;align-items:center;gap:10px;}'
+                . '.sf-circle{width:54px;height:54px;border:3px solid #000;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;}'
+                . '.l1{font-size:26px;font-weight:800;letter-spacing:1px;line-height:1;}'
+                . '.l2{font-size:18px;font-weight:700;}'
+                . '.hd-right{text-align:right;}'
+                . '.tel{font-size:30px;font-weight:800;}'
+                . '.sub{font-size:13px;color:#333;}'
+                . '.meta{display:flex;justify-content:space-between;font-size:14px;margin:8px 0;color:#333;}'
                 . '.bc{display:flex;justify-content:space-between;align-items:flex-end;}'
-                . '.bar{font-family:"Libre Barcode 39",monospace;font-size:64px;letter-spacing:4px;}'
-                . '.big{font-size:96px;font-weight:800;color:#333;}'
-                . '.wb{font-size:18px;text-align:center;margin:6px 0;}'
-                . '.box{border:2px solid #333;padding:14px;margin-top:8px;}'
-                . '.box .title{font-size:22px;font-weight:800;}'
-                . '.recv{display:flex;align-items:center;gap:14px;margin:14px 0;}'
-                . '.badge{width:46px;height:46px;border:2px solid #333;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;}'
+                . '.bars{display:flex;align-items:flex-end;gap:1px;height:64px;}'
+                . '.bign{font-size:88px;font-weight:800;line-height:0.8;}'
+                . '.wb{font-size:16px;text-align:center;margin:6px 0;}'
+                . 'table.way{width:100%;border-collapse:collapse;margin-bottom:8px;}'
+                . 'table.way td{border:2px solid #333;vertical-align:middle;padding:8px;}'
+                . '.route{font-size:44px;font-weight:800;text-align:center;letter-spacing:2px;padding:10px;}'
+                . '.badge{width:64px;text-align:center;}'
+                . '.circ{width:46px;height:46px;border:2px solid #333;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;}'
                 . '.who{font-size:20px;font-weight:700;}'
-                . '.addr{font-size:18px;margin-top:10px;color:#222;}'
+                . '.addr{font-size:17px;margin-top:6px;color:#222;}'
+                . '.pay{text-align:center;font-size:18px;padding:6px;}'
+                . '.wu{text-align:center;font-size:52px;font-weight:800;color:#444;padding:6px;}'
+                . '.qrc{text-align:center;}'
+                . '.insp{writing-mode:vertical-rl;font-size:24px;font-weight:800;letter-spacing:6px;text-align:center;}'
+                . '.cl{padding:10px;font-size:15px;vertical-align:top;}'
                 . '</style></head><body>'
-                . '<div class="hd"><div class="logo">' . htmlspecialchars($deliveryName) . '</div>'
-                . '<div><div class="tel">95338</div><div class="sub">www.sf-express.com</div></div></div>'
-                . '<div class="meta"><span>CCSP</span><span>打印时间' . date('Y/m/d H:i:s') . '</span></div>'
-                . '<div class="bc"><div class="bar">' . htmlspecialchars($barcode) . '</div><div class="big">1</div></div>'
-                . '<div class="wb">1/1 母单号 ' . htmlspecialchars($waybillIdReal) . '</div>'
-                . '<div class="box"><div class="title">010W-010</div>'
-                . '<div class="recv"><div class="badge">收</div><div class="who">' . htmlspecialchars($receiverName) . ' ' . htmlspecialchars($maskMobile) . '</div></div>'
-                . '<div class="addr">' . htmlspecialchars($receiverArea . ' ' . $receiverAddress) . '</div>'
-                . ($shopGoodsName ? '<div class="addr" style="color:#666;">商品：' . htmlspecialchars($shopGoodsName) . '</div>' : '')
-                . '</div>'
+
+                // —— 头部：logo/电话/打印时间/条码/母单号 ——
+                . '<div class="hd"><div class="logo-block"><div class="sf-circle">SF</div><div><div class="l1">EXPRESS</div><div class="l2">顺丰速运</div></div></div>'
+                . '<div class="hd-right"><div class="tel">95338</div><div class="sub">www.sf-express.com</div></div></div>'
+                . '<div class="meta"><span>CCSP</span><span>打印时间 ' . $printTime . '</span></div>'
+                . '<div class="bc"><div class="bars">' . $bars . '</div><div class="bign">' . $packageCount . '</div></div>'
+                . '<div class="wb">1/' . $packageCount . ' 母单号 ' . htmlspecialchars($waybillIdReal) . '</div>'
+
+                // —— 收方表（一张连续表格）：路由码 / 收+姓名手机 / 地址 / 末行三列(寄付·WU | 二维码 | 已验视) ——
+                . '<table class="way">'
+                . '<tr><td colspan="3" class="route">' . htmlspecialchars($routeCode) . '</td></tr>'
+                . '<tr><td class="badge"><span class="circ">收</span></td>'
+                . '<td colspan="2"><div class="who">' . htmlspecialchars($recvLine) . '</div></td></tr>'
+                . '<tr><td colspan="3" class="addr">' . htmlspecialchars($recvAddr) . '</td></tr>'
+                . '<tr>'
+                . '<td style="width:150px;"><div class="pay">' . $payText . '</div><div class="wu">WU</div></td>'
+                . '<td class="qrc">' . $qr . '</td>'
+                . '<td style="width:64px;"><div class="insp">已验视</div></td>'
+                . '</tr>'
+                . '</table>'
+
+                // —— 寄方表（单独一张表）：寄+名称电话地址 / 托寄物·增值服务 / 重量·付款 / SF logo ——
+                . '<table class="way">'
+                . '<tr><td class="badge"><span class="circ">寄</span></td>'
+                . '<td><div class="who">' . htmlspecialchars($senderLine) . '</div>'
+                . '<div class="addr">' . htmlspecialchars($senderAddr) . '</div></td></tr>'
+                . '<tr><td class="cl">托寄物：' . htmlspecialchars($goodsText) . '</td>'
+                . '<td class="cl">增值服务：' . ('' !== $insured ? htmlspecialchars($insured) : '') . '</td></tr>'
+                . '<tr><td class="cl"></td>'
+                . '<td class="cl">计费重量：' . number_format($weight, 2) . ' kg<br>实际重量：' . number_format($weight, 2) . ' kg<br>付款方式：' . $payText . '</td></tr>'
+                . '<tr><td class="cl"></td><td class="cl" style="text-align:center;">' . $radar . '</td></tr>'
+                . '</table>'
                 . '</body></html>';
 
             return [
@@ -208,7 +301,7 @@ class MiandanService
         }
 
         // 真实模式接口位：微信物流助手 /获取运单数据（需要 access_token 托管，本期留桩）
-        throw new BusinessException('真实微信物流助手对接暂未开放，请保持 EWAYBILL_MOCK=1');
+        throw new BusinessException('真实微信物流助手对接暂未开放，请在 .env 中保持模拟模式开启');
     }
 
     /**
@@ -260,7 +353,7 @@ class MiandanService
         }
 
         // 真实模式接口位：微信物流助手 /查询运单轨迹（需要 access_token 托管，本期留桩）
-        throw new BusinessException('真实微信物流助手对接暂未开放，请保持 EWAYBILL_MOCK=1');
+        throw new BusinessException('真实微信物流助手对接暂未开放，请在 .env 中保持模拟模式开启');
     }
 
     /** 取消运单（对标参考系统 quxiao：mock 直接置为已取消） */
@@ -279,7 +372,7 @@ class MiandanService
 
         if (!$this->isMock()) {
             // 真实模式接口位：微信物流助手 /取消运单（本期留桩）
-            throw new BusinessException('真实微信物流助手对接暂未开放，请保持 EWAYBILL_MOCK=1');
+            throw new BusinessException('真实微信物流助手对接暂未开放，请在 .env 中保持模拟模式开启');
         }
 
         Db::name('miandan_order')->where('id', $order['id'])->update(['status' => 4]);

@@ -130,4 +130,55 @@ class Ewaybill extends BaseController
 
         return $this->success($this->ewaybillService->printOrders($aid, $ids));
     }
+
+    /**
+     * 导出面单记录（与列表同口径筛选，xlsx 附件下载；隐藏动作 ewaybill-excel）
+     * GET /admin/ewaybill/excel?ordernum&ordertype&name&status
+     */
+    public function excel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        set_time_limit(0);
+        ini_set('memory_limit', '1024M');
+
+        $filters = [
+            'ordernum'  => (string) $this->request->get('ordernum', ''),
+            'ordertype' => (string) $this->request->get('ordertype', ''),
+            'name'      => (string) $this->request->get('name', ''),
+            'status'    => (string) $this->request->get('status', ''),
+        ];
+
+        [$titles, $rows] = $this->ewaybillService->exportData($aid, $filters);
+
+        \util\ExcelUtil::export($titles, $rows, '电子面单记录_' . date('YmdHis'));
+    }
+
+    /**
+     * 通知取件候选快递公司（isYuyue=1 的已出单面单去重）
+     * GET /admin/ewaybill/noticeInit
+     */
+    public function noticeInit()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success(['list' => $this->ewaybillService->noticeExpressList($aid)]);
+    }
+
+    /**
+     * 预约（通知）取件
+     * POST /admin/ewaybill/yuyueNotice {codes: []}
+     */
+    public function yuyueNotice()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $uid = (int) (($this->request->authPayload ?? [])['uid'] ?? 0);
+
+        $codes = $this->request->post('codes', []);
+        $codes = is_array($codes) ? $codes : [];
+
+        $msg = $this->ewaybillService->yuyueNotice($aid, $uid, $codes);
+
+        return $this->success([], $msg);
+    }
 }

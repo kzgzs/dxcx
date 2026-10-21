@@ -17,20 +17,20 @@ use think\facade\Db;
  */
 class Mingpian extends BaseController
 {
-    /** 默认联系信息字段清单（对标 canzhao defaultSet） */
+    /** 默认联系信息字段清单（对标 canzhao defaultSet：手机号/微信号/地址默认必填，自定义字段默认空名隐藏） */
     private const DEFAULT_FIELDS = [
-        ['field' => 'tel', 'name' => '电话', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'weixin', 'name' => '微信', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'address', 'name' => '地址', 'icon' => '', 'isshow' => 1, 'required' => 0],
+        ['field' => 'tel', 'name' => '手机号', 'icon' => '', 'isshow' => 1, 'required' => 1],
+        ['field' => 'weixin', 'name' => '微信号', 'icon' => '', 'isshow' => 1, 'required' => 1],
+        ['field' => 'address', 'name' => '地址', 'icon' => '', 'isshow' => 1, 'required' => 1],
         ['field' => 'email', 'name' => '邮箱', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'douyin', 'name' => '抖音', 'icon' => '', 'isshow' => 1, 'required' => 0],
+        ['field' => 'douyin', 'name' => '抖音号', 'icon' => '', 'isshow' => 1, 'required' => 0],
         ['field' => 'weibo', 'name' => '微博', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'toutiao', 'name' => '头条', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'field1', 'name' => '自定义1', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'field2', 'name' => '自定义2', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'field3', 'name' => '自定义3', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'field4', 'name' => '自定义4', 'icon' => '', 'isshow' => 1, 'required' => 0],
-        ['field' => 'field5', 'name' => '自定义5', 'icon' => '', 'isshow' => 1, 'required' => 0],
+        ['field' => 'toutiao', 'name' => '头条号', 'icon' => '', 'isshow' => 1, 'required' => 0],
+        ['field' => 'field1', 'name' => '', 'icon' => '', 'isshow' => 0, 'required' => 0],
+        ['field' => 'field2', 'name' => '', 'icon' => '', 'isshow' => 0, 'required' => 0],
+        ['field' => 'field3', 'name' => '', 'icon' => '', 'isshow' => 0, 'required' => 0],
+        ['field' => 'field4', 'name' => '', 'icon' => '', 'isshow' => 0, 'required' => 0],
+        ['field' => 'field5', 'name' => '', 'icon' => '', 'isshow' => 0, 'required' => 0],
     ];
 
     /**
@@ -51,7 +51,8 @@ class Mingpian extends BaseController
 
         $query = ScopeService::queryAs('mingpian', $aid, 'm')
             ->leftJoin('member u', 'u.id = m.mid')
-            ->field('m.*, u.nickname, u.headimg');
+            // u.headimg 用别名，避免覆盖名片自身的 headimg（个人照片）
+            ->field('m.*, u.nickname, u.headimg as member_headimg');
 
         if ('' !== $realname) {
             $query->where('m.realname', 'like', '%' . $realname . '%');
@@ -178,6 +179,8 @@ class Mingpian extends BaseController
 
     /**
      * 名片设置（GET 回显 / POST 保存）
+     * - GET：无记录时按 canzhao defaultSet 口径初始化入库后返回（状态默认关闭、创建条件所有人）
+     * - POST：保存 status/bgbtncolor/bgpics/createtj(implode)/field_list(json)
      * GET|POST /admin/mingpian/set
      */
     public function set()
@@ -190,6 +193,7 @@ class Mingpian extends BaseController
 
         $row = ScopeService::query('mingpian_set', $aid)->find();
         if (empty($row)) {
+            // 首次进入初始化（对标 canzhao defaultSet：插入默认 field_list 行）
             $row = [
                 'aid'         => $aid,
                 'bgpics'      => '',
@@ -198,6 +202,7 @@ class Mingpian extends BaseController
                 'status'      => 0,
                 'bgbtncolor'  => 0,
             ];
+            Db::name('mingpian_set')->insert($row);
         }
 
         $row['bgpics']     = array_filter(explode(',', (string) $row['bgpics']));

@@ -212,21 +212,11 @@ onMounted(() => {
     <el-card shadow="never" class="toolbar-card">
       <div class="toolbar">
         <div class="toolbar-left">
-          <el-button @click="handleDelete(selectedIds)">删除</el-button>
+          <el-button @click="handleDelete(selectedIds)">批量删除</el-button>
           <el-button @click="setst(selectedIds, 1)">已审</el-button>
           <el-button @click="setst(selectedIds, 0)">未审</el-button>
         </div>
         <div class="toolbar-right">
-          <el-select
-            :model-value="query.bid === 'gt0' || query.bid === '' ? '' : Number(query.bid)"
-            placeholder="全部"
-            clearable
-            filterable
-            class="biz-select"
-            @change="onBusinessChange"
-          >
-            <el-option v-for="b in businessOptions" :key="b.id" :label="b.name" :value="b.id" />
-          </el-select>
           <el-input
             v-model="query.content"
             placeholder="评价内容"
@@ -261,7 +251,6 @@ onMounted(() => {
       >
         <el-table-column type="selection" width="40" />
         <el-table-column prop="id" label="ID" width="60" />
-        <el-table-column prop="bname" label="所属商户" width="160" show-overflow-tooltip />
         <el-table-column label="评价人信息" width="150">
           <template #default="{ row }">
             <div class="commenter">

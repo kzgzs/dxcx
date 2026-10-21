@@ -218,6 +218,7 @@ export interface EwaybillOrder {
   express_com: string
   express_no: string
   sub_express_no: string
+  goods_detail: string
   status: number
   status_name: string
   expect_start_time_text: string
@@ -345,6 +346,7 @@ export interface ExpressAccount {
   id: number
   aid: number
   express: string
+  express_text: string
   express_code: string
   customer_name: string
   customer_pwd: string
@@ -366,6 +368,7 @@ export function getEwaybillSet() {
 }
 
 export function saveEwaybillSet(data: {
+  status: number
   account_id: string
   account_secret: string
   print_remarks: number
@@ -391,4 +394,25 @@ export function saveExpressAccount(data: Record<string, unknown>) {
 
 export function deleteExpressAccount(ids: number[]) {
   return request.post<unknown, null>('/admin/ewaybillSet/accountDel', { ids })
+}
+
+/* ================= 面单记录：导出 / 通知取件（隐藏动作 ewaybill-excel / ewaybill-del） ================= */
+
+/** 导出面单记录（xlsx Blob，与列表同口径筛选） */
+export function exportEwaybill(params: EwaybillListQuery) {
+  return request.get('/admin/ewaybill/excel', {
+    params,
+    responseType: 'blob',
+    timeout: 180000,
+  }) as Promise<Blob>
+}
+
+/** 通知取件候选快递公司（isYuyue=1 的已出单面单去重） */
+export function getNoticeExpressList() {
+  return request.get<unknown, { list: { name: string; code: string }[] }>('/admin/ewaybill/noticeInit')
+}
+
+/** 预约（通知）取件 */
+export function yuyueNoticeEwaybill(codes: string[]) {
+  return request.post<unknown, null>('/admin/ewaybill/yuyueNotice', { codes })
 }

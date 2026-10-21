@@ -51,15 +51,20 @@ class CycleService
     /**
      * 读取周期购设置（无记录给默认）
      *
-     * @return array{autoshdays: int, comment: int}
+     * 对齐参考系统系统设置截图：自动收货天数 / 商品评价开关 / 评价审核开关 / 会员等级折扣开关
+     * 点大口径：comment_check=开启(1) 时用户评价需后台审核才展示；关闭(0) 后评价直接展示。
+     *
+     * @return array{autoshdays: int, comment: int, comment_check: int, vipdiscount: int}
      */
     public function getSysset(int $aid): array
     {
         $info = ScopeService::query('cycle_sysset', $aid)->find();
 
         return [
-            'autoshdays' => (int) ($info['autoshdays'] ?? 7),
-            'comment'    => isset($info['comment']) ? (int) $info['comment'] : 1,
+            'autoshdays'   => (int) ($info['autoshdays'] ?? 7),
+            'comment'      => isset($info['comment']) ? (int) $info['comment'] : 1,
+            'comment_check' => isset($info['comment_check']) ? (int) $info['comment_check'] : 1,
+            'vipdiscount'  => isset($info['vipdiscount']) ? (int) $info['vipdiscount'] : 1,
         ];
     }
 
@@ -84,6 +89,14 @@ class CycleService
         if (array_key_exists('comment', $data)) {
             $update['comment'] = (int) $data['comment'] === 1 ? 1 : 0;
         }
+        // 评价审核：开启(1) 需后台审核；关闭(0) 用户评价直接展示
+        if (array_key_exists('comment_check', $data)) {
+            $update['comment_check'] = (int) $data['comment_check'] === 1 ? 1 : 0;
+        }
+        // 会员等级折扣：是否开启
+        if (array_key_exists('vipdiscount', $data)) {
+            $update['vipdiscount'] = (int) $data['vipdiscount'] === 1 ? 1 : 0;
+        }
 
         if (empty($update)) {
             throw new BusinessException('没有可保存的设置项');
@@ -93,9 +106,11 @@ class CycleService
 
         if (empty($exists)) {
             Db::name('cycle_sysset')->insert(array_merge([
-                'aid'        => $aid,
-                'autoshdays' => 7,
-                'comment'    => 1,
+                'aid'          => $aid,
+                'autoshdays'   => 7,
+                'comment'      => 1,
+                'comment_check' => 1,
+                'vipdiscount'  => 1,
             ], $update));
 
             return;
@@ -265,9 +280,14 @@ class CycleService
     }
 
     /**
-     * 新增/编辑商品（含规格动态行：周期/次数/每期数量/价格/库存）
+     * 新增/编辑商品（对齐 canzhao 片A：基本信息两部分 + 规格项目表）
      *
-     * @param array<string, mixed> $data {id?, name, pic, cid, sort, status, detail, guiges:[{cycle_days,qsnum,each_num,sell_price,stock,name?}]}
+     * 商品级字段：name/pic/pics/cid/ps_cycle/everyday_item/advance_pay_days/advance_pay_time/
+     *   advance_extend_days/min_num/min_qsnum/freighttype/freightdata/commissionset/sales/sort/status/detail/guigedata
+     * 规格行 guiges：[{name, procode, market_price, sell_price, weight, stock, pic}]
+     *   （订单分期所需 cycle_days/qsnum/each_num 由商品级 ps_cycle/min_num/min_qsnum 派生，保持跨片兼容）
+     *
+     * @param array<string, mixed> $data
      * @return array{id: int}
      */
     public function productSave(int $aid, array $data): array
@@ -293,74 +313,116 @@ class CycleService
             }
         }
 
-        // 规格动态行（至少一行）
+        $psCycle = (int) ($data['ps_cycle'] ?? 1);
+        if (!in_array($psCycle, [1, 2, 3], true)) {
+            throw new BusinessException('配送周期非法');
+        }
+
+        $minNum  = max(1, (int) ($data['min_num'] ?? 1));
+        $minQsnum = max(1, (int) ($data['min_qsnum'] ?? 1));
+
+        // 规格项目表（至少一行）
         $guiges = $data['guiges'] ?? $data['guige_list'] ?? [];
 
         if (!is_array($guiges) || empty($guiges)) {
-            throw new BusinessException('请至少添加一条规格（周期/次数/每期数量/价格）');
+            throw new BusinessException('请至少添加一条规格（销售价/库存）');
         }
 
-        $cleanGuiges = [];
+        // 每日一期的配送日配置（每天1/工作日2/周末3/隔天4）
+        $everydayMap = [1 => '每天配送', 2 => '工作日配送', 3 => '周末配送', 4 => '隔天配送'];
+        $everydayItemRaw = $data['everyday_item'] ?? [];
+        $everydayClean = [];
+        if (is_array($everydayItemRaw)) {
+            foreach ($everydayItemRaw as $val) {
+                $v = (int) $val;
+                if (isset($everydayMap[$v])) {
+                    $everydayClean[] = ['value' => $v, 'label' => $everydayMap[$v]];
+                }
+            }
+        }
+        if (1 === $psCycle && empty($everydayClean)) {
+            throw new BusinessException('每日一期请至少勾选一个配送日（每天/工作日/周末/隔天）');
+        }
 
+        // 规格行清洗
+        $cleanGuiges = [];
         foreach ($guiges as $guige) {
             if (!is_array($guige)) {
                 continue;
             }
-
-            $cycleDays = (int) ($guige['cycle_days'] ?? 0);
-            $qsnum     = (int) ($guige['qsnum'] ?? 0);
-            $eachNum   = (int) ($guige['each_num'] ?? 0);
             $sellPrice = round((float) ($guige['sell_price'] ?? 0), 2);
-            $stock     = (int) ($guige['stock'] ?? 0);
-
-            if ($cycleDays < 1 || $cycleDays > 365) {
-                throw new BusinessException('规格配送周期须在 1-365 天之间');
-            }
-            if ($qsnum < 1 || $qsnum > 365) {
-                throw new BusinessException('规格期数（次数）须在 1-365 之间');
-            }
-            if ($eachNum < 1 || $eachNum > 99) {
-                throw new BusinessException('规格每期数量须在 1-99 之间');
-            }
             if ($sellPrice <= 0) {
-                throw new BusinessException('规格价格须大于 0');
+                throw new BusinessException('规格销售价须大于 0');
             }
+            $stock = (int) ($guige['stock'] ?? 0);
             if ($stock < 0) {
                 throw new BusinessException('规格库存不能为负数');
             }
-
             $cleanGuiges[] = [
-                'name'       => trim((string) ($guige['name'] ?? '')),
-                'cycle_days' => $cycleDays,
-                'qsnum'      => $qsnum,
-                'each_num'   => $eachNum,
-                'sell_price' => $sellPrice,
-                'stock'      => $stock,
+                'name'         => trim((string) ($guige['name'] ?? '默认规格')),
+                'procode'      => trim((string) ($guige['procode'] ?? '')),
+                'market_price'  => round((float) ($guige['market_price'] ?? 0), 2),
+                'sell_price'   => $sellPrice,
+                'cost_price'   => round((float) ($guige['cost_price'] ?? 0), 2),
+                'weight'       => (int) ($guige['weight'] ?? 0),
+                'stock'        => $stock,
+                'pic'          => trim((string) ($guige['pic'] ?? '')),
             ];
         }
 
         if (empty($cleanGuiges)) {
-            throw new BusinessException('请至少添加一条规格（周期/次数/每期数量/价格）');
+            throw new BusinessException('请至少添加一条规格（销售价/库存）');
         }
 
         // 商品主表：价格取规格最低，库存取规格合计
         $sellPrice = min(array_column($cleanGuiges, 'sell_price'));
-        $stock     = array_sum(array_column($cleanGuiges, 'stock'));
+        // 取最低价规格对应的市场价/重量
+        $refIndex = array_search(min(array_column($cleanGuiges, 'sell_price')), array_column($cleanGuiges, 'sell_price'), true);
+        $marketPrice = (float) ($cleanGuiges[$refIndex]['market_price'] ?? 0);
+        $weight      = (int) ($cleanGuiges[$refIndex]['weight'] ?? 0);
+        $stock       = array_sum(array_column($cleanGuiges, 'stock'));
+
+        $freighttype = (int) ($data['freighttype'] ?? 1);
+        $freighttype = in_array($freighttype, [1, 2], true) ? $freighttype : 1;
+        $freightdata = 1 === $freighttype ? '' : trim((string) ($data['freightdata'] ?? ''));
+
+        $commissionset = (int) ($data['commissionset'] ?? 0);
+        $commissionset = in_array($commissionset, [0, 1, 2], true) ? $commissionset : 0;
 
         $row = [
-            'name'       => $name,
-            'pic'        => $pic,
-            'pics'       => trim((string) ($data['pics'] ?? '')),
-            'cid'        => $cid,
-            'sell_price' => $sellPrice,
-            'stock'      => $stock,
-            'sort'       => (int) ($data['sort'] ?? 0),
-            'status'     => (int) ($data['status'] ?? 1) === 1 ? 1 : 0,
-            'ps_cycle'   => (int) ($data['ps_cycle'] ?? 2),
-            'detail'     => (string) ($data['detail'] ?? ''),
+            'name'               => $name,
+            'pic'                => $pic,
+            'pics'               => trim((string) ($data['pics'] ?? '')),
+            'cid'                => $cid,
+            'sell_price'         => $sellPrice,
+            'market_price'       => $marketPrice,
+            'weight'             => $weight,
+            'stock'              => $stock,
+            'sort'               => (int) ($data['sort'] ?? 0),
+            'status'             => (int) ($data['status'] ?? 1) === 1 ? 1 : 0,
+            'ps_cycle'           => $psCycle,
+            'everyday_item'      => 1 === $psCycle ? json_encode($everydayClean, JSON_UNESCAPED_UNICODE) : '',
+            'advance_pay_days'   => (int) ($data['advance_pay_days'] ?? 0),
+            'advance_pay_time'   => (int) ($data['advance_pay_time'] ?? 0),
+            'advance_extend_days' => (int) ($data['advance_extend_days'] ?? 0),
+            'min_num'            => $minNum,
+            'min_qsnum'          => $minQsnum,
+            'freighttype'        => $freighttype,
+            'freightdata'        => $freightdata,
+            'commissionset'      => $commissionset,
+            'guigedata'          => is_string($data['guigedata'] ?? null) ? $data['guigedata'] : json_encode($data['guigedata'] ?? [], JSON_UNESCAPED_UNICODE),
+            'detail'             => (string) ($data['detail'] ?? ''),
         ];
 
-        return Db::transaction(function () use ($aid, $id, $row, $cleanGuiges) {
+        // 销量：仅在显式传入时回写（避免覆盖真实累计）
+        if (isset($data['sales']) && '' !== (string) $data['sales']) {
+            $row['sales'] = max(0, (int) $data['sales']);
+        }
+
+        // 派生值（供订单分期使用）：配送周期天数
+        $cycleDays = 1 === $psCycle ? 1 : (2 === $psCycle ? 7 : 30);
+
+        return Db::transaction(function () use ($aid, $id, $row, $cleanGuiges, $cycleDays, $minNum, $minQsnum) {
             if ($id > 0) {
                 $product = $this->findProduct($aid, $id);
 
@@ -377,20 +439,22 @@ class CycleService
             Db::name('cycle_guige')->where('aid', $aid)->where('proid', $id)->delete();
 
             foreach ($cleanGuiges as $index => $guige) {
-                $guigeName = '' !== $guige['name']
-                    ? $guige['name']
-                    : '每' . $guige['cycle_days'] . '天×' . $guige['qsnum'] . '期×每期' . $guige['each_num'] . '件';
-
                 Db::name('cycle_guige')->insert([
-                    'aid'        => $aid,
-                    'proid'      => $id,
-                    'name'       => $guigeName,
-                    'cycle_days' => $guige['cycle_days'],
-                    'qsnum'      => $guige['qsnum'],
-                    'each_num'   => $guige['each_num'],
-                    'sell_price' => $guige['sell_price'],
-                    'stock'      => $guige['stock'],
-                    'ks'         => (string) $index,
+                    'aid'         => $aid,
+                    'proid'       => $id,
+                    'name'        => $guige['name'],
+                    'procode'     => $guige['procode'],
+                    'market_price' => $guige['market_price'],
+                    'cost_price'  => $guige['cost_price'],
+                    'sell_price'  => $guige['sell_price'],
+                    'weight'      => $guige['weight'],
+                    'stock'       => $guige['stock'],
+                    'pic'         => $guige['pic'],
+                    'ks'          => (string) $index,
+                    // 派生：保持订单分期链路可用
+                    'cycle_days'  => $cycleDays,
+                    'qsnum'       => $minNum,
+                    'each_num'    => $minQsnum,
                 ]);
             }
 
@@ -522,11 +586,57 @@ class CycleService
             $row['status_text']    = $this->orderStatusText((int) $row['status']);
             $row['refund_text']    = $this->refundStatusText((int) $row['refund_status']);
             $row['buytype_text']   = self::BUYTYPE_TEXT[(int) $row['buytype']] ?? '未知';
+            $row['platform_text']  = $this->platformText((string) ($row['platform'] ?? ''));
             $row['stage_progress'] = $this->stageProgress($aid, (int) $row['id']);
+            $row['stage_brief']    = $this->stageBrief($aid, (int) $row['id']);
         }
         unset($row);
 
         return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 订单导出（按当前列表筛选返回全部匹配行，CSV 用，限 10000 行）
+     *
+     * @param array<string, mixed> $filters
+     * @return array<int, array<string, mixed>>
+     */
+    public function exportOrders(int $aid, array $filters): array
+    {
+        $query = ScopeService::queryAs('cycle_order', $aid, 'o')
+            ->field('o.*')
+            ->where(function ($q) {
+                $q->whereNull('o.delete')->whereOr('o.delete', 0);
+            });
+
+        $status = (string) ($filters['status'] ?? '');
+        if ('' !== $status) {
+            if (str_starts_with($status, 'r')) {
+                $refund = (int) substr($status, 1);
+                if (in_array($refund, [1, 2, 3], true)) {
+                    $query->where('o.refund_status', $refund);
+                }
+            } else {
+                $query->where('o.status', (int) $status);
+            }
+        }
+        if (!empty($filters['ordernum'])) {
+            $query->whereLike('o.ordernum', '%' . trim((string) $filters['ordernum']) . '%');
+        }
+        if (!empty($filters['linkman'])) {
+            $query->whereLike('o.linkman', '%' . trim((string) $filters['linkman']) . '%');
+        }
+        if (!empty($filters['tel'])) {
+            $query->whereLike('o.tel', '%' . trim((string) $filters['tel']) . '%');
+        }
+        if (!empty($filters['start_date'])) {
+            $query->where('o.createtime', '>=', strtotime((string) $filters['start_date']));
+        }
+        if (!empty($filters['end_date'])) {
+            $query->where('o.createtime', '<', strtotime((string) $filters['end_date']) + 86400);
+        }
+
+        return $query->order('o.id', 'desc')->limit(10000)->select()->toArray();
     }
 
     /**
@@ -731,6 +841,236 @@ class CycleService
 
         ScopeService::query('cycle_order', $aid)->where('id', $orderId)
             ->update(['remark' => trim($remark)]);
+    }
+
+    /* ================= 配送管理 / 周期计划（stage 分期配送视图） ================= */
+
+    /**
+     * 分期配送列表（配送管理三视图 + 订单管理「周期计划」平铺页共用）
+     *
+     * filters: status(''=全部 / 1待发 / 2已发 / 3完成) / orderid(周期计划页限定单订单)
+     *          / ordernum / linkman / tel / start_date / end_date
+     *
+     * @param array<string, mixed> $filters
+     * @return array{list: array, total: int, page: int, pagesize: int}
+     */
+    public function stageDeliveryList(int $aid, int $page, int $pageSize, array $filters): array
+    {
+        $query = ScopeService::queryAs('cycle_order_stage', $aid, 'os')
+            ->leftJoin('cycle_order o', 'o.id = os.orderid')
+            ->field('os.*, o.title, o.proname as order_proname, o.propic as order_propic, o.ggname as order_ggname, o.num as order_num, o.sell_price as order_sell_price, o.totalprice, o.freight_price, o.createtime as order_createtime, o.linkman, o.tel, o.area, o.address, o.freight_text, o.freight_type, o.message, o.platform, o.status as order_status')
+            ->where(function ($q) {
+                $q->whereNull('o.delete')->whereOr('o.delete', 0);
+            })
+            ->where('o.status', '>', 0)
+            ->where('o.status', '<>', self::ORDER_CLOSED);
+
+        $status = (string) ($filters['status'] ?? '');
+
+        if ('' !== $status) {
+            $query->where('os.status', (int) $status);
+        } else {
+            $query->where('os.status', '>', 0);
+        }
+
+        if (!empty($filters['orderid'])) {
+            $query->where('os.orderid', (int) $filters['orderid']);
+        }
+        if (!empty($filters['ordernum'])) {
+            $query->whereLike('os.ordernum', '%' . trim((string) $filters['ordernum']) . '%');
+        }
+        if (!empty($filters['linkman'])) {
+            $query->whereLike('o.linkman', '%' . trim((string) $filters['linkman']) . '%');
+        }
+        if (!empty($filters['tel'])) {
+            $query->whereLike('o.tel', '%' . trim((string) $filters['tel']) . '%');
+        }
+        if (!empty($filters['start_date'])) {
+            $query->where('o.createtime', '>=', strtotime((string) $filters['start_date']));
+        }
+        if (!empty($filters['end_date'])) {
+            $query->where('o.createtime', '<', strtotime((string) $filters['end_date']) + 86400);
+        }
+
+        $total = (clone $query)->count();
+        $rows  = $query->order('os.status', 'asc')
+            ->order('os.cycle_strtotime', 'asc')
+            ->order('os.cycle_number', 'asc')
+            ->page($page, $pageSize)
+            ->select()->toArray();
+
+        foreach ($rows as &$row) {
+            $freightType = (int) ($row['freight_type'] ?? 0);
+            $row['status_text'] = $this->stageDeliveryStatusText((int) $row['status'], $freightType);
+            $row['freight_type'] = $freightType;
+            $row['cycle_date_fmt'] = (string) ($row['cycle_date'] ?? '');
+        }
+        unset($row);
+
+        return ['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+    }
+
+    /**
+     * 核销（到店自提/到店核销 freight_type=1：当期 stage 1/2 → 3；全部完成时总订单收口）
+     *
+     * @return array{order_status: int}
+     */
+    public function orderHexiao(int $aid, int $stageId): array
+    {
+        $stage = ScopeService::query('cycle_order_stage', $aid)->where('id', $stageId)->find();
+
+        if (empty($stage)) {
+            throw new BusinessException('分期计划不存在', 404, 404);
+        }
+
+        $order = $this->findOrder($aid, (int) $stage['orderid']);
+
+        if (!in_array((int) $stage['status'], [self::STAGE_PAID, self::STAGE_SHIPPED], true)) {
+            throw new BusinessException('订单状态不符合完成要求');
+        }
+
+        if (1 !== (int) $order['freight_type']) {
+            throw new BusinessException('仅到店自提订单可核销');
+        }
+
+        Db::name('cycle_order_stage')->where('id', $stageId)
+            ->update(['status' => self::STAGE_DONE, 'collect_time' => time()]);
+
+        $this->refreshOrderCollect($aid, (int) $order['id']);
+
+        $order = $this->findOrder($aid, (int) $order['id']);
+
+        return ['order_status' => (int) $order['status']];
+    }
+
+    /**
+     * 送货单（按 stage 生成：店名/单号/客户/商品行/运费/大小写合计/打印日期）
+     *
+     * @return array<string, mixed>
+     */
+    public function deliveryNote(int $aid, int $stageId): array
+    {
+        $stage = ScopeService::query('cycle_order_stage', $aid)->where('id', $stageId)->find();
+
+        if (empty($stage)) {
+            throw new BusinessException('分期计划不存在', 404, 404);
+        }
+
+        $order = $this->findOrder($aid, (int) $stage['orderid']);
+
+        // 店名：取租户 shop_sysset.name / admin.company，兜底「鼎极」（不使用文档类型名）
+        $sysset   = Db::name('shop_sysset')->where('aid', $aid)->find();
+        $shopName = trim((string) ($sysset['name'] ?? ''));
+        if ('' === $shopName) {
+            $shopName = trim((string) (Db::name('admin')->where('id', $aid)->value('company') ?? ''));
+        }
+        if ('' === $shopName) {
+            $shopName = '鼎极';
+        }
+
+        // 商品行（订单级：品名+规格 × 数量，单价取订单 sell_price）
+        $goodsName = (string) $order['proname']
+            . ('' !== trim((string) $order['ggname']) ? ' ' . $order['ggname'] : '');
+        $goodsNum    = (int) $order['num'];
+        $goodsPrice  = (float) $order['sell_price'];
+        $goodsAmount = round($goodsPrice * $goodsNum, 2);
+
+        $freight   = round((float) ($order['freight_price'] ?? 0), 2);
+        $totalMoney = round($goodsAmount + $freight, 2);
+
+        $rows = [
+            ['seq' => 1, 'name' => $goodsName, 'num' => $goodsNum, 'price' => $goodsPrice, 'money' => $goodsAmount, 'remark' => ''],
+        ];
+        if ($freight > 0) {
+            $rows[] = ['seq' => 2, 'name' => '运费', 'num' => 1, 'price' => 0.00, 'money' => $freight, 'remark' => ''];
+        }
+
+        return [
+            'shop_name'    => $shopName,
+            'ordernum'     => (string) $order['ordernum'],
+            'send_date'    => date('Y-m-d'),
+            'linkman'      => (string) $order['linkman'],
+            'tel'          => (string) $order['tel'],
+            'address'      => trim((string) $order['area'] . ' ' . (string) $order['address']),
+            'remark'       => (string) $order['remark'],
+            'rows'         => $rows,
+            'total_money'  => $totalMoney,
+            'money_cn'     => $this->moneyToCn($totalMoney),
+            'cycle_number' => (int) $stage['cycle_number'],
+        ];
+    }
+
+    /**
+     * 查物流 / 配送信息（MOCK：返回已录入的快递公司/单号 + 一条轨迹；无单号则空）
+     *
+     * @return array<string, mixed>
+     */
+    public function getExpress(int $aid, int $stageId): array
+    {
+        $stage = ScopeService::query('cycle_order_stage', $aid)->where('id', $stageId)->find();
+
+        if (empty($stage)) {
+            throw new BusinessException('分期计划不存在', 404, 404);
+        }
+
+        $expressCom = (string) ($stage['express_com'] ?? '');
+        $expressNo  = (string) ($stage['express_no'] ?? '');
+        $sendTime   = (int) ($stage['send_time'] ?? 0);
+
+        if ('' === $expressNo) {
+            return [
+                'express_com' => $expressCom,
+                'express_no'  => $expressNo,
+                'send_time'   => $sendTime,
+                'traces'      => [],
+                'has_info'    => false,
+            ];
+        }
+
+        return [
+            'express_com' => $expressCom,
+            'express_no'  => $expressNo,
+            'send_time'   => $sendTime,
+            'has_info'    => true,
+            'traces'      => [[
+                'time'    => $sendTime > 0 ? date('Y-m-d H:i', $sendTime) : '',
+                'context' => $expressCom . ' 已揽收，正在配送途中',
+            ]],
+        ];
+    }
+
+    /**
+     * 删除订单（软删 delete=1，stage 计划一并标记）
+     */
+    public function orderDelete(int $aid, int $orderId): void
+    {
+        $this->findOrder($aid, $orderId);
+
+        ScopeService::query('cycle_order', $aid)->where('id', $orderId)->update(['delete' => 1]);
+        Db::name('cycle_order_stage')->where('aid', $aid)->where('orderid', $orderId)->update(['status' => self::STAGE_CREATED]);
+    }
+
+    /**
+     * 完成（整单收口：剩余未完成分期一律置为已完成，总订单 → 已收货）
+     *
+     * @return array{order_status: int}
+     */
+    public function orderFinish(int $aid, int $orderId): array
+    {
+        $order = $this->findOrder($aid, $orderId);
+
+        if (!in_array((int) $order['status'], [self::ORDER_PAID, self::ORDER_SHIPPED], true)) {
+            throw new BusinessException('当前订单状态不可完成');
+        }
+
+        Db::name('cycle_order_stage')->where('aid', $aid)->where('orderid', $orderId)
+            ->whereIn('status', [self::STAGE_PAID, self::STAGE_SHIPPED])
+            ->update(['status' => self::STAGE_DONE, 'collect_time' => time()]);
+
+        Db::name('cycle_order')->where('aid', $aid)->where('id', $orderId)
+            ->update(['status' => self::ORDER_COLLECT, 'collect_time' => time()]);
+
+        return ['order_status' => self::ORDER_COLLECT];
     }
 
     /* ================= C 端下单链路（api 预留） ================= */
@@ -971,6 +1311,48 @@ class CycleService
     }
 
     /**
+     * 配送周期状态摘要（订单列表「配送周期状态」列：前 3 期 + 状态文案）
+     *
+     * @return array<int, array{cycle_number: int, status: int, status_text: string}>
+     */
+    protected function stageBrief(int $aid, int $orderId): array
+    {
+        $order = Db::name('cycle_order')->where('aid', $aid)->where('id', $orderId)->find();
+        $freightType = (int) ($order['freight_type'] ?? 0);
+
+        $rows = Db::name('cycle_order_stage')
+            ->where('aid', $aid)->where('orderid', $orderId)
+            ->field('cycle_number, status')
+            ->order('cycle_number', 'asc')
+            ->limit(0, 3)
+            ->select()->toArray();
+
+        $out = [];
+        foreach ($rows as $row) {
+            $out[] = [
+                'cycle_number' => (int) $row['cycle_number'],
+                'status'       => (int) $row['status'],
+                'status_text'  => $this->stageDeliveryStatusText((int) $row['status'], $freightType),
+            ];
+        }
+
+        return $out;
+    }
+
+    /**
+     * 来源渠道文案（微信小程序 / 手机H5 / 微信公众号 等）
+     */
+    protected function platformText(string $platform): string
+    {
+        return match ($platform) {
+            'wx', 'weixin', 'wxapp' => '微信小程序',
+            'h5', 'wechat'          => '手机H5',
+            'alipay'                => '支付宝小程序',
+            default                 => '' !== $platform ? $platform : '微信小程序',
+        };
+    }
+
+    /**
      * 可退金额（按未完成分期折算：每期均摊订单总价）
      *
      * @param array<string, mixed>       $order
@@ -1096,5 +1478,92 @@ class CycleService
             self::STAGE_DONE    => '已完成',
             default             => '待支付',
         };
+    }
+
+    /**
+     * 配送视图分期状态文案（到店核销 freight_type=1 用「待提货/已提货」，其余用「待发货/已发货」）
+     */
+    protected function stageDeliveryStatusText(int $status, int $freightType): string
+    {
+        if (self::STAGE_DONE === $status) {
+            return '已完成';
+        }
+        if (self::STAGE_SHIPPED === $status) {
+            return 1 === $freightType ? '已提货' : '已发货';
+        }
+        if (self::STAGE_PAID === $status) {
+            return 1 === $freightType ? '待提货' : '待发货';
+        }
+
+        return '待支付';
+    }
+
+    /**
+     * 金额转人民币大写（送货单「合计金额(大写)」）
+     */
+    protected function moneyToCn(float $money): string
+    {
+        $money  = round(abs($money), 2);
+        $digits = ['零', '壹', '贰', '叁', '肆', '伍', '陆', '柒', '捌', '玖'];
+        $iunits = ['', '拾', '佰', '仟'];
+        $gunits = ['', '万', '亿', '万亿'];
+
+        $intPart  = (int) floor($money);
+        $decCents = (int) round(($money - $intPart) * 100);
+
+        if (0 === $intPart) {
+            $intStr = '零';
+        } else {
+            $groups = [];
+            while ($intPart > 0) {
+                $groups[] = $intPart % 10000;
+                $intPart  = intdiv($intPart, 10000);
+            }
+
+            $parts = [];
+            foreach ($groups as $gi => $group) {
+                if (0 === $group) {
+                    continue;
+                }
+                $gn  = (string) $group;
+                $len = strlen($gn);
+                $seg = '';
+                $zero = false;
+                for ($i = 0; $i < $len; ++$i) {
+                    $d   = (int) $gn[$i];
+                    $pos = $len - $i - 1;
+                    if (0 === $d) {
+                        $zero = true;
+                        continue;
+                    }
+                    if ($zero) {
+                        $seg .= '零';
+                        $zero = false;
+                    }
+                    $seg .= $digits[$d] . $iunits[$pos];
+                }
+                $parts[] = $seg . $gunits[$gi];
+            }
+            $intStr = implode('', array_reverse($parts));
+        }
+
+        $result = $intStr . '元';
+        $jiao   = intdiv($decCents, 10);
+        $fen    = $decCents % 10;
+
+        if (0 === $jiao && 0 === $fen) {
+            $result .= '整';
+        } else {
+            if ($jiao > 0) {
+                $result .= $digits[$jiao] . '角';
+            } elseif ($fen > 0) {
+                $result .= '零';
+            }
+            if ($fen > 0) {
+                $result .= $digits[$fen] . '分';
+            }
+        }
+
+        return $result;
     }
 }

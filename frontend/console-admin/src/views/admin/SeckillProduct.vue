@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance } from 'element-plus'
 import {
@@ -17,6 +17,8 @@ import type { SeckillProductItem } from '../../api/seckill'
 import { getGoodsList } from '../../api/goods'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
 import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
+import GoodsSpecEditor from '../../components/GoodsSpecEditor.vue'
+import type { GoodsSpecGroup, GoodsSkuOption } from '../../api/types'
 import { defaultModule } from './designerModules'
 import type { DesignerModule } from '../../api/designer'
 
@@ -159,8 +161,6 @@ const formRef = ref<FormInstance>()
 const submitting = ref(false)
 const activeTab = ref<'info' | 'detail'>('info')
 
-interface GuigeRow { name: string; market_price: number; cost_price: number; sell_price: number; weight: number; stock: number; givescore: number; pic: string }
-
 const form = reactive({
   id: 0,
   goods_id: 0,
@@ -181,7 +181,14 @@ const form = reactive({
   times: [8] as number[],
   detailModules: [] as DesignerModule[],
 })
-const guige = ref<GuigeRow[]>([])
+// ============ 规格 / SKU 矩阵（共享规格编辑器） ============
+const specEditorRef = ref<InstanceType<typeof GoodsSpecEditor> | null>(null)
+const specGroups = ref<GoodsSpecGroup[]>([{ title: '规格', items: [{ title: '默认规格' }] }])
+let skuMap = reactive<Record<string, GoodsSkuOption>>({})
+const defaultSpecSku = { stock: 1000 }
+function onSpecPickImage(_current: string, done: (url: string) => void) {
+  openImg((u) => done(u))
+}
 
 function resetForm() {
   Object.assign(form, {
@@ -190,10 +197,9 @@ function resetForm() {
     perlimit: 0, sort: 0, gettj: 'all', status: 1,
     dateRange: [], times: [8], detailModules: [defaultModule('richtext')],
   })
-  guige.value = [{ name: '默认规格', market_price: 0, cost_price: 0, sell_price: 0, weight: 0, stock: 1000, givescore: 0, pic: '' }]
+  specGroups.value = [{ title: '规格', items: [{ title: '默认规格' }] }]
+  Object.keys(skuMap).forEach((k) => delete skuMap[k])
 }
-function addGuige() { guige.value.push({ name: '', market_price: 0, cost_price: 0, sell_price: 0, weight: 0, stock: 1000, givescore: 0, pic: '' }) }
-function removeGuige(i: number) { guige.value.splice(i, 1) }
 
 function openAdd() {
   isEdit.value = false
@@ -207,7 +213,7 @@ function openEdit(row: SeckillProductItem) {
   resetForm()
   activeTab.value = 'info'
   viewMode.value = 'edit'
-  getSeckillProductDetail(row.id).then((d) => {
+  getSeckillProductDetail(row.id).then(async (d) => {
     Object.assign(form, {
       id: d.id,
       goods_id: 0,
@@ -231,18 +237,25 @@ function openEdit(row: SeckillProductItem) {
     let mods: DesignerModule[] = []
     try { const parsed = JSON.parse((d as any).detail || '[]'); if (Array.isArray(parsed)) mods = parsed } catch { mods = [] }
     form.detailModules = mods.length ? mods : [defaultModule('richtext')]
-    // 规格
-    const gg = (d as any).guige || []
-    guige.value = (gg.length ? gg : [{ name: '默认规格' }]).map((g: any) => ({
-      name: g.name || '默认规格',
-      market_price: Number(g.market_price || 0),
-      cost_price: Number(g.cost_price || 0),
-      sell_price: Number(g.sell_price || 0),
-      weight: Number(g.weight || 0),
-      stock: Number(g.stock || 1000),
-      givescore: Number(g.givescore || 0),
-      pic: g.pic || '',
-    }))
+    // 规格（扁平 guige 列表 → 单组规格名，笛卡尔积按名回填 skuMap）
+    const gg = ((d as any).guige || []) as any[]
+    const names = gg.length ? gg.map((g) => String(g.name || '默认规格')) : ['默认规格']
+    specGroups.value = [{ title: '规格', items: names.map((n) => ({ title: n })) }]
+    const byName = new Map<string, any>()
+    gg.forEach((g) => byName.set(String(g.name || ''), g))
+    await nextTick()
+    for (const { names: rn, sku } of specEditorRef.value?.rowsToSkuList() || []) {
+      const src = byName.get(rn.join(' '))
+      if (src) {
+        sku.market_price = Number(src.market_price || 0)
+        sku.cost_price = Number(src.cost_price || 0)
+        sku.sell_price = Number(src.sell_price || 0)
+        sku.weight = Number(src.weight || 0)
+        sku.stock = Number(src.stock || 1000)
+        sku.givescore = Number(src.givescore || 0)
+        sku.pic = String(src.pic || '')
+      }
+    }
   }).catch(() => { viewMode.value = 'list' })
 }
 
@@ -261,6 +274,21 @@ async function handleSubmit() {
   if (!form.pic) { ElMessage.warning('请上传商品主图'); return }
   if (!form.dateRange || form.dateRange.length < 2 || !form.dateRange[0]) { ElMessage.warning('请选择秒杀日期'); return }
   if (form.times.length === 0) { ElMessage.warning('请选择秒杀时间'); return }
+  const skuRowsOut = specEditorRef.value?.rowsToSkuList() || []
+  if (!skuRowsOut.length) {
+    ElMessage.warning('请完整设置规格')
+    return
+  }
+  // 复用组件校验：多规格逐行校验秒杀价，提示会点名具体规格组合
+  if (specEditorRef.value?.buildMultiSpecPayload({}) === false) {
+    return
+  }
+  // 单规格兜底（组件在单规格下跳过逐行校验；秒杀价全在 SKU 行）
+  const badRow = skuRowsOut.find(({ sku }) => !(Number(sku.sell_price) > 0))
+  if (badRow) {
+    ElMessage.warning(`规格「${badRow.names.join(' ')}」未填写秒杀价`)
+    return
+  }
 
   submitting.value = true
   try {
@@ -275,7 +303,7 @@ async function handleSubmit() {
       pics: form.pics,
       market_price: Number(form.market_price),
       sell_price: Number(form.sell_price),
-      stock: Number(guige.value.reduce((s, g) => s + Number(g.stock || 0), 0)),
+      stock: skuRowsOut.reduce((s, { sku }) => s + Number(sku.stock || 0), 0),
       perlimit: Number(form.perlimit),
       sort: Number(form.sort),
       status: form.status,
@@ -285,14 +313,15 @@ async function handleSubmit() {
       video: form.video || undefined,
       cost_price: Number(form.cost_price) || undefined,
       gettj: form.gettj,
-      guige: guige.value.map((g) => ({
-        name: g.name,
-        market_price: Number(g.market_price),
-        cost_price: Number(g.cost_price),
-        sell_price: Number(g.sell_price),
-        weight: Number(g.weight),
-        stock: Number(g.stock),
-        givescore: Number(g.givescore),
+      guige: skuRowsOut.map(({ names, sku }) => ({
+        name: names.join(' '),
+        market_price: Number(sku.market_price),
+        cost_price: Number(sku.cost_price),
+        sell_price: Number(sku.sell_price),
+        weight: Number(sku.weight),
+        stock: Number(sku.stock),
+        givescore: Number(sku.givescore),
+        pic: sku.pic,
       })),
     } as any)
 
@@ -334,10 +363,6 @@ function onMultiPick(urls: string[]) {
   urls.forEach((u) => { if (u && !cur.includes(u)) cur.push(u) })
   form.pics = cur.join(',')
 }
-function openGuigeImg(i: number) {
-  openImg((u) => { guige.value[i].pic = u })
-}
-
 // ============ 选择商城商品弹窗 ============
 const chooseVisible = ref(false)
 const chooseLoading = ref(false)
@@ -516,32 +541,14 @@ onMounted(() => { fetchSysset(); fetchList() })
         </el-form-item>
 
         <el-form-item label="设置规格">
-          <div class="spec-wrap">
-            <table class="spec-head-table">
-              <thead><tr><th style="width:30%">规格分组</th><th>规格名称</th><th style="width:120px">操作</th></tr></thead>
-              <tbody><tr><td><el-input model-value="默认" disabled /></td><td><el-input model-value="默认规格" disabled /></td><td><el-button size="small">添加</el-button></td></tr></tbody>
-            </table>
-            <div class="ge-tip spec-tip">提示：先点击"添加"按钮添加规格分组，如："颜色"、"尺码"；然后分别点击"+"号添加规格名称；设置完成后点击"刷新规格项目表"按钮进行编辑各个规格的价格、库存等信息</div>
-            <el-button size="small">刷新规格项目表</el-button>
-            <table class="spec-grid-table">
-              <thead><tr>
-                <th>规格</th><th>市场价(元)</th><th>成本价(元)</th><th>秒杀价(元)</th><th>重量(克)</th><th>库存</th><th>赠积分(个)</th><th>图片</th><th style="width:60px">操作</th>
-              </tr></thead>
-              <tbody>
-                <tr v-for="(g, i) in guige" :key="i">
-                  <td><el-input v-model="g.name" size="small" style="width:110px" /></td>
-                  <td><el-input-number v-model="g.market_price" :min="0" :precision="2" :controls="false" size="small" style="width:100px" /></td>
-                  <td><el-input-number v-model="g.cost_price" :min="0" :precision="2" :controls="false" size="small" style="width:100px" /></td>
-                  <td><el-input-number v-model="g.sell_price" :min="0" :precision="2" :controls="false" size="small" style="width:100px" /></td>
-                  <td><el-input-number v-model="g.weight" :min="0" :controls="false" size="small" style="width:90px" /></td>
-                  <td><el-input-number v-model="g.stock" :min="0" :controls="false" size="small" style="width:90px" /></td>
-                  <td><el-input-number v-model="g.givescore" :min="0" :controls="false" size="small" style="width:90px" /></td>
-                  <td><el-image v-if="g.pic" :src="g.pic" fit="cover" class="spec-pic" @click="openGuigeImg(i)" /><el-button v-else size="small" @click="openGuigeImg(i)">上传</el-button></td>
-                  <td><el-button size="small" type="danger" plain @click="removeGuige(i)">删除</el-button></td>
-                </tr>
-              </tbody>
-            </table>
-            <el-button size="small" style="margin-top:8px" @click="addGuige">+ 添加规格</el-button>
+          <div class="spec-wrap spec-table-auto">
+            <GoodsSpecEditor
+              ref="specEditorRef"
+              v-model:groups="specGroups"
+              v-model:skus="skuMap"
+              :default-sku="defaultSpecSku"
+              @pick-image="onSpecPickImage"
+            />
           </div>
         </el-form-item>
 

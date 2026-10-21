@@ -582,7 +582,6 @@ const STATIC_GROUPS: FrontendLinkGroup[] = [
       { name: '投资记录', url: '/pagesD/businessShareholder/applylog' },
       { name: '腾讯电子签记录', url: '/pagesD/tencent_qian/qianlog' },
       { name: '个人团队', url: '/pagesD/commission/teamManage' },
-      { name: '活动日历', url: '/pagesD/calendar/index' },
       { name: '物联网设备订单', url: '/pagesD/lotdevice/orderlist' },
       { name: '绑定物联网设备', url: '/adminExt/lotdevice/bind' },
     ],

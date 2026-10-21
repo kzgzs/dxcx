@@ -413,7 +413,9 @@ onMounted(fetchList)
   padding: 8px 10px;
   margin-bottom: 3px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
 

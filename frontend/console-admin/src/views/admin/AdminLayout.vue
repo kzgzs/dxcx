@@ -231,6 +231,8 @@ function navigateByLeafKey(key: string): boolean {
   return false
 }
 provide('adminNavigateByKey', navigateByLeafKey)
+// 暴露当前激活叶子 idPath 给内嵌组件（如 CycleOrder 区分订单管理/配送管理模式）
+provide('adminActiveId', activeId)
 
 /** 二级列分组点击：手风琴式内嵌展开（收起兄弟分组） */
 function toggleGroup(idPath: string) {

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// 自定义表单（对照点大 canzhao Form 控制器 + form/edit/record/recordedit/chooseform 视图）
+// 自定义表单
 // 平铺主区域 + 右上角 X：表单列表 / 表单编辑(基本信息|表单内容) / 数据列表(动态列) / 数据编辑·新增 / 查找会员ID 覆盖层；
 // 仅「查看图片」「链接」为小弹窗 el-dialog。
 import { computed, onMounted, reactive, ref } from 'vue'
@@ -32,7 +32,7 @@ type ViewMode = 'list' | 'edit' | 'record' | 'recordedit' | 'chooseMember'
 const viewMode = ref<ViewMode>('list')
 const activeTab = ref<'base' | 'content'>('base')
 
-// ============ 表单项数据结构（严格对照 canzhao content JSON：key/val1..val15） ============
+// ============ 表单项数据结构（key/val1..val15） ============
 interface FormField {
   key: string
   val1: string
@@ -91,13 +91,14 @@ async function fetchList() {
 }
 function handleSearch() { query.page = 1; fetchList() }
 
-function formRunning(row: FormItem): boolean {
+// 列表状态三态（未开始灰/进行中绿/已结束灰）
+function formStatus(row: FormItem): 'notstart' | 'run' | 'end' {
   const now = Math.floor(Date.now() / 1000)
   const s = Number(row.starttime) || 0
   const e = Number(row.endtime) || 0
-  if (s && now < s) return false
-  if (e && now > e) return false
-  return true
+  if (s && now < s) return 'notstart'
+  if (e && now > e) return 'end'
+  return 'run'
 }
 
 // ============ 表单编辑（基本信息 / 表单内容） ============
@@ -109,17 +110,57 @@ const basic = reactive({
 })
 const fields = ref<FormField[]>([])
 
+// ============ 分销设置（仅 payset=1 显示） ============
+// 具有分销权限的会员等级（默认分类 can_agent<>0，后端 detail 下发 aglevellist）
+const aglevellist = ref<{ id: number; name: string; can_agent: number }[]>([])
+// commissiondata1[等级ID][commission1..3] 提成比例(%)；commissiondata2 同结构 提成金额(元)
+const commissiondata1 = reactive<Record<number, { commission1: string; commission2: string; commission3: string }>>({})
+const commissiondata2 = reactive<Record<number, { commission1: string; commission2: string; commission3: string }>>({})
+
+function clearCommissionData() {
+  Object.keys(commissiondata1).forEach((k) => delete commissiondata1[Number(k)])
+  Object.keys(commissiondata2).forEach((k) => delete commissiondata2[Number(k)])
+}
+function parseCommissionData(raw: string | undefined | null): Record<number, { commission1: string; commission2: string; commission3: string }> {
+  const out: Record<number, { commission1: string; commission2: string; commission3: string }> = {}
+  try {
+    const obj = raw ? JSON.parse(raw) : null
+    if (obj && typeof obj === 'object') {
+      Object.keys(obj).forEach((k) => {
+        const it = obj[k] || {}
+        out[Number(k)] = {
+          commission1: String(it.commission1 ?? ''),
+          commission2: String(it.commission2 ?? ''),
+          commission3: String(it.commission3 ?? ''),
+        }
+      })
+    }
+  } catch { /* 容错：非法 JSON 按空处理 */ }
+  return out
+}
+function ensureCommissionRow(target: Record<number, { commission1: string; commission2: string; commission3: string }>, levelId: number) {
+  if (!target[levelId]) target[levelId] = { commission1: '', commission2: '', commission3: '' }
+}
+
 function resetBasic() {
   Object.assign(basic, {
     name: '', starttime: '', endtime: '', maxlimit: 0, perlimit: 0,
     payset: 0, price: '', priceedit: 0, commissionset: '-1', sort: 0, bid: 0,
   })
   fields.value = []
+  clearCommissionData()
+  aglevellist.value = []
   activeTab.value = 'base'
 }
-function openAdd() {
+async function openAdd() {
   resetBasic()
   editingId.value = 0
+  // 新建时也需等级列表
+  try {
+    const d = await getFormDetail(0)
+    aglevellist.value = d.aglevellist || []
+  } catch { aglevellist.value = [] }
+  aglevellist.value.forEach((lv) => { ensureCommissionRow(commissiondata1, lv.id); ensureCommissionRow(commissiondata2, lv.id) })
   viewMode.value = 'edit'
 }
 async function openEdit(row: FormItem) {
@@ -132,6 +173,12 @@ async function openEdit(row: FormItem) {
     payset: Number(d.payset) || 0, price: d.price ?? '', priceedit: Number(d.priceedit) || 0,
     commissionset: String(d.commissionset ?? '-1'), sort: Number(d.sort) || 0, bid: Number(d.bid) || 0,
   })
+  aglevellist.value = d.aglevellist || []
+  const cd1 = parseCommissionData(d.commissiondata1)
+  const cd2 = parseCommissionData(d.commissiondata2)
+  aglevellist.value.forEach((lv) => { ensureCommissionRow(commissiondata1, lv.id); ensureCommissionRow(commissiondata2, lv.id) })
+  Object.assign(commissiondata1, cd1)
+  Object.assign(commissiondata2, cd2)
   try {
     const arr = JSON.parse(d.content || '[]')
     if (Array.isArray(arr)) {
@@ -182,6 +229,26 @@ async function handleSave() {
     }
     return { key: f.key, val1: f.val1, val2, val3: f.val3, val4: f.val4, val8: f.val8, val9: f.val9, val10: f.val10, val11: f.val11, val15: f.val15 }
   })
+  // 分销数据：仅开启在线支付且选择 1/2 时提交对应等级行
+  let commissiondata1Str = ''
+  let commissiondata2Str = ''
+  if (Number(basic.payset) === 1) {
+    if (basic.commissionset === '1') {
+      const out: Record<string, Record<string, string>> = {}
+      aglevellist.value.forEach((lv) => {
+        const r = commissiondata1[lv.id] || { commission1: '', commission2: '', commission3: '' }
+        out[String(lv.id)] = { commission1: r.commission1 || '0', commission2: r.commission2 || '0', commission3: r.commission3 || '0' }
+      })
+      commissiondata1Str = JSON.stringify(out)
+    } else if (basic.commissionset === '2') {
+      const out: Record<string, Record<string, string>> = {}
+      aglevellist.value.forEach((lv) => {
+        const r = commissiondata2[lv.id] || { commission1: '', commission2: '', commission3: '' }
+        out[String(lv.id)] = { commission1: r.commission1 || '0', commission2: r.commission2 || '0', commission3: r.commission3 || '0' }
+      })
+      commissiondata2Str = JSON.stringify(out)
+    }
+  }
   saving.value = true
   try {
     await saveForm({
@@ -189,7 +256,9 @@ async function handleSave() {
       name: basic.name, starttime: basic.starttime, endtime: basic.endtime,
       maxlimit: basic.maxlimit, perlimit: basic.perlimit,
       payset: Number(basic.payset), price: basic.price, priceedit: Number(basic.priceedit),
-      commissionset: String(basic.commissionset), sort: Number(basic.sort), bid: Number(basic.bid) || 0,
+      commissionset: Number(basic.payset) === 1 ? String(basic.commissionset) : '-1',
+      commissiondata1: commissiondata1Str, commissiondata2: commissiondata2Str,
+      sort: Number(basic.sort), bid: Number(basic.bid) || 0,
       content: JSON.stringify(contentArr),
     })
     ElMessage.success(editingId.value ? '保存成功' : '添加成功')
@@ -260,26 +329,57 @@ function cellText(row: FormOrderItem, k: number): string {
   if (Array.isArray(v)) return v.join('，')
   return v ?? ''
 }
-function hasPics(): boolean {
-  return recFields.value.some((f) => f.key === 'upload' || f.key === 'upload_pics')
-}
-function statusText(s: number) { return s === 1 ? '已确认' : s === 2 ? '已驳回' : '待处理' }
-function statusType(s: number) { return s === 1 ? 'success' : s === 2 ? 'danger' : 'info' }
 
-async function batchSetst(st: number) {
-  if (!recSelected.value.length) { ElMessage.warning('请选择记录'); return }
-  const ids = recSelected.value.map((r) => r.id)
-  let reason = ''
-  if (st === 2) {
-    try { reason = (await ElMessageBox.prompt('请填写驳回原因', '驳回确认', { inputPlaceholder: '驳回原因' })).value || '' } catch { return }
-  } else {
-    try { await ElMessageBox.confirm(`确定确认选中的 ${ids.length} 条记录吗？`, '操作确认', { type: 'warning' }) } catch { return }
-  }
-  await formRecordSetst(ids, st, reason)
-  ElMessage.success(st === 1 ? '已确认' : '已驳回')
+// 数据状态6态（0待处理 1已通过 2已驳回 3退款待审核 4已退款 5退款已驳回；isudel=1 追加",用户已删除"）
+function statusText(row: FormOrderItem) {
+  const s = Number(row.status)
+  let t = s === 1 ? '通过' : s === 2 ? '已驳回' : s === 3 ? '退款待审核' : s === 4 ? '已退款' : s === 5 ? '退款已驳回' : '待处理'
+  if (Number(row.isudel) === 1) t += ',用户已删除'
+  return t
+}
+// 状态纯文字着色（对照截图：通过绿、待处理灰、已驳回红）
+function statusCls(s: number) {
+  if (s === 1) return 'st-pass'
+  if (s === 2 || s === 5) return 'st-reject'
+  return 'st-pending'
+}
+
+// 驳回弹窗（驳回原因 + 开启在线支付时「是否退款」radio）
+const rejectVisible = ref(false)
+const rejectIds = ref<number[]>([])
+const rejectReason = ref('')
+const rejectTuikuan = ref(1)
+const recPayset = computed(() => Number(recTarget.value?.payset) === 1)
+
+function openReject(ids: number[]) {
+  rejectIds.value = ids
+  rejectReason.value = ''
+  rejectTuikuan.value = recPayset.value ? 1 : 0
+  rejectVisible.value = true
+}
+async function confirmReject() {
+  if (!rejectReason.value.trim()) { ElMessage.warning('请填写驳回原因'); return }
+  await formRecordSetst(rejectIds.value, 2, rejectReason.value.trim(), recPayset.value ? rejectTuikuan.value : 0)
+  ElMessage.success('已驳回')
+  rejectVisible.value = false
   recSelected.value = []
   fetchRecord()
   fetchList()
+}
+
+async function batchPass() {
+  if (!recSelected.value.length) { ElMessage.warning('请选择记录'); return }
+  const ids = recSelected.value.map((r) => r.id)
+  try { await ElMessageBox.confirm(`确定通过选中的 ${ids.length} 条记录吗？`, '操作确认', { type: 'warning' }) } catch { return }
+  await formRecordSetst(ids, 1)
+  ElMessage.success('已通过')
+  recSelected.value = []
+  fetchRecord()
+  fetchList()
+}
+async function batchReject() {
+  if (!recSelected.value.length) { ElMessage.warning('请选择记录'); return }
+  openReject(recSelected.value.map((r) => r.id))
 }
 async function batchDel() {
   if (!recSelected.value.length) { ElMessage.warning('请选择记录'); return }
@@ -289,21 +389,14 @@ async function batchDel() {
   recSelected.value = []
   fetchRecord()
 }
-async function rowSetst(row: FormOrderItem, st: number) {
-  let reason = ''
-  if (st === 2) {
-    try { reason = (await ElMessageBox.prompt('请填写驳回原因', '驳回确认', { inputPlaceholder: '驳回原因' })).value || '' } catch { return }
-  }
-  await formRecordSetst([row.id], st, reason)
-  ElMessage.success(st === 1 ? '已确认' : '已驳回')
+async function rowPass(row: FormOrderItem) {
+  await formRecordSetst([row.id], 1)
+  ElMessage.success('已通过')
   fetchRecord()
   fetchList()
 }
-async function rowDel(row: FormOrderItem) {
-  await ElMessageBox.confirm('确定删除该条记录吗？', '删除确认', { type: 'warning' })
-  await formRecordDel([row.id])
-  ElMessage.success('删除成功')
-  fetchRecord()
+async function rowReject(row: FormOrderItem) {
+  openReject([row.id])
 }
 async function handleExport() {
   if (!recTarget.value) return
@@ -320,26 +413,6 @@ async function handleExport() {
     URL.revokeObjectURL(url)
   } catch { /* 拦截器统一提示 */ }
 }
-
-// 查看图片小弹窗
-const picVisible = ref(false)
-const picList = ref<string[]>([])
-function openPics(row: FormOrderItem) {
-  const pics: string[] = []
-  recFields.value.forEach((f, k) => {
-    const v = (row as any)['form' + k]
-    if (f.key === 'upload' && v) pics.push(v)
-    if (f.key === 'upload_pics' && v) pics.push(...(Array.isArray(v) ? v : [v]))
-  })
-  picList.value = pics.filter(Boolean)
-  picVisible.value = true
-}
-/** 单图正方形弹窗（340），每多一张自适应加宽，上限 92vw */
-const picDialogWidth = computed(() => {
-  const n = Math.max(1, picList.value.length)
-  if (n === 1) return '340px'
-  return Math.min(240 * n + 60, Math.round(window.innerWidth * 0.92)) + 'px'
-})
 
 // ============ 数据编辑 / 新增（平铺） ============
 const recId = ref(0)
@@ -485,7 +558,7 @@ onMounted(fetchList)
       </el-card>
 
       <el-card shadow="never">
-        <el-alert type="info" :closable="false" show-icon title="添加完表单之后需要在 [设计] - [页面设计] 中调用「自定义表单」组件方可展示。" style="margin-bottom: 12px" />
+        <el-alert type="info" :closable="false" show-icon title="添加完表单之后需要在[设计]-[页面设计]中调用,可以新建页面然后选择表单组件进行调用" style="margin-bottom: 3px" />
         <el-table v-loading="loading" :data="list" border @selection-change="(rows: FormItem[]) => (selected = rows)">
           <el-table-column type="selection" width="45" />
           <el-table-column prop="id" label="ID" width="70" align="center" />
@@ -501,10 +574,11 @@ onMounted(fetchList)
           <el-table-column label="创建时间" width="150">
             <template #default="{ row }">{{ formatTime(Number(row.createtime)) }}</template>
           </el-table-column>
-          <el-table-column prop="sort" label="排序" width="70" align="center" />
+          <el-table-column prop="sort" label="排序" width="70" align="center" sortable />
           <el-table-column label="状态" width="90" align="center">
             <template #default="{ row }">
-              <span v-if="formRunning(row)" class="st-running">进行中</span>
+              <span v-if="formStatus(row) === 'run'" class="st-running">进行中</span>
+              <span v-else-if="formStatus(row) === 'notstart'" class="st-notstart">未开始</span>
               <span v-else class="st-end">已结束</span>
             </template>
           </el-table-column>
@@ -554,7 +628,7 @@ onMounted(fetchList)
             </el-form-item>
             <el-form-item label="总数量限制">
               <el-input-number v-model="basic.maxlimit" :min="0" :controls="false" style="width: 200px" />
-              <span class="ge-hint">总收集数据限制，0表示不限制</span>
+              <span class="ge-hint">总收集数量限制，0表示不限制</span>
             </el-form-item>
             <el-form-item label="每人数量限制">
               <el-input-number v-model="basic.perlimit" :min="0" :controls="false" style="width: 200px" />
@@ -577,7 +651,8 @@ onMounted(fetchList)
               </el-radio-group>
               <span class="ge-hint">用户是否可以自己填写支付金额</span>
             </el-form-item>
-            <el-form-item label="分销设置">
+            <!-- 分销设置（仅开启在线支付显示，按等级 can_agent 渲染 1/2/3 级） -->
+            <el-form-item v-if="basic.payset === 1" label="分销设置">
               <el-radio-group v-model="basic.commissionset">
                 <el-radio value="0">按照会员等级</el-radio>
                 <el-radio value="1">单独设置提成比例</el-radio>
@@ -588,6 +663,50 @@ onMounted(fetchList)
               <div class="comm-tip">单独设置提成比例：按照单独设置的提成比例进行提成分配，提成=设置的百分比×销售价×购买数量</div>
               <div class="comm-tip">单独设置提成金额：按照单独设置的提成金额进行提成分配，提成=提成金额×购买数量</div>
             </el-form-item>
+            <!-- 单独设置提成比例：按等级动态行（can_agent>1 显示二级，>2 显示三级） -->
+            <template v-if="basic.payset === 1 && basic.commissionset === '1'">
+              <el-form-item v-if="!aglevellist.length" label="提成比例">
+                <span class="comm-warn">未设置具有分销权限的会员等级，请先在[会员]-[等级及分销]设置分销权限</span>
+              </el-form-item>
+              <el-form-item v-for="lv in aglevellist" :key="'cd1-' + lv.id" :label="lv.name">
+                <div class="comm-level-row">
+                  <div class="comm-level-item">
+                    <div class="comm-level-label">一级(%)</div>
+                    <el-input v-model="commissiondata1[lv.id].commission1" style="width: 120px" />
+                  </div>
+                  <div v-if="lv.can_agent > 1" class="comm-level-item">
+                    <div class="comm-level-label">二级(%)</div>
+                    <el-input v-model="commissiondata1[lv.id].commission2" style="width: 120px" />
+                  </div>
+                  <div v-if="lv.can_agent > 2" class="comm-level-item">
+                    <div class="comm-level-label">三级(%)</div>
+                    <el-input v-model="commissiondata1[lv.id].commission3" style="width: 120px" />
+                  </div>
+                </div>
+              </el-form-item>
+            </template>
+            <!-- 单独设置提成金额：同上结构，单位元 -->
+            <template v-if="basic.payset === 1 && basic.commissionset === '2'">
+              <el-form-item v-if="!aglevellist.length" label="提成金额">
+                <span class="comm-warn">未设置具有分销权限的会员等级，请先在[会员]-[等级及分销]设置分销权限</span>
+              </el-form-item>
+              <el-form-item v-for="lv in aglevellist" :key="'cd2-' + lv.id" :label="lv.name">
+                <div class="comm-level-row">
+                  <div class="comm-level-item">
+                    <div class="comm-level-label">一级(元)</div>
+                    <el-input v-model="commissiondata2[lv.id].commission1" style="width: 120px" />
+                  </div>
+                  <div v-if="lv.can_agent > 1" class="comm-level-item">
+                    <div class="comm-level-label">二级(元)</div>
+                    <el-input v-model="commissiondata2[lv.id].commission2" style="width: 120px" />
+                  </div>
+                  <div v-if="lv.can_agent > 2" class="comm-level-item">
+                    <div class="comm-level-label">三级(元)</div>
+                    <el-input v-model="commissiondata2[lv.id].commission3" style="width: 120px" />
+                  </div>
+                </div>
+              </el-form-item>
+            </template>
             <el-form-item label="序号">
               <el-input-number v-model="basic.sort" :min="0" :controls="false" style="width: 200px" />
               <span class="ge-hint">用于排序，越大越靠前</span>
@@ -605,22 +724,24 @@ onMounted(fetchList)
             <span class="add-bar-label">添加表单项：</span>
             <el-button v-for="t in ADD_BUTTONS" :key="t" size="small" @click="addField(t)">{{ TYPE_LABELS[t] }}</el-button>
           </div>
-          <div class="add-bar-label" style="margin: 10px 0 6px">表单项列表：</div>
-          <el-table :data="fields" border size="small" class="field-table">
-            <el-table-column label="表单类型" width="90">
+          <!-- 表单项列表：对齐点大截图（表格固定宽1350px，不撑满整行） -->
+          <div class="content-row">
+            <span class="add-bar-label">表单项列表：</span>
+            <el-table :data="fields" border size="small" class="field-table" style="width: 1350px">
+            <el-table-column label="字段类型" width="100">
               <template #default="{ row }">{{ TYPE_LABELS[row.key] || row.key }}</template>
             </el-table-column>
-            <el-table-column label="字段名称" width="130">
+            <el-table-column label="字段名称" width="120">
               <template #default="{ row }"><el-input v-model="row.val1" size="small" /></template>
             </el-table-column>
-            <el-table-column label="请填写名称(占位提示)" min-width="220">
+            <el-table-column label="字段内容" width="280">
               <template #default="{ row }">
-                <!-- 选择类：选项 +/- -->
+                <!-- 选择类：选项 +/-（首行仅 +，其余行 + 和 −） -->
                 <div v-if="isOptionType(row.key)">
                   <div v-for="i in row.val2.length" :key="i" class="opt-row">
                     <el-input v-model="row.val2[i-1]" size="small" style="width: 150px" />
-                    <el-button size="small" @click="addOption(row)"><el-icon><span>+</span></el-icon></el-button>
-                    <el-button size="small" @click="row.val2.splice(i-1, 1)"><el-icon><span>−</span></el-icon></el-button>
+                    <el-button size="small" @click="addOption(row)">+</el-button>
+                    <el-button v-if="i > 1" size="small" @click="row.val2.splice(i-1, 1)">−</el-button>
                   </div>
                 </div>
                 <!-- 时间/日期/年份：起止 -->
@@ -638,9 +759,9 @@ onMounted(fetchList)
                 <el-input v-else v-model="row.val2" size="small" style="width: 200px" :placeholder="row.key === 'upload' ? '请输入提示信息' : '请填写占位提示'" />
               </template>
             </el-table-column>
-            <el-table-column label="类型" width="150">
+            <el-table-column label="类型" width="100">
               <template #default="{ row }">
-                <el-select v-if="row.key === 'input'" v-model="row.val4" size="small" style="width: 110px">
+                <el-select v-if="row.key === 'input'" v-model="row.val4" size="small" style="width: 90px">
                   <el-option v-for="o in INPUT_TYPES" :key="o.value" :label="o.label" :value="o.value" />
                 </el-select>
                 <template v-else-if="row.key === 'radio'">
@@ -668,7 +789,7 @@ onMounted(fetchList)
             <el-table-column label="标题加粗" width="80" align="center">
               <template #default="{ row }"><el-switch v-model="row.val8" :active-value="1" :inactive-value="0" /></template>
             </el-table-column>
-            <el-table-column label="操作" width="130" align="center">
+            <el-table-column label="操作" width="180" align="center">
               <template #default="{ $index }">
                 <el-button size="small" @click="fields.splice($index, 1)">✕</el-button>
                 <el-button size="small" @click="moveField($index, -1)">↑</el-button>
@@ -676,6 +797,7 @@ onMounted(fetchList)
               </template>
             </el-table-column>
           </el-table>
+          </div>
           <div class="tab-footer">
             <el-button type="primary" @click="activeTab = 'base'">上一步:编辑基本信息</el-button>
             <el-button type="warning" :loading="saving" @click="handleSave">提 交</el-button>
@@ -695,18 +817,21 @@ onMounted(fetchList)
 
       <div class="rec-toolbar">
         <div class="rec-toolbar-left">
-          <el-button @click="batchSetst(1)">通过</el-button>
-          <el-button @click="batchSetst(2)">驳回</el-button>
+          <el-button @click="batchPass">通过</el-button>
+          <el-button @click="batchReject">驳回</el-button>
           <el-button @click="batchDel">删除</el-button>
           <el-button @click="openRecordAdd">新增</el-button>
           <el-button @click="handleExport">导出</el-button>
         </div>
         <div class="rec-toolbar-right">
           <el-input v-model="recQuery.keyword" placeholder="内容" clearable style="width: 160px" @keyup.enter="handleRecSearch" />
+          <span class="rec-time-label">提交时间</span>
           <el-date-picker v-model="recQuery.start" type="date" value-format="YYYY-MM-DD" placeholder="开始日期" style="width: 140px" />
           <el-date-picker v-model="recQuery.end" type="date" value-format="YYYY-MM-DD" placeholder="结束日期" style="width: 140px" />
           <el-select v-model="recQuery.status" placeholder="状态" clearable style="width: 110px">
-            <el-option label="待处理" value="0" /><el-option label="已确认" value="1" /><el-option label="已驳回" value="2" />
+            <el-option label="全部" value="" />
+            <el-option label="待处理" value="0" /><el-option label="通过" value="1" /><el-option label="已驳回" value="2" />
+            <el-option label="退款待审核" value="3" /><el-option label="已退款" value="4" /><el-option label="退款已驳回" value="5" />
           </el-select>
           <el-button type="success" class="search-icon-btn" @click="handleRecSearch">
             <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M945.82578 870.125405l-179.064759-179.128198c37.633442-50.252111 60.226958-112.396119 60.226958-179.635713 0-165.019429-133.863717-298.820032-298.94691-298.820032S229.157273 346.342065 229.157273 511.361494s133.800278 298.883471 298.883471 298.883471c64.175523 0 123.67499-20.451714 172.925368-54.893622l180.206658 180.270097c8.639241 8.575802 19.883819 12.926817 31.191832 12.926817s22.552591-4.351015 31.128393-12.926817C962.978033 917.976954 962.978033 887.274231 945.82578 870.125405zM528.040744 710.308079c-109.760556 0-198.946585-89.122915-198.946585-198.946585s89.186354-198.946585 198.946585-198.946585 198.946585 89.122915 198.946585 198.946585S637.8013 710.308079 528.040744 710.308079z" /></svg>
@@ -717,11 +842,11 @@ onMounted(fetchList)
       <el-table v-loading="recLoading" :data="recList" border class="rec-table" @selection-change="(rows: FormOrderItem[]) => (recSelected = rows)">
         <el-table-column type="selection" width="42" />
         <el-table-column prop="id" label="ID" width="64" />
-        <el-table-column label="头像/昵称" width="140">
+        <el-table-column label="头像昵称" min-width="160">
           <template #default="{ row }">
             <div class="member-cell">
               <el-image v-if="row.headimg" :src="row.headimg" :preview-src-list="[row.headimg]" fit="cover" class="member-avatar" preview-teleported />
-              <span class="member-nick">{{ row.nickname || '-' }}</span>
+              <span class="member-nick">{{ row.nickname || '会员' }}(ID:{{ row.mid }})</span>
             </div>
           </template>
         </el-table-column>
@@ -740,33 +865,32 @@ onMounted(fetchList)
             <span v-else>{{ cellText(row, k) || '-' }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="支付状态" width="90">
+        <!-- 支付4列仅开启在线支付时显示，支付单号用 paynum -->
+        <el-table-column v-if="recPayset" label="支付状态" width="90">
           <template #default="{ row }">
             <span :class="row.paystatus === 1 ? 'pay-ok' : ''">{{ row.paystatus === 1 ? '已支付' : '未支付' }}</span>
           </template>
         </el-table-column>
-        <el-table-column prop="money" label="支付金额" width="90" />
-        <el-table-column prop="ordernum" label="支付单号" width="140" show-overflow-tooltip />
-        <el-table-column label="支付时间" width="150">
+        <el-table-column v-if="recPayset" prop="money" label="支付金额" width="90" />
+        <el-table-column v-if="recPayset" prop="paynum" label="支付单号" width="140" show-overflow-tooltip />
+        <el-table-column v-if="recPayset" label="支付时间" width="150">
           <template #default="{ row }">{{ row.paytime ? formatTime(Number(row.paytime)) : '-' }}</template>
         </el-table-column>
         <el-table-column label="提交时间" width="150">
           <template #default="{ row }">{{ formatTime(Number(row.createtime)) }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="90">
+        <el-table-column label="状态" width="120">
           <template #default="{ row }">
-            <el-tag :type="statusType(row.status)" size="small">{{ statusText(row.status) }}</el-tag>
+            <span :class="statusCls(Number(row.status))">{{ statusText(row) }}</span>
           </template>
         </el-table-column>
-        <el-table-column label="操作" width="160">
+        <el-table-column label="操作" width="140" class-name="rec-ops-cell">
           <template #default="{ row }">
-            <!-- 数据操作：通过/驳回、查看图片/编辑/删除 横排自动换行（对照点大，非写死竖排） -->
+            <!-- 数据行操作（严格按图：通过 status0||2；驳回 status0||1；编辑 status1） -->
             <div class="ops-wrap">
-              <el-button v-if="row.status === 0" link type="primary" @click="rowSetst(row, 1)">通过</el-button>
-              <el-button v-if="row.status === 0" link type="warning" @click="rowSetst(row, 2)">驳回</el-button>
-              <el-button v-if="hasPics()" link type="primary" @click="openPics(row)">查看图片</el-button>
-              <el-button link type="primary" @click="openRecordEdit(row)">编辑</el-button>
-              <el-button link type="danger" @click="rowDel(row)">删除</el-button>
+              <el-button v-if="Number(row.status) === 0 || Number(row.status) === 2" link type="primary" @click="rowPass(row)">通过</el-button>
+              <el-button v-if="Number(row.status) === 0 || Number(row.status) === 1" link type="primary" @click="rowReject(row)">驳回</el-button>
+              <el-button v-if="Number(row.status) === 1" link type="primary" @click="openRecordEdit(row)">编辑</el-button>
             </div>
           </template>
         </el-table-column>
@@ -780,7 +904,7 @@ onMounted(fetchList)
     <!-- ===================== 数据编辑 / 新增（平铺） ===================== -->
     <div v-else-if="viewMode === 'recordedit'" class="ge-box">
       <div class="ge-head">
-        <span class="ge-head-title">{{ recId ? '编辑数据' : '新增数据' }}</span>
+        <span class="ge-head-title">{{ recId ? '编辑数据' : '+ 添加数据' }}</span>
         <el-button class="ge-close" circle @click="viewMode = 'record'; fetchRecord()">
           <svg viewBox="0 0 1024 1024" width="16" height="16" fill="currentColor"><path d="M764.288 214.595 512 466.883 259.712 214.595a32 32 0 0 0-45.248 45.248L466.752 512 214.464 764.288a32 32 0 1 0 45.248 45.248L512 557.117l252.288 252.419a32 32 0 0 0 45.248-45.248L557.248 512l252.288-252.157a32 32 0 0 0-45.248-45.248z" /></svg>
         </el-button>
@@ -833,10 +957,11 @@ onMounted(fetchList)
           </div>
         </el-form-item>
 
-        <el-form-item label="支付金额">
+        <!-- 支付金额/支付状态仅开启在线支付时显示 -->
+        <el-form-item v-if="recPayset" label="支付金额">
           <el-input v-model="rec.money" style="width: 200px" placeholder="0.00" />
         </el-form-item>
-        <el-form-item label="支付状态">
+        <el-form-item v-if="recPayset" label="支付状态">
           <el-radio-group v-model="rec.paystatus">
             <el-radio :value="1">已支付</el-radio>
             <el-radio :value="0">未支付</el-radio>
@@ -850,7 +975,7 @@ onMounted(fetchList)
           </el-radio-group>
         </el-form-item>
         <el-form-item>
-          <el-button type="warning" @click="handleRecSave">提 交</el-button>
+          <el-button type="success" @click="handleRecSave">提 交</el-button>
         </el-form-item>
       </el-form>
     </div>
@@ -886,11 +1011,23 @@ onMounted(fetchList)
       />
     </div>
 
-    <!-- 查看图片小弹窗：单图正方形，多图自适应加宽 -->
-    <el-dialog v-model="picVisible" title="查看图片" :width="picDialogWidth" append-to-body class="pic-dialog">
-      <div class="pic-dialog-imgs" :class="{ 'pic-single': picList.length === 1 }">
-        <el-image v-for="(p, i) in picList" :key="i" :src="p" :preview-src-list="picList" fit="contain" :class="picList.length === 1 ? 'pic-single-img' : 'pic-multi-img'" preview-teleported />
-      </div>
+    <!-- 驳回弹窗（驳回原因 + 开启在线支付时是否退款 radio） -->
+    <el-dialog v-model="rejectVisible" title="驳回确认" width="420px" append-to-body>
+      <el-form label-width="80px">
+        <el-form-item label="驳回原因" required>
+          <el-input v-model="rejectReason" type="textarea" :rows="3" placeholder="请填写驳回原因" />
+        </el-form-item>
+        <el-form-item v-if="recPayset" label="是否退款">
+          <el-radio-group v-model="rejectTuikuan">
+            <el-radio :value="1">是</el-radio>
+            <el-radio :value="0">否</el-radio>
+          </el-radio-group>
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="rejectVisible = false">取消</el-button>
+        <el-button type="danger" @click="confirmReject">驳回</el-button>
+      </template>
     </el-dialog>
 
     <!-- 链接小弹窗（二维码 + 链接地址 + 页面路径，全站统一组件） -->
@@ -919,6 +1056,7 @@ onMounted(fetchList)
 .ops-wrap { display: flex; flex-direction: row; align-items: center; gap: 4px 14px; flex-wrap: wrap; line-height: 1.5; }
 .ops-wrap .el-button { margin: 0; height: auto; min-height: 0; padding: 0; font-size: 12px; }
 .st-running { display: inline-block; padding: 1px 10px; background: #67c23a; color: #fff; border-radius: 3px; font-size: 12px; }
+.st-notstart { display: inline-block; padding: 1px 10px; background: #e6a23c; color: #fff; border-radius: 3px; font-size: 12px; }
 .st-end { display: inline-block; padding: 1px 10px; background: #909399; color: #fff; border-radius: 3px; font-size: 12px; }
 
 /* 平铺编辑主区 */
@@ -930,12 +1068,20 @@ onMounted(fetchList)
 .ge-form :deep(.el-form-item) { margin-bottom: 12px; }
 .ge-hint { color: #909399; font-size: 12px; margin-left: 10px; }
 .comm-tip { color: #909399; font-size: 12px; line-height: 1.6; margin-left: 110px; }
+.comm-warn { color: #f56c6c; font-size: 12px; line-height: 1.6; }
+.comm-level-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
+.comm-level-item { display: flex; align-items: center; gap: 6px; }
+.comm-level-label { font-size: 12px; color: #606266; white-space: nowrap; }
+.rec-reason { font-size: 12px; color: #f56c6c; line-height: 1.4; margin-top: 2px; }
 .tab-footer { display: flex; justify-content: center; gap: 14px; padding: 16px 0 8px; border-top: 1px solid #ebeef5; }
 .add-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
 .add-bar-label { font-size: 13px; color: #606266; }
 .opt-row { display: flex; align-items: center; gap: 4px; margin-bottom: 4px; }
 .range-row { display: flex; gap: 6px; }
 .field-table :deep(.el-table__cell) { padding: 6px 0; }
+/* 表单项列表行：标签在左、表格固定宽不撑满（对齐点大截图） */
+.content-row { display: flex; align-items: flex-start; gap: 8px; }
+.content-row .add-bar-label { margin-top: 10px; white-space: nowrap; }
 
 /* 数据列表工具栏 */
 .rec-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: nowrap; margin-bottom: 10px; }
@@ -948,6 +1094,10 @@ onMounted(fetchList)
 .cell-img { width: 46px; height: 46px; border-radius: 4px; }
 .cell-imgs { display: flex; gap: 4px; }
 .pay-ok { color: #67c23a; font-weight: 600; }
+.st-pass { color: #67c23a; font-weight: 600; }
+.st-reject { color: #f56c6c; }
+.st-pending { color: #909399; }
+.rec-time-label { font-size: 12px; color: #606266; white-space: nowrap; margin: 0 2px; }
 .region-row { display: flex; gap: 8px; }
 .rec-img { width: 80px; height: 80px; border-radius: 4px; margin-top: 6px; }
 .rec-imgs { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -968,11 +1118,5 @@ onMounted(fetchList)
   top: -4px;
   right: -8px;
   transform: none;
-}/* 查看图片弹窗：单图正方形，多图自适应 */
-.pic-dialog-imgs { display: flex; flex-wrap: wrap; gap: 10px; justify-content: center; }
-.pic-dialog :deep(.el-dialog__body) { padding: 14px 20px 20px; }
-.pic-single { width: 300px; height: 300px; }
-.pic-single-img,
-.pic-single :deep(img) { width: 300px !important; height: 300px !important; border-radius: 4px; }
-.pic-multi-img { width: 220px; height: 220px; border-radius: 4px; }
+}
 </style>

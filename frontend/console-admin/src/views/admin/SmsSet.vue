@@ -17,42 +17,48 @@ const activeTab = ref('set')
 const setloading = ref(false)
 const saving = ref(false)
 const info = ref<SmsConfig>({
-  status: 0,
-  smstype: 1,
+  status: 1,
+  smstype: 2,
   accesskey: '',
   accesssecret: '',
   sdkappid: '',
   sign_name: '',
   code_length: 0,
+  var_length: 0,
 })
 
-// 模板清单（key / 名称 / 内容占位符说明，对齐参考系统短信模板）
-const TMPL_LIST: { key: string; label: string; tip: string }[] = [
-  { key: 'smscode', label: '短信验证码', tip: '您的验证码：${code}，该验证码5分钟内有效，请勿泄漏于他人！' },
-  { key: 'orderconfirm', label: '订单提交成功', tip: '订单 ${ordernum} 提交成功。' },
-  { key: 'orderpay', label: '订单支付成功', tip: '订单支付成功，订单号：${ordernum}，我们会尽快为您发货。' },
-  { key: 'orderfahuo', label: '订单发货通知', tip: '您的订单${ordernum}已发货，快递公司：${express_com}，快递单号：${express_no}，请留意查收。' },
-  { key: 'collagesuccess', label: '拼团成功通知', tip: '订单${ordernum}拼团成功，我们会尽快为您发货。' },
-  { key: 'tuisuccess', label: '退款成功通知', tip: '您的订单${ordernum}退款成功，退款金额：${money}元，请留意查收。' },
-  { key: 'tuierror', label: '退款驳回通知', tip: '抱歉您的订单${ordernum}退款申请失败，原因：${reason}。' },
-  { key: 'tixiansuccess', label: '提现成功通知', tip: '提现成功，打款金额：${money}，请留意查收。' },
-  { key: 'tixianerror', label: '提现失败通知', tip: '抱歉您的提现申请失败，原因：${reason}。' },
-  { key: 'fenxiaosuccess', label: '分销成功提醒', tip: '成功获得佣金：${money}元，请留意查收。' },
-  { key: 'restaurant_booking', label: '餐饮预定成功提醒', tip: '预定成功，餐厅名称：${restaurant_name}，订位信息：${table}，预定时间：${time_range}，请准时到达。' },
-  { key: 'restaurant_booking_fail', label: '餐饮预定失败提醒', tip: '抱歉您的预定失败，餐厅名称：${restaurant_name}，请重新预定。' },
-  { key: 'checksuccess', label: '审核通过通知', tip: '恭喜您的注册审核已通过。' },
-  { key: 'checkerror', label: '审核驳回通知', tip: '抱歉您的注册审核未通过，驳回原因${reason}。' },
-  { key: 'yysucess', label: '预约成功通知', tip: '您预定的${name}，已为您准备好，预定时间：${time}，敬请准时赴约。' },
-  { key: 'recharge', label: '充值成功通知', tip: '会员充值成功，请登录查看。' },
-  { key: 'sysmsg_notice', label: '新私信提醒', tip: '您有一条来自于新的私信未读，请登录查看。' },
-  { key: 'checknotice', label: '待审核通知', tip: '您有一条新的审核信息，请登录查看。' },
-  { key: 'send_coupon', label: '发放优惠券通知', tip: '{coupon_name}已发放，{expiration_time}失效。（coupon_name优惠券名称，expiration_time失效时间）' },
-  { key: 'coupon_expired', label: '优惠券快过期通知', tip: '您的{coupon_name}还有{days}天就过期了，默认到期前3天提示。' },
-  { key: 'admin_operate_money', label: '余额变更通知', tip: '您的余额因为{remark}，金额{operate}了{money}元，有异议联系商家客服。' },
-  { key: 'admin_recharge_money', label: '余额充值通知', tip: '您本次充值的{money}元已添加到您的会员余额，有异议联系商家客服。' },
-  { key: 'member_uplevel', label: '会员等级变更通知', tip: '您的会员等级从{old_level}等级变为{new_level}等级，新的等级有效期{expiration_days}。' },
-  { key: 'member_uplevel_expired', label: '会员等级到期通知', tip: '您的{level}等级还有7天就要到期了，届时会员权益将同步降为默认等级权益。' },
+// 模板清单（严格对齐点大演示站，按分组组织）
+const TMPL_GROUPS: { title: string; items: { key: string; label: string; tip: string }[] }[] = [
+  {
+    title: '',
+    items: [
+      { key: 'smscode', label: '短信验证码', tip: '您的验证码：{1}，该验证码5分钟内有效，请勿泄漏于他人！' },
+    ],
+  },
+  {
+    title: '会员通知',
+    items: [
+      { key: 'orderpay', label: '订单支付成功', tip: '订单支付成功，订单号：{1}，我们会尽快为您发货。' },
+      { key: 'orderfahuo', label: '订单发货通知', tip: '您的订单{1}已发货，快递公司：{2}，快递单号：{3}，请留意查收。' },
+      { key: 'collagesuccess', label: '拼团成功通知', tip: '订单{1}拼团成功，我们会尽快为您发货。' },
+      { key: 'tuisuccess', label: '退款成功通知', tip: '您的订单{1}退款成功，退款金额：{2}元，请留意查收。' },
+      { key: 'tuierror', label: '退款驳回通知', tip: '抱歉您的订单{1}退款申请失败，原因：{2}。' },
+      { key: 'tixiansuccess', label: '提现成功通知', tip: '提现成功，打款金额：{1}，请留意查收。' },
+      { key: 'tixianerror', label: '提现失败通知', tip: '抱歉您的提现申请失败，原因：{1}。' },
+      { key: 'fenxiaosuccess', label: '分销成功提醒', tip: '成功获得佣金：{1}元，请留意查收。' },
+      { key: 'restaurant_booking', label: '餐饮预定成功提醒', tip: '预定成功，餐厅名称：{1}，订位信息：{2}，预定时间：{3}，请准时到达。' },
+      { key: 'restaurant_booking_fail', label: '餐饮预定失败提醒', tip: '抱歉您的预定失败，餐厅名称：{1}，请重新预定。' },
+    ],
+  },
+  {
+    title: '管理员通知',
+    items: [
+      { key: 'yysneworder', label: '预约服务人员新订单提醒', tip: '您有新的预约服务订单，订单号：{1}，请尽快处理。' },
+      { key: 'jiedan_timeout', label: '接单超时通知', tip: '有订单接单超时，订单号：{1}，派单时间：{2}，请及时处理；同城配送快递鸟接单超时使用' },
+    ],
+  },
 ]
+const TMPL_LIST = TMPL_GROUPS.flatMap(g => g.items)
 
 async function fetchSet() {
   setloading.value = true
@@ -180,65 +186,91 @@ onMounted(() => {
             label-position="left"
             style="max-width: 760px"
           >
-            <el-form-item label="短信功能">
-              <el-switch
-                v-model="info.status"
-                :active-value="1"
-                :inactive-value="0"
-                active-text="开启"
-                inactive-text="关闭"
-              />
-            </el-form-item>
-            <el-form-item label="短信网关">
-              <el-radio-group v-model="info.smstype">
-                <el-radio :value="1">阿里云短信</el-radio>
-                <el-radio :value="2">聚合数据</el-radio>
+            <el-form-item label="短信状态">
+              <el-radio-group v-model="info.status">
+                <el-radio :value="1">开启</el-radio>
+                <el-radio :value="0">关闭</el-radio>
               </el-radio-group>
             </el-form-item>
-            <el-form-item label="AccessKey">
-              <el-input v-model="info.accesskey" placeholder="请填写 AccessKey ID" />
+            <el-form-item label="短信接口">
+              <el-select v-model="info.smstype" style="width:200px">
+                <el-option :value="1" label="阿里云" />
+                <el-option :value="2" label="腾讯云" />
+                <el-option :value="3" label="定制短信通道" />
+              </el-select>
             </el-form-item>
-            <el-form-item label="AccessSecret">
-              <el-input
-                v-model="info.accesssecret"
-                type="password"
-                show-password
-                placeholder="请填写 AccessKey Secret"
-              />
-            </el-form-item>
-            <el-form-item v-if="Number(info.smstype) === 2" label="SdkAppId">
-              <el-input v-model="info.sdkappid" placeholder="请填写 SdkAppId（选填）" />
-            </el-form-item>
+            <!-- 阿里云 -->
+            <template v-if="Number(info.smstype) === 1">
+              <el-form-item label="AccessKey ID">
+                <el-input v-model="info.accesskey" placeholder="已隐藏内容，点击查看或编辑" />
+                <span class="form-tip">阿里云后台-访问密钥管理-AccessKey ID</span>
+              </el-form-item>
+              <el-form-item label="AccessKey Secret">
+                <el-input v-model="info.accesssecret" type="password" show-password placeholder="已隐藏内容，点击查看或编辑" />
+                <span class="form-tip">阿里云后台-访问密钥管理-AccessKey Secret（创建时复制保存，无法二次查看）</span>
+              </el-form-item>
+            </template>
+            <!-- 腾讯云 -->
+            <template v-if="Number(info.smstype) === 2">
+              <el-form-item label="SecretId">
+                <el-input v-model="info.accesskey" placeholder="已隐藏内容，点击查看或编辑" />
+                <a class="form-link" href="https://console.cloud.tencent.com/cam/capi" target="_blank">腾讯云后台-访问管理-访问密钥-密钥管理-SecretId</a>
+              </el-form-item>
+              <el-form-item label="SecretKey">
+                <el-input v-model="info.accesssecret" type="password" show-password placeholder="已隐藏内容，点击查看或编辑" />
+                <a class="form-link" href="https://console.cloud.tencent.com/cam/capi" target="_blank">腾讯云后台-访问管理-访问密钥-密钥管理-SecretKey（创建时复制保存 无法二次查看复制）</a>
+              </el-form-item>
+              <el-form-item label="应用SDK AppID">
+                <el-input v-model="info.sdkappid" placeholder="已隐藏内容，点击查看或编辑" />
+                <a class="form-link" href="https://console.cloud.tencent.com/smsv2/app-manage" target="_blank">腾讯云后台-短信-应用管理-应用列表-SDKAppID</a>
+              </el-form-item>
+            </template>
+            <!-- 定制短信通道 -->
+            <template v-if="Number(info.smstype) === 3">
+              <el-form-item label="用户名">
+                <el-input v-model="info.accesskey" placeholder="已隐藏内容，点击查看或编辑" />
+              </el-form-item>
+              <el-form-item label="密码">
+                <el-input v-model="info.accesssecret" type="password" show-password placeholder="已隐藏内容，点击查看或编辑" />
+              </el-form-item>
+            </template>
             <el-form-item label="短信签名">
               <el-input v-model="info.sign_name" placeholder="请填写已审核通过的短信签名" />
+              <a v-if="Number(info.smstype) === 2" class="form-link" href="https://console.cloud.tencent.com/smsv2/csms-sign" target="_blank">腾讯云后台-短信-国内短信-签名管理-签名内容</a>
             </el-form-item>
-            <el-form-item label="验证码长度">
-              <el-input-number v-model="info.code_length" :min="0" :max="8" />
-              <span class="form-tip">0=使用默认长度</span>
+            <el-form-item label="变量长度">
+              <el-radio-group v-model="info.var_length">
+                <el-radio :value="0">不限制</el-radio>
+                <el-radio :value="6">6个字符</el-radio>
+                <el-radio :value="-1">不含变量</el-radio>
+              </el-radio-group>
+              <div class="form-tip">腾讯云新账号限制变量最多6个字符，选择"不含变量"则模板中没有任何变量（短信验证码除外）</div>
             </el-form-item>
 
-            <el-divider content-position="left">短信模板（填写模板编号并按需开启）</el-divider>
+            <div class="section-title">短信模板设置</div>
 
-            <div v-for="t in TMPL_LIST" :key="t.key" class="tmpl-row">
-              <div class="tmpl-label">{{ t.label }}</div>
-              <el-input
-                v-model="info['tmpl_' + t.key]"
-                placeholder="模板编号"
-                style="width: 220px"
-              />
-              <el-switch
-                v-model="info['tmpl_' + t.key + '_st']"
-                :active-value="1"
-                :inactive-value="0"
-                active-text="开启"
-                inactive-text="关闭"
-              />
-              <el-button link type="primary" @click="openTest(t.key, t.label)">测试</el-button>
-              <div class="tmpl-tip">模板内容示例：{{ t.tip }}</div>
-            </div>
+            <template v-for="group in TMPL_GROUPS" :key="group.title">
+              <div v-if="group.title" class="section-title">{{ group.title }}</div>
+              <div v-for="t in group.items" :key="t.key" class="tmpl-row">
+                <div class="tmpl-label">{{ t.label }}</div>
+                <el-input
+                  v-model="info['tmpl_' + t.key]"
+                  placeholder="请填写模板ID"
+                  style="width: 220px"
+                />
+                <el-switch
+                  v-model="info['tmpl_' + t.key + '_st']"
+                  :active-value="1"
+                  :inactive-value="0"
+                  active-text="开启"
+                  inactive-text="关闭"
+                />
+                <div class="tmpl-tip">请填写模板ID 模板内容示例：{{ t.tip }}</div>
+              </div>
+            </template>
 
             <el-form-item>
-              <el-button type="primary" :loading="saving" @click="handleSaveSet">保存设置</el-button>
+              <el-button type="primary" :loading="saving" @click="handleSaveSet">确认修改</el-button>
             </el-form-item>
           </el-form>
         </el-tab-pane>
@@ -358,5 +390,24 @@ onMounted(() => {
 .pagination {
   margin-top: 16px;
   justify-content: flex-end;
+}
+
+.section-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #303133;
+  padding: 14px 0 8px;
+  border-bottom: 1px solid #ebeef5;
+  margin-bottom: 8px;
+}
+
+.form-link {
+  margin-left: 10px;
+  font-size: 12px;
+  color: #409eff;
+  text-decoration: none;
+}
+.form-link:hover {
+  text-decoration: underline;
 }
 </style>

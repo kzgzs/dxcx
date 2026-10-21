@@ -82,7 +82,7 @@ onMounted(fetchSet)
 
 <template>
   <div v-loading="loading" class="set-page">
-    <el-card shadow="never">
+    <el-card shadow="never" class="compact-title">
       <template #header><span class="card-title">⚙ 秒杀设置</span></template>
 
       <div class="set-row">

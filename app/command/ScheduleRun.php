@@ -16,7 +16,6 @@ use app\common\service\PayService;
 use app\common\service\RestaurantOrderService;
 use app\common\service\ScoreshopService;
 use app\common\service\SeckillService;
-use app\common\service\TakeFoodService;
 use app\common\service\WechatTmplService;
 use app\common\service\WxpayService;
 use app\common\service\YuebaoService;
@@ -44,7 +43,6 @@ use think\console\Output;
  * - SECKILL.EXPIRE_CLOSE=1         秒杀未支付超时关单
  * - SCORESHOP.EXPIRE_CLOSE=1       积分商城未支付超时关单
  * - RESTAURANT.ORDER_SCHED=1       餐饮外卖超时关单与堂食自动完成
- * - RESTAURANT.TAKE_FOOD_EXPIRE=1  餐饮取餐号24小时未取过期
  * - FENHONG.SETTLE=1               分红结算（股东/团队/区域三套，og.isfenhong 幂等）
  * - WECHAT.TMPL_SEND=1             微信模板/订阅消息统一发送（消费 wechat_send_tmpl_data）
  */
@@ -244,15 +242,6 @@ class ScheduleRun extends Command
                 $result = app(FenhongService::class)->jiesuanAll();
 
                 return sprintf('分红结算 租户%d 扫描行%d 生成记录%d 金额%.2f', $result['tenants'], $result['ogcount'], $result['logs'], $result['total']);
-            };
-        }
-
-        // 餐饮取餐号过期（批次6-T6-4 任务205）：24小时未取自动 status=-1（制作中/待取餐 → 过期，条件更新幂等）
-        if ('0' !== (string) env('RESTAURANT.TAKE_FOOD_EXPIRE', '1')) {
-            $tasks['restaurant.take_food_expire'] = function (): string {
-                $count = app(TakeFoodService::class)->expireExpired();
-
-                return '餐饮取餐号24h未取过期 ' . $count . ' 笔';
             };
         }
 

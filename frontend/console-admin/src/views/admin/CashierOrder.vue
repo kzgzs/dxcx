@@ -2,50 +2,47 @@
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
-  cashierRefundApply,
-  cashierRefundAudit,
+  cashierRefund,
+  cashierWifiprint,
   deleteCashierOrders,
+  exportCashierOrders,
   getCashierOrderDetail,
   getCashierOrderList,
 } from '../../api/cashier'
 import type { CashierOrderItem } from '../../api/cashier'
 import { formatTime } from '../../utils/time'
 
-/* ============ 状态 tabs ============ */
-// status：''全部 1已完成 2挂单 10已退款 0结算等待中
-const tabs = [
-  { name: '', label: '全部' },
-  { name: '1', label: '已完成' },
-  { name: '2', label: '挂单' },
-  { name: '10', label: '已退款' },
-  { name: '0', label: '结算等待中' },
+/* ============ 状态口径（对齐点大） ============ */
+// 0待支付(红) 1已支付(绿) 2挂单(橙) 4已关闭(灰) 10已退款(灰带￥refund_money)
+const STATUS_OPTIONS = [
+  { value: '', label: '全部' },
+  { value: '0', label: '待支付' },
+  { value: '1', label: '已支付' },
+  { value: '2', label: '挂单' },
+  { value: '10', label: '已退款' },
+  { value: '4', label: '已关闭' },
 ]
-
-const STATUS_TAG: Record<number, '' | 'success' | 'warning' | 'info' | 'danger'> = {
-  0: 'info',
-  1: 'success',
-  2: 'warning',
-  10: 'danger',
-}
-
-const REFUND_TAG: Record<number, '' | 'success' | 'warning' | 'info' | 'danger'> = {
-  1: 'warning',
-  2: 'success',
-  3: 'danger',
+const STATUS_COLOR: Record<number, string> = {
+  0: '#f56c6c',
+  1: '#67c23a',
+  2: '#e6a23c',
+  4: '#909399',
+  10: '#909399',
 }
 
 /* ============ 列表 ============ */
-const activeTab = ref('')
 const loading = ref(false)
+const exporting = ref(false)
 const tableData = ref<CashierOrderItem[]>([])
 const total = ref(0)
+const hasprint = ref(0)
 
 const query = reactive({
   page: 1,
   pagesize: 20,
+  mid: '' as number | '',
   ordernum: '',
-  paytypeid: 0,
-  refund_status: '' as string | number,
+  status: '',
   dateRange: null as [string, string] | null,
 })
 
@@ -55,15 +52,15 @@ async function fetchList() {
     const data = await getCashierOrderList({
       page: query.page,
       pagesize: query.pagesize,
-      status: activeTab.value === '' ? undefined : activeTab.value,
+      status: query.status === '' ? undefined : query.status,
+      mid: query.mid === '' ? undefined : Number(query.mid),
       ordernum: query.ordernum || undefined,
-      paytypeid: query.paytypeid || undefined,
-      refund_status: query.refund_status === '' ? undefined : query.refund_status,
       starttime: query.dateRange?.[0] || undefined,
       endtime: query.dateRange?.[1] || undefined,
     })
     tableData.value = data?.list || []
     total.value = data?.total || 0
+    hasprint.value = Number((data as unknown as { hasprint?: number })?.hasprint ?? 0)
   } catch {
     // 错误提示已由 axios 拦截器统一弹出
   } finally {
@@ -71,78 +68,105 @@ async function fetchList() {
   }
 }
 
-function handleTabChange() {
-  query.page = 1
-  fetchList()
-}
-
 function handleSearch() {
   query.page = 1
   fetchList()
 }
 
-function handleReset() {
-  query.ordernum = ''
-  query.paytypeid = 0
-  query.refund_status = ''
-  query.dateRange = null
-  handleSearch()
+// 导出EXCEL（后端返回 title+data，前端生成带 BOM 的 CSV 下载）
+function csvEscape(val: string): string {
+  if (/[",\n]/.test(val)) return `"${val.replace(/"/g, '""')}"`
+  return val
+}
+async function handleExport() {
+  exporting.value = true
+  try {
+    const data = await exportCashierOrders({
+      status: query.status === '' ? undefined : query.status,
+      mid: query.mid === '' ? undefined : Number(query.mid),
+      ordernum: query.ordernum || undefined,
+      starttime: query.dateRange?.[0] || undefined,
+      endtime: query.dateRange?.[1] || undefined,
+    })
+    if (!data.count) {
+      ElMessage.warning('没有可导出的数据')
+      return
+    }
+    const lines = [data.title, ...data.data].map((row) => row.map((c) => csvEscape(String(c))).join(','))
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `收银订单_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${data.count} 条记录`)
+  } catch {
+    // 错误提示已由 axios 拦截器统一弹出
+  } finally {
+    exporting.value = false
+  }
 }
 
-/* ============ 详情 ============ */
-const detailDialog = ref(false)
+/* ============ 详情（平铺主区域，右上 X 关闭） ============ */
+const detailView = ref(false)
 const detail = ref<CashierOrderItem | null>(null)
 
 async function handleDetail(row: CashierOrderItem) {
   try {
     detail.value = await getCashierOrderDetail(row.id)
-    detailDialog.value = true
+    detailView.value = true
   } catch {
     // 错误提示已由 axios 拦截器统一弹出
   }
 }
+function closeDetail() {
+  detailView.value = false
+  detail.value = null
+}
 
-/* ============ 退款 ============ */
-async function handleRefundApply(row: CashierOrderItem) {
+/* ============ 退款（对齐点大：直接退款弹窗） ============ */
+const refundDialog = ref(false)
+const refundSaving = ref(false)
+const refundRow = ref<CashierOrderItem | null>(null)
+const refundForm = reactive({ refund_money: 0, remark: '' })
+
+function handleRefund(row: CashierOrderItem) {
+  refundRow.value = row
+  refundForm.refund_money = Number(row.totalprice)
+  refundForm.remark = ''
+  refundDialog.value = true
+}
+async function submitRefund() {
+  if (!refundRow.value) return
+  if (refundForm.refund_money <= 0) {
+    ElMessage.warning('退款金额有误')
+    return
+  }
+  refundSaving.value = true
   try {
-    const { value } = await ElMessageBox.prompt(
-      `订单「${row.ordernum}」实收 ¥${Number(row.totalprice).toFixed(2)}，请输入退款金额`,
-      '申请退款',
-      {
-        confirmButtonText: '提交申请',
-        cancelButtonText: '取消',
-        inputPattern: /^\d+(\.\d{1,2})?$/,
-        inputErrorMessage: '金额格式不正确',
-      },
-    )
-    const money = Number(value)
-    const reasonBox = await ElMessageBox.prompt('请输入退款原因', '退款原因', {
-      confirmButtonText: '提交',
-      cancelButtonText: '取消',
-      inputValidator: (v) => (v && v.trim() ? true : '请填写退款原因'),
-    })
-    await cashierRefundApply(row.id, money, reasonBox.value || '')
-    ElMessage.success('退款申请已提交')
+    await cashierRefund(refundRow.value.id, Number(refundForm.refund_money), refundForm.remark)
+    ElMessage.success('退款成功')
+    refundDialog.value = false
     fetchList()
   } catch {
-    // 取消或接口错误
+    // 错误提示已由 axios 拦截器统一弹出
+  } finally {
+    refundSaving.value = false
   }
 }
 
-async function handleRefundAudit(row: CashierOrderItem, agree: number) {
-  const tip = agree === 1
-    ? `同意退款将退回 ¥${Number(row.refund_money).toFixed(2)}（余额支付退会员余额）并回退库存，确认？`
-    : '确认驳回该退款申请吗？'
-  ElMessageBox.confirm(tip, '退款审核', {
+/* ============ 打印小票（confirm 确认后提交） ============ */
+function handlePrint(row: CashierOrderItem) {
+  ElMessageBox.confirm('确定要打印小票吗?', '打印确认', {
     confirmButtonText: '确定',
     cancelButtonText: '取消',
-    type: 'warning',
+    type: 'info',
   })
     .then(async () => {
       try {
-        await cashierRefundAudit(row.id, agree)
-        ElMessage.success(agree === 1 ? '已同意退款' : '已驳回退款')
-        fetchList()
+        await cashierWifiprint(row.id)
+        ElMessage.success('成功打印小票')
       } catch {
         // 错误提示已由 axios 拦截器统一弹出
       }
@@ -151,37 +175,9 @@ async function handleRefundAudit(row: CashierOrderItem, agree: number) {
 }
 
 /* ============ 删除 ============ */
-const selectedIds = ref<number[]>([])
-
-function handleSelectionChange(rows: CashierOrderItem[]) {
-  selectedIds.value = rows.map((r) => r.id)
-}
-
-function handleBatchDelete() {
-  if (!selectedIds.value.length) {
-    ElMessage.warning('请选择要删除的订单')
-    return
-  }
-  ElMessageBox.confirm(`确认删除选中的 ${selectedIds.value.length} 个订单吗？删除后不可恢复`, '操作确认', {
-    confirmButtonText: '确定删除',
-    cancelButtonText: '取消',
-    type: 'warning',
-  })
-    .then(async () => {
-      try {
-        await deleteCashierOrders(selectedIds.value)
-        ElMessage.success('删除成功')
-        fetchList()
-      } catch {
-        // 错误提示已由 axios 拦截器统一弹出
-      }
-    })
-    .catch(() => {})
-}
-
 function handleDelete(row: CashierOrderItem) {
-  ElMessageBox.confirm(`确认删除订单「${row.ordernum}」吗？`, '操作确认', {
-    confirmButtonText: '确定删除',
+  ElMessageBox.confirm('确定要删除吗？删除后无法恢复！', '删除确认', {
+    confirmButtonText: '确定',
     cancelButtonText: '取消',
     type: 'warning',
   })
@@ -202,204 +198,195 @@ onMounted(fetchList)
 
 <template>
   <div>
-    <el-card shadow="never">
-      <el-tabs v-model="activeTab" class="order-tabs" @tab-change="handleTabChange">
-        <el-tab-pane v-for="t in tabs" :key="t.name" :label="t.label" :name="t.name" />
-      </el-tabs>
+    <!-- 列表视图 -->
+    <template v-if="!detailView">
+      <el-card shadow="never" class="toolbar">
+        <div class="toolbar-inner">
+          <div class="toolbar-left">
+            <el-button :loading="exporting" @click="handleExport">导出EXCEL</el-button>
+          </div>
+          <div class="toolbar-right">
+            <span class="tf-label">会员ID</span>
+            <el-input v-model="query.mid" placeholder="" style="width: 110px" @keyup.enter="handleSearch" />
+            <span class="tf-label">订单号</span>
+            <el-input v-model="query.ordernum" placeholder="" style="width: 180px" @keyup.enter="handleSearch" />
+            <span class="tf-label">下单时间</span>
+            <el-date-picker
+              v-model="query.dateRange"
+              type="daterange"
+              range-separator="~"
+              start-placeholder="开始"
+              end-placeholder="结束"
+              value-format="YYYY-MM-DD"
+              style="width: 200px"
+            />
+            <span class="tf-label">状态</span>
+            <el-select v-model="query.status" style="width: 100px">
+              <el-option v-for="o in STATUS_OPTIONS" :key="o.value" :value="o.value" :label="o.label" />
+            </el-select>
+            <button class="search-btn" title="搜索" @click="handleSearch">
+              <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M11.4 10.2a6 6 0 1 0-1.2 1.2l3.4 3.4 1.2-1.2-3.4-3.4zM7 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+            </button>
+          </div>
+        </div>
+      </el-card>
 
-      <!-- 搜索工具栏 -->
-      <el-form inline @submit.prevent>
-        <el-form-item label="订单号">
-          <el-input
-            v-model="query.ordernum"
-            placeholder="订单号"
-            clearable
-            style="width: 180px"
-            @keyup.enter="handleSearch"
-          />
-        </el-form-item>
-        <el-form-item label="支付方式">
-          <el-select v-model="query.paytypeid" clearable style="width: 140px" placeholder="全部">
-            <el-option :value="1" label="微信支付" />
-            <el-option :value="3" label="现金" />
-            <el-option :value="4" label="余额" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="退款状态">
-          <el-select v-model="query.refund_status" clearable style="width: 140px" placeholder="全部">
-            <el-option value="1" label="退款审核中" />
-            <el-option value="2" label="已同意退款" />
-            <el-option value="3" label="已驳回退款" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="下单时间">
-          <el-date-picker
-            v-model="query.dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="handleSearch">搜索</el-button>
-          <el-button @click="handleReset">重置</el-button>
-          <el-button type="danger" plain :disabled="!selectedIds.length" @click="handleBatchDelete">
-            批量删除
-          </el-button>
-        </el-form-item>
-      </el-form>
-
-      <el-table v-loading="loading" :data="tableData" stripe @selection-change="handleSelectionChange">
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="ordernum" label="订单号" min-width="160" show-overflow-tooltip />
-        <el-table-column label="金额" width="100">
-          <template #default="{ row }">¥{{ Number(row.totalprice).toFixed(2) }}</template>
-        </el-table-column>
-        <el-table-column prop="paytype" label="支付方式" width="110">
-          <template #default="{ row }">{{ row.paytype || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="nickname" label="会员" width="110">
-          <template #default="{ row }">{{ row.nickname || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="admin_user" label="收银员" width="100" />
-        <el-table-column label="状态" width="90">
-          <template #default="{ row }">
-            <el-tag :type="STATUS_TAG[row.status] || 'info'" size="small">
-              {{ row.status_desc }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="退款" width="110">
-          <template #default="{ row }">
-            <el-tag
-              v-if="row.refund_status > 0"
-              :type="REFUND_TAG[row.refund_status] || 'info'"
-              size="small"
-            >
-              {{ row.refund_status_desc }}
-            </el-tag>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="下单时间" width="160">
-          <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="230" fixed="right">
-          <template #default="{ row }">
-            <el-button link type="primary" @click="handleDetail(row)">详情</el-button>
-            <el-button
-              v-if="row.status === 1 && (row.refund_status === 0 || row.refund_status === 3)"
-              link
-              type="warning"
-              @click="handleRefundApply(row)"
-            >
-              申请退款
-            </el-button>
-            <template v-if="row.refund_status === 1">
-              <el-button link type="success" @click="handleRefundAudit(row, 1)">同意退款</el-button>
-              <el-button link type="danger" @click="handleRefundAudit(row, 0)">驳回</el-button>
-            </template>
-            <el-button
-              v-if="row.status !== 1 || row.refund_status !== 1"
-              link
-              type="danger"
-              @click="handleDelete(row)"
-            >
-              删除
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
-
-      <el-pagination
-        class="pagination"
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :current-page="query.page"
-        :page-size="query.pagesize"
-        :page-sizes="[10, 20, 50, 100]"
-        @current-change="(p: number) => { query.page = p; fetchList() }"
-        @size-change="(s: number) => { query.pagesize = s; query.page = 1; fetchList() }"
-      />
-    </el-card>
-
-    <!-- 详情弹窗 -->
-    <el-dialog v-model="detailDialog" title="订单详情" width="640px">
-      <template v-if="detail">
-        <el-descriptions :column="2" border size="small">
-          <el-descriptions-item label="订单号">{{ detail.ordernum }}</el-descriptions-item>
-          <el-descriptions-item label="状态">{{ detail.status_desc }}</el-descriptions-item>
-          <el-descriptions-item label="原价">
-            ¥{{ Number(detail.pre_totalprice).toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="实收">
-            ¥{{ Number(detail.totalprice).toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="会员折扣">
-            -¥{{ Number(detail.leveldk_money).toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="抹零">
-            -¥{{ Number(detail.moling_money).toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="支付方式">{{ detail.paytype || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="支付单号">{{ detail.paynum || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="会员">{{ detail.nickname || '-' }}</el-descriptions-item>
-          <el-descriptions-item label="收银员">{{ detail.admin_user }}</el-descriptions-item>
-          <el-descriptions-item label="下单时间">{{ formatTime(detail.createtime) }}</el-descriptions-item>
-          <el-descriptions-item label="支付时间">
-            {{ detail.paytime ? formatTime(detail.paytime) : '-' }}
-          </el-descriptions-item>
-          <el-descriptions-item v-if="detail.remark" label="备注" :span="2">
-            {{ detail.remark }}
-          </el-descriptions-item>
-          <el-descriptions-item v-if="detail.refund_status > 0" label="退款状态" :span="2">
-            {{ detail.refund_status_desc }}（¥{{ Number(detail.refund_money).toFixed(2) }}）
-            <span v-if="detail.refund_reason">原因：{{ detail.refund_reason }}</span>
-            <span v-if="detail.refund_checkremark">；审核备注：{{ detail.refund_checkremark }}</span>
-          </el-descriptions-item>
-        </el-descriptions>
-
-        <div class="detail-goods-title">商品明细</div>
-        <el-table :data="detail.prolist || []" size="small" border>
-          <el-table-column prop="proname" label="商品" min-width="160">
+      <el-card shadow="never">
+        <el-table v-loading="loading" :data="tableData" border>
+          <el-table-column prop="id" label="ID" width="70" />
+          <el-table-column prop="ordernum" label="订单编号" width="190" />
+          <el-table-column label="会员信息" width="170">
             <template #default="{ row }">
-              {{ row.proname }}
-              <span v-if="row.ggname">({{ row.ggname }})</span>
-              <el-tag v-if="row.is_gj === 1" size="small" type="warning">改价</el-tag>
+              <div v-if="row.mid > 0" class="member-cell">
+                <img :src="row.headimg || 'data:image/svg+xml;utf8,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2250%22 height=%2250%22><rect width=%2250%22 height=%2250%22 fill=%22%23ddd%22/></svg>'" class="member-avatar" />
+                <span>{{ row.nickname || `#${row.mid}` }}</span>
+              </div>
+              <span v-else class="none">暂无</span>
             </template>
           </el-table-column>
-          <el-table-column label="单价" width="90">
-            <template #default="{ row }">¥{{ Number(row.sell_price).toFixed(2) }}</template>
+          <el-table-column label="实付金额" width="90">
+            <template #default="{ row }">{{ Number(row.totalprice).toFixed(2) }}</template>
           </el-table-column>
-          <el-table-column prop="num" label="数量" width="70" />
-          <el-table-column label="小计" width="90">
-            <template #default="{ row }">¥{{ Number(row.totalprice).toFixed(2) }}</template>
+          <el-table-column label="创建时间" width="160">
+            <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
           </el-table-column>
-          <el-table-column label="实收分摊" width="100">
-            <template #default="{ row }">¥{{ Number(row.real_totalprice).toFixed(2) }}</template>
+          <el-table-column label="付款时间" width="160">
+            <template #default="{ row }">{{ row.paytime ? formatTime(row.paytime) : '' }}</template>
+          </el-table-column>
+          <el-table-column prop="paytype" label="支付方式" min-width="110">
+            <template #default="{ row }">{{ row.paytype || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="admin_user" label="收银员" width="100" />
+          <el-table-column label="状态" width="110">
+            <template #default="{ row }">
+              <span :style="{ color: STATUS_COLOR[row.status] || '#606266' }">
+                {{ row.status_desc }}
+                <template v-if="row.status === 10 && Number(row.refund_money) > 0">（￥{{ Number(row.refund_money).toFixed(2) }}）</template>
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="remark" label="备注" min-width="100" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.remark || '' }}</template>
+          </el-table-column>
+          <el-table-column label="操作" width="200" fixed="right">
+            <template #default="{ row }">
+              <div class="op-cell">
+                <el-button link type="primary" @click="handleDetail(row)">详情</el-button>
+                <el-button
+                  v-if="row.status === 1 && [0, 3].includes(row.refund_status)"
+                  link type="primary" @click="handleRefund(row)"
+                >退款</el-button>
+                <el-button v-if="hasprint === 1" link type="primary" @click="handlePrint(row)">打印小票</el-button>
+                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+              </div>
+            </template>
           </el-table-column>
         </el-table>
+
+        <el-pagination
+          class="pager" background layout="total, sizes, prev, pager, next, jumper"
+          :total="total" v-model:current-page="query.page" v-model:page-size="query.pagesize"
+          :page-sizes="[10, 20, 50]" @current-change="fetchList" @size-change="handleSearch"
+        />
+      </el-card>
+
+      <!-- 退款弹窗（对齐点大 500x380） -->
+      <el-dialog v-model="refundDialog" title="订单退款" width="500px">
+        <template v-if="refundRow">
+          <el-form label-width="90px">
+            <el-form-item label="实际支付：">
+              <span class="red">￥{{ Number(refundRow.totalprice).toFixed(2) }}</span>
+            </el-form-item>
+            <el-form-item label="付款方式：">{{ refundRow.paytype || '-' }}</el-form-item>
+            <el-form-item label="退款金额：">
+              <el-input-number v-model="refundForm.refund_money" :min="0.01" :precision="2" style="width: 180px" />
+            </el-form-item>
+            <el-form-item label="退款备注：">
+              <el-input v-model="refundForm.remark" type="textarea" :rows="2" maxlength="200" />
+            </el-form-item>
+          </el-form>
+        </template>
+        <template #footer>
+          <el-button @click="refundDialog = false">取消</el-button>
+          <el-button type="primary" :loading="refundSaving" @click="submitRefund">确定退款</el-button>
+        </template>
+      </el-dialog>
+    </template>
+
+    <!-- 订单详情：平铺当前主区域，右上角 X 关闭（对齐点大订单详情） -->
+    <el-card v-else shadow="never" class="detail-card">
+      <template #header>
+        <div class="detail-header">
+          <span>订单详情</span>
+          <button class="close-x" title="关闭" @click="closeDetail">✕</button>
+        </div>
       </template>
-    </el-dialog>
+      <template v-if="detail">
+        <div class="goods-list">
+          <div v-for="g in detail.prolist || []" :key="g.id" class="goods-row">
+            <img :src="g.propic" class="goods-pic" />
+            <div class="goods-info">
+              <div class="g-name">{{ g.proname }}</div>
+              <div v-if="g.ggname" class="g-gg">{{ g.ggname }}</div>
+              <div class="g-price">￥{{ Number(g.sell_price).toFixed(2) }}</div>
+            </div>
+            <div class="g-num">×{{ g.num }}</div>
+          </div>
+          <div v-if="!(detail.prolist || []).length" class="none">暂无商品</div>
+        </div>
+        <div class="order-info">
+          <div class="item"><span class="t1">订单总价：</span><span class="t2 red">￥{{ Number(detail.pre_totalprice).toFixed(2) }}</span></div>
+          <div class="item"><span class="t1">实际支付：</span><span class="t2 red">￥{{ Number(detail.totalprice).toFixed(2) }}</span></div>
+          <div v-if="Number(detail.coupon_money) > 0" class="item"><span class="t1">优惠券抵扣：</span><span class="t2 red">￥{{ Number(detail.coupon_money).toFixed(2) }}</span></div>
+          <div v-if="Number(detail.scoredk_money) > 0" class="item"><span class="t1">积分抵扣：</span><span class="t2 red">￥{{ Number(detail.scoredk_money).toFixed(2) }}</span></div>
+          <div v-if="Number(detail.leveldk_money) > 0" class="item"><span class="t1">会员折扣：</span><span class="t2 red">￥{{ Number(detail.leveldk_money).toFixed(2) }}</span></div>
+          <div v-if="Number(detail.moling_money) > 0" class="item"><span class="t1">订单抹零：</span><span class="t2 red">￥{{ Number(detail.moling_money).toFixed(2) }}</span></div>
+          <div class="item"><span class="t1">订单编号：</span><span class="t2">{{ detail.ordernum }}</span></div>
+          <div class="item"><span class="t1">下单时间：</span><span class="t2">{{ formatTime(detail.createtime) }}</span></div>
+          <div class="item"><span class="t1">支付时间：</span><span class="t2">{{ detail.paytime ? formatTime(detail.paytime) : '暂无' }}</span></div>
+          <div class="item"><span class="t1">支付方式：</span><span class="t2">{{ detail.paytype || '暂无' }}</span></div>
+          <div class="item"><span class="t1">订单备注：</span><span class="t2">{{ detail.remark || '暂无' }}</span></div>
+        </div>
+        <div class="detail-footer">
+          <el-button type="primary" @click="closeDetail">关闭</el-button>
+        </div>
+      </template>
+    </el-card>
   </div>
 </template>
 
 <style scoped>
-.order-tabs {
-  margin-bottom: 8px;
-}
-
-.pagination {
-  margin-top: 16px;
-  justify-content: flex-end;
-}
-
-.detail-goods-title {
-  margin: 16px 0 8px;
-  font-weight: 600;
-}
+.toolbar { margin-bottom: 3px; }
+.toolbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.toolbar-left { display: flex; gap: 8px; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.tf-label { font-size: 13px; color: #606266; white-space: nowrap; }
+.search-btn { width: 30px; height: 30px; border: none; background: #67c23a; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; }
+.el-card { border-radius: 0; }
+.el-table :deep(th) { background: #e6e6e6; text-align: left; }
+.el-table :deep(td .cell) { text-align: left; }
+.pager { margin-top: 12px; justify-content: flex-end; }
+.member-cell { display: flex; align-items: center; gap: 6px; }
+.member-avatar { width: 40px; height: 40px; border-radius: 4px; object-fit: cover; }
+.none { color: #909399; }
+.red { color: #f56c6c; }
+.op-cell { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+/* 详情平铺 */
+.detail-header { display: flex; align-items: center; justify-content: space-between; }
+.close-x { width: 26px; height: 26px; border: 1px solid #dcdfe6; background: #fff; color: #606266; cursor: pointer; border-radius: 3px; }
+.goods-list { border-bottom: 1px dashed #e5e5e5; padding-bottom: 6px; }
+.goods-row { display: flex; align-items: center; padding: 6px 0; border-bottom: 1px dashed #e5e5e5; }
+.goods-row:last-child { border-bottom: 0; }
+.goods-pic { width: 60px; height: 60px; border-radius: 4px; object-fit: cover; }
+.goods-info { flex: 1; margin-left: 8px; }
+.g-name { color: #000; }
+.g-gg { color: #999; font-size: 12px; }
+.g-price { color: #ff4246; }
+.g-num { width: 50px; text-align: right; color: #606266; }
+.order-info { margin-top: 6px; }
+.order-info .item { display: flex; padding: 6px 0; border-bottom: 1px dashed #ededed; }
+.order-info .item:last-child { border-bottom: 0; }
+.order-info .t1 { width: 100px; color: #606266; }
+.order-info .t2 { flex: 1; }
+.detail-footer { margin-top: 12px; }
 </style>

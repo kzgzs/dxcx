@@ -50,3 +50,10 @@ export function refreshBindingAuth(platform: 'wx' | 'mp') {
     { platform },
   )
 }
+
+// 生成小程序代码包（支付宝/百度/QQ/抖音），返回下载地址
+export function downloadCodePackage(platform: PlatformKey) {
+  return request.post<unknown, { msg?: string; status?: number; url?: string }>(
+    `/admin/binding/downloadCode/${platform}`,
+  )
+}

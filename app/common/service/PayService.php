@@ -42,10 +42,12 @@ class PayService
         protected YuyueService $yuyueService,
         protected RestaurantService $restaurantService,
         protected BookingService $bookingService,
+        protected RestaurantTakeawayService $restaurantTakeawayService,
         protected FenxiaoService $fenxiaoService,
         protected UpLevelService $upLevelService,
         protected KechengService $kechengService,
-        protected DesignerService $designerService
+        protected DesignerService $designerService,
+        protected FormService $formService
     ) {
     }
 
@@ -56,9 +58,13 @@ class PayService
         'yuyue'      => 'yuyue_order',
         'restaurant' => 'restaurant_shop_order',
         'restaurant_booking' => 'restaurant_booking_order',
+        // 餐饮外卖（金额列 pay_amount 由 20261012000001 补列）
+        'restaurant_takeaway' => 'restaurant_takeaway_order',
         'kecheng'    => 'kecheng_order',
         // 任务305：设计页付费查看购买单
         'pageview'   => 'designer_page_buy',
+        // 自定义表单（租户设计表单开启在线支付后，C端提交走统一支付单）
+        'form'       => 'form_order',
     ];
 
     /**
@@ -249,11 +255,20 @@ class PayService
             throw new BusinessException('订单不存在', 404, 404);
         }
 
-        if (0 !== (int) $order['status']) {
-            if (in_array((int) $order['status'], [1, 2], true)) {
+        // form_order 口径：金额列 money、支付状态列 paystatus（status 为审核状态，不参与支付判定）
+        if ('form' === $orderType) {
+            if (0 !== (int) $order['paystatus']) {
                 return ['mock' => self::isMock(), 'status' => 1]; // 已支付：幂等
             }
-            throw new BusinessException('当前订单状态不可支付');
+            $payAmount = (float) $order['money'];
+        } else {
+            if (0 !== (int) $order['status']) {
+                if (in_array((int) $order['status'], [1, 2], true)) {
+                    return ['mock' => self::isMock(), 'status' => 1]; // 已支付：幂等
+                }
+                throw new BusinessException('当前订单状态不可支付');
+            }
+            $payAmount = (float) $order['pay_amount'];
         }
 
         // 支付单复用/创建（out_trade_no 全局唯一）
@@ -272,7 +287,7 @@ class PayService
                 'order_type'   => $orderType,
                 'biz_order_id' => $bizOrderId,
                 'out_trade_no' => $outTradeNo,
-                'pay_amount'   => (float) $order['pay_amount'],
+                'pay_amount'   => $payAmount,
                 'pay_type'     => $payType,
                 'status'       => 0,
                 'pay_time'     => 0,
@@ -360,8 +375,10 @@ class PayService
                 'yuyue'      => $this->yuyueService->onPaid($bizId, $payType, ''),
                 'restaurant' => $this->restaurantService->onPaid($bizId, $payType, ''),
                 'restaurant_booking' => $this->bookingService->onPaid($bizId, $payType, ''),
+                'restaurant_takeaway' => $this->restaurantTakeawayService->onPaid($bizId, $payType, $payNum),
                 'kecheng'    => $this->kechengService->onPaid($bizId, $payType, ''),
                 'pageview'   => $this->designerService->onPageBuyPaid($bizId, $payType, ''),
+                'form'       => $this->formService->onPaid($bizId, $payType, $payNum),
                 default      => false,
             };
         });

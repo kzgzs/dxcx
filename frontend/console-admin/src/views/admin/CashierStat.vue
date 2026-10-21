@@ -1,281 +1,223 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getCashierJiaoban, getCashierStat } from '../../api/cashier'
-import type { CashierStatData, JiaobanData } from '../../api/cashier'
+import { exportCashierTongji, getCashierTongji } from '../../api/cashier'
+import type { CashierTongjiRow } from '../../api/cashier'
 
-/* ============ 订单统计 ============ */
-const statLoading = ref(false)
-const stat = ref<CashierStatData | null>(null)
-const dateRange = ref<[string, string] | null>(null)
+// 对齐点大：按商品统计 / 按规格统计 双 tab
+const activeTab = ref(1)
 
-async function fetchStat() {
-  statLoading.value = true
-  try {
-    stat.value = await getCashierStat({
-      starttime: dateRange.value?.[0] || undefined,
-      endtime: dateRange.value?.[1] || undefined,
-    })
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    statLoading.value = false
-  }
-}
+const loading = ref(false)
+const exporting = ref(false)
+const tableData = ref<CashierTongjiRow[]>([])
+const total = ref(0)
+const totaldata = ref<{ num: number; totalprice: number; chengben: number; lirun: number } | null>(null)
 
-function handleQuickDay(offset: number) {
-  const fmt = (d: Date) =>
-    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
-  const day = new Date()
-  day.setDate(day.getDate() + offset)
-  const s = fmt(day)
-  dateRange.value = [s, s]
-  fetchStat()
-}
-
-/* ============ 交接班 ============ */
-const jiaobanLoading = ref(false)
-const jiaoban = ref<JiaobanData | null>(null)
-
-async function fetchJiaoban() {
-  jiaobanLoading.value = true
-  try {
-    jiaoban.value = await getCashierJiaoban()
-  } catch {
-    // 错误提示已由 axios 拦截器统一弹出
-  } finally {
-    jiaobanLoading.value = false
-  }
-}
-
-function handlePrintJiaoban() {
-  const j = jiaoban.value
-  if (!j) return
-  const rows = j.pay_stat
-    .map(
-      (p) => `<tr><td>${p.paytype}</td><td style="text-align:center">${p.count}</td>
-        <td style="text-align:right">¥${Number(p.money).toFixed(2)}</td></tr>`,
-    )
-    .join('')
-  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>交接班小票</title>
-<style>
-  body{font-family:'Microsoft YaHei',sans-serif;width:300px;margin:0 auto;font-size:12px;color:#333}
-  h2{text-align:center;margin:8px 0}
-  .meta{line-height:1.9}
-  table{width:100%;border-collapse:collapse;margin-top:6px}
-  th,td{padding:3px 2px;border-bottom:1px dashed #bbb}
-  th{border-bottom:1px solid #333;text-align:left}
-  .total{text-align:right;font-size:15px;font-weight:700;margin:8px 0}
-  .line{border-top:1px dashed #333;margin:6px 0}
-</style></head><body>
-<h2>交接班统计</h2>
-<div class="meta">
-  收银员：${j.cashdesk_user}<br>
-  上班时间：${j.logintime}<br>
-  交班时间：${j.jiaobantime}
-</div>
-<div class="line"></div>
-<div class="meta">
-  订单数：${j.ordercount}<br>
-  营业额：¥${Number(j.today_total_money).toFixed(2)}<br>
-  退款金额：¥${Number(j.refund_money).toFixed(2)}<br>
-  会员单数：${j.member_count}（¥${Number(j.member_money).toFixed(2)}）
-</div>
-<table><thead><tr><th>支付方式</th><th style="text-align:center">单数</th><th style="text-align:right">金额</th></tr></thead>
-<tbody>${rows}</tbody></table>
-<script>window.onload=function(){window.print()}<\/script>
-</body></html>`
-  const win = window.open('', '_blank', 'width=420,height=640')
-  if (!win) {
-    ElMessage.warning('请允许弹窗后重试打印')
-    return
-  }
-  win.document.write(html)
-  win.document.close()
-}
-
-onMounted(() => {
-  fetchStat()
-  fetchJiaoban()
+const query = reactive({
+  page: 1,
+  pagesize: 20,
+  ctime: null as [string, string] | null,
+  paytime: null as [string, string] | null,
+  field: '',
+  order: '',
 })
+
+async function fetchList() {
+  loading.value = true
+  try {
+    const data = await getCashierTongji({
+      type: activeTab.value,
+      page: query.page,
+      pagesize: query.pagesize,
+      ctime_start: query.ctime?.[0] || undefined,
+      ctime_end: query.ctime?.[1] || undefined,
+      paytime_start: query.paytime?.[0] || undefined,
+      paytime_end: query.paytime?.[1] || undefined,
+      field: query.field || undefined,
+      order: query.order || undefined,
+    })
+    tableData.value = data?.list || []
+    total.value = data?.total || 0
+    if (query.page === 1) {
+      totaldata.value = data?.totaldata || null
+    }
+  } catch {
+    // 错误提示已由 axios 拦截器统一弹出
+  } finally {
+    loading.value = false
+  }
+}
+
+function handleTab(tab: number) {
+  activeTab.value = tab
+  query.page = 1
+  fetchList()
+}
+
+function handleSearch() {
+  query.page = 1
+  fetchList()
+}
+
+// 服务端排序（对齐点大 autoSort:false）
+function handleSortChange(sort: { prop: string; order: 'ascending' | 'descending' | null }) {
+  if (!sort.order) {
+    query.field = ''
+    query.order = ''
+  } else {
+    query.field = sort.prop
+    query.order = sort.order === 'ascending' ? 'asc' : 'desc'
+  }
+  query.page = 1
+  fetchList()
+}
+
+// 导出（后端返回 title+data，前端生成带 BOM 的 CSV 下载）
+function csvEscape(val: string): string {
+  if (/[",\n]/.test(val)) return `"${val.replace(/"/g, '""')}"`
+  return val
+}
+async function handleExport() {
+  exporting.value = true
+  try {
+    const data = await exportCashierTongji({
+      type: activeTab.value,
+      ctime_start: query.ctime?.[0] || undefined,
+      ctime_end: query.ctime?.[1] || undefined,
+      paytime_start: query.paytime?.[0] || undefined,
+      paytime_end: query.paytime?.[1] || undefined,
+      field: query.field || undefined,
+      order: query.order || undefined,
+    })
+    if (!data.count) {
+      ElMessage.warning('没有可导出的数据')
+      return
+    }
+    const lines = [data.title, ...data.data].map((row) => row.map((c) => csvEscape(String(c))).join(','))
+    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `订单统计_${activeTab.value === 1 ? '按商品' : '按规格'}_${new Date().toISOString().slice(0, 10)}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+    ElMessage.success(`已导出 ${data.count} 条记录`)
+  } catch {
+    // 错误提示已由 axios 拦截器统一弹出
+  } finally {
+    exporting.value = false
+  }
+}
+
+onMounted(fetchList)
 </script>
 
 <template>
   <div>
-    <!-- 订单统计 -->
-    <el-card v-loading="statLoading" shadow="never">
-      <div class="list-title">订单统计</div>
-      <el-form inline @submit.prevent>
-        <el-form-item label="时间范围">
-          <el-date-picker
-            v-model="dateRange"
-            type="daterange"
-            range-separator="至"
-            start-placeholder="开始日期"
-            end-placeholder="结束日期"
-            value-format="YYYY-MM-DD"
-            style="width: 240px"
-          />
-        </el-form-item>
-        <el-form-item>
-          <el-button type="primary" @click="fetchStat">查询</el-button>
-          <el-button @click="handleQuickDay(0)">今日</el-button>
-          <el-button @click="handleQuickDay(-1)">昨日</el-button>
-          <el-button @click="handleQuickDay(-7)">7天前</el-button>
-        </el-form-item>
-      </el-form>
-
-      <template v-if="stat">
-        <el-row :gutter="12" class="stat-cards">
-          <el-col :span="6">
-            <div class="stat-card">
-              <div class="stat-label">订单数</div>
-              <div class="stat-value">{{ stat.order_count }}</div>
-            </div>
-          </el-col>
-          <el-col :span="6">
-            <div class="stat-card">
-              <div class="stat-label">营业额</div>
-              <div class="stat-value money">¥{{ Number(stat.total_money).toFixed(2) }}</div>
-            </div>
-          </el-col>
-          <el-col :span="6">
-            <div class="stat-card">
-              <div class="stat-label">会员单数</div>
-              <div class="stat-value">{{ stat.member_count }}</div>
-            </div>
-          </el-col>
-          <el-col :span="6">
-            <div class="stat-card">
-              <div class="stat-label">退款（{{ stat.refund_count }} 笔）</div>
-              <div class="stat-value danger">¥{{ Number(stat.refund_money).toFixed(2) }}</div>
-            </div>
-          </el-col>
-        </el-row>
-        <div class="stat-range">
-          统计区间：{{ stat.starttime }} ~ {{ stat.endtime }}（口径：已支付订单）
-        </div>
-
-        <el-row :gutter="12">
-          <el-col :span="12">
-            <div class="sub-title">按支付方式</div>
-            <el-table :data="stat.pay_stat" size="small" border>
-              <el-table-column prop="paytype" label="支付方式" min-width="140" />
-              <el-table-column prop="count" label="单数" width="90" />
-              <el-table-column label="金额" width="120">
-                <template #default="{ row }">¥{{ Number(row.money).toFixed(2) }}</template>
-              </el-table-column>
-            </el-table>
-          </el-col>
-          <el-col :span="12">
-            <div class="sub-title">按商品（销量前100）</div>
-            <el-table :data="stat.goods_stat" size="small" border max-height="360">
-              <el-table-column prop="proname" label="商品" min-width="140" show-overflow-tooltip />
-              <el-table-column prop="num" label="销量" width="90" />
-              <el-table-column label="金额" width="120">
-                <template #default="{ row }">¥{{ Number(row.money).toFixed(2) }}</template>
-              </el-table-column>
-            </el-table>
-          </el-col>
-        </el-row>
-      </template>
+    <el-card shadow="never" class="tab-card">
+      <div class="tabs">
+        <span :class="['tab', activeTab === 1 ? 'active' : '']" @click="handleTab(1)">按商品统计</span>
+        <span :class="['tab', activeTab === 2 ? 'active' : '']" @click="handleTab(2)">按规格统计</span>
+      </div>
     </el-card>
 
-    <!-- 交接班 -->
-    <el-card v-loading="jiaobanLoading" shadow="never" style="margin-top: 12px">
-      <div class="list-title">
-        交接班
-        <span class="sub-note">（统计本班登录后至今的收银数据）</span>
-        <el-button type="primary" size="small" style="margin-left: 12px" @click="fetchJiaoban">
-          刷新
-        </el-button>
-        <el-button size="small" :disabled="!jiaoban" @click="handlePrintJiaoban">
-          打印交班小票
-        </el-button>
+    <el-card shadow="never" class="toolbar">
+      <div class="toolbar-inner">
+        <div class="toolbar-left">
+          <el-button :loading="exporting" @click="handleExport">导出</el-button>
+        </div>
+        <div class="toolbar-right">
+          <span class="tf-label">下单时间</span>
+          <el-date-picker
+            v-model="query.ctime"
+            type="daterange"
+            range-separator="~"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            value-format="YYYY-MM-DD"
+            style="width: 200px"
+          />
+          <span class="tf-label">付款时间</span>
+          <el-date-picker
+            v-model="query.paytime"
+            type="daterange"
+            range-separator="~"
+            start-placeholder="开始"
+            end-placeholder="结束"
+            value-format="YYYY-MM-DD"
+            style="width: 200px"
+          />
+          <button class="search-btn" title="搜索" @click="handleSearch">
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M11.4 10.2a6 6 0 1 0-1.2 1.2l3.4 3.4 1.2-1.2-3.4-3.4zM7 11a4 4 0 1 1 0-8 4 4 0 0 1 0 8z"/></svg>
+          </button>
+        </div>
       </div>
+    </el-card>
 
-      <template v-if="jiaoban">
-        <el-descriptions :column="3" border size="small">
-          <el-descriptions-item label="收银员">{{ jiaoban.cashdesk_user }}</el-descriptions-item>
-          <el-descriptions-item label="上班时间">{{ jiaoban.logintime }}</el-descriptions-item>
-          <el-descriptions-item label="交班时间">{{ jiaoban.jiaobantime }}</el-descriptions-item>
-          <el-descriptions-item label="订单数">{{ jiaoban.ordercount }}</el-descriptions-item>
-          <el-descriptions-item label="营业额">
-            ¥{{ Number(jiaoban.today_total_money).toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="退款金额">
-            ¥{{ Number(jiaoban.refund_money).toFixed(2) }}
-          </el-descriptions-item>
-          <el-descriptions-item label="会员单数">{{ jiaoban.member_count }}</el-descriptions-item>
-          <el-descriptions-item label="会员金额" :span="2">
-            ¥{{ Number(jiaoban.member_money).toFixed(2) }}
-          </el-descriptions-item>
-        </el-descriptions>
+    <!-- 汇总条（page=1 时后端返回 totaldata） -->
+    <el-card shadow="never" class="summary">
+      <div class="summary-inner">
+        <span>总销售数量：<b>{{ totaldata?.num ?? 0 }}</b></span>
+        <span>总销售金额：<b>{{ (totaldata?.totalprice ?? 0).toFixed(2) }}</b></span>
+        <span>总商品成本：<b>{{ (totaldata?.chengben ?? 0).toFixed(2) }}</b></span>
+        <span>毛利润：<b>{{ (totaldata?.lirun ?? 0).toFixed(2) }}</b></span>
+      </div>
+    </el-card>
 
-        <div class="sub-title">本班收款明细（按支付方式）</div>
-        <el-table :data="jiaoban.pay_stat" size="small" border>
-          <el-table-column prop="paytype" label="支付方式" min-width="140" />
-          <el-table-column prop="count" label="单数" width="90" />
-          <el-table-column label="金额" width="120">
-            <template #default="{ row }">¥{{ Number(row.money).toFixed(2) }}</template>
-          </el-table-column>
-        </el-table>
-      </template>
+    <el-card shadow="never">
+      <el-table v-loading="loading" :data="tableData" border @sort-change="handleSortChange">
+        <el-table-column prop="ph" label="排名" width="70" />
+        <el-table-column label="商品名称" min-width="300">
+          <template #default="{ row }">
+            <div class="goods-cell">
+              <img :src="row.pic" class="goods-pic" />
+              <span>{{ row.name }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="activeTab === 2" prop="ggname" label="商品规格" min-width="140" />
+        <el-table-column prop="num" label="销售数量" width="110" sortable="custom" />
+        <el-table-column prop="totalprice" label="销售金额" width="120" sortable="custom">
+          <template #default="{ row }">{{ Number(row.totalprice).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column prop="avgprice" label="平均单价" width="110" sortable="custom">
+          <template #default="{ row }">{{ Number(row.avgprice).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column prop="chengben" label="总商品成本" width="120" sortable="custom">
+          <template #default="{ row }">{{ Number(row.chengben).toFixed(2) }}</template>
+        </el-table-column>
+        <el-table-column prop="lirun" label="毛利润" width="120" sortable="custom">
+          <template #default="{ row }">{{ Number(row.lirun).toFixed(2) }}</template>
+        </el-table-column>
+      </el-table>
+
+      <el-pagination
+        class="pager" background layout="total, sizes, prev, pager, next, jumper"
+        :total="total" v-model:current-page="query.page" v-model:page-size="query.pagesize"
+        :page-sizes="[10, 20, 50]" @current-change="fetchList" @size-change="handleSearch"
+      />
     </el-card>
   </div>
 </template>
 
 <style scoped>
-.list-title {
-  font-size: 16px;
-  font-weight: 600;
-  margin-bottom: 16px;
-}
-
-.sub-note {
-  font-size: 12px;
-  color: #909399;
-  font-weight: 400;
-}
-
-.stat-cards {
-  margin-bottom: 12px;
-}
-
-.stat-card {
-  background: #f5f7fa;
-  border-radius: 6px;
-  padding: 14px 16px;
-}
-
-.stat-label {
-  color: #909399;
-  font-size: 13px;
-}
-
-.stat-value {
-  font-size: 22px;
-  font-weight: 700;
-  color: #303133;
-  margin-top: 4px;
-}
-
-.stat-value.money {
-  color: #f56c6c;
-}
-
-.stat-value.danger {
-  color: #e6a23c;
-}
-
-.stat-range {
-  color: #909399;
-  font-size: 12px;
-  margin-bottom: 12px;
-}
-
-.sub-title {
-  font-weight: 600;
-  margin: 12px 0 8px;
-}
+.tab-card { margin-bottom: 3px; }
+.tabs { display: flex; gap: 24px; }
+.tab { cursor: pointer; padding: 6px 4px; font-size: 14px; color: #606266; border-bottom: 2px solid transparent; }
+.tab.active { color: #409eff; border-bottom-color: #409eff; font-weight: 600; }
+.toolbar { margin-bottom: 3px; }
+.toolbar-inner { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: nowrap; }
+.toolbar-left { display: flex; gap: 8px; }
+.toolbar-right { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; }
+.tf-label { font-size: 13px; color: #606266; white-space: nowrap; }
+.search-btn { width: 30px; height: 30px; border: none; background: #67c23a; color: #fff; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; border-radius: 3px; }
+.summary { margin-bottom: 3px; }
+.summary-inner { display: flex; gap: 60px; }
+.summary-inner b { font-weight: 700; }
+.el-card { border-radius: 0; }
+.el-table :deep(th) { background: #e6e6e6; text-align: left; }
+.el-table :deep(td .cell) { text-align: left; }
+.pager { margin-top: 12px; justify-content: flex-end; }
+.goods-cell { display: flex; align-items: center; gap: 8px; }
+.goods-pic { width: 50px; height: 50px; border-radius: 4px; object-fit: cover; }
 </style>

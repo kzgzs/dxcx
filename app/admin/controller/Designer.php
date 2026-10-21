@@ -1151,7 +1151,6 @@ class Designer extends BaseController
             ['name' => '营销功能>团购活动', 'url' => '/pages/tuangou/index'],
             ['name' => '营销功能>秒杀活动', 'url' => '/pages/seckill/index'],
             ['name' => '营销功能>周期购', 'url' => '/pages/cycle/index'],
-            ['name' => '营销功能>活动日历', 'url' => '/pagesD/calendar/index'],
             ['name' => '会员功能>会员等级', 'url' => '/pages/level/level'],
             ['name' => '会员功能>余额明细', 'url' => '/pages/money/log'],
             ['name' => '会员功能>佣金明细', 'url' => '/pages/commission/log'],

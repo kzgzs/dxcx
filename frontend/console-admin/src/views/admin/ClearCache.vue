@@ -1,100 +1,104 @@
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { adminClearCache } from '../../api/admin'
 
-// 租户后台「系统-清理缓存」：对接后端 /admin/system/clearCache
-// 点击当页执行 + 原地 ElMessage 提示，不刷新不跳转
 const clearing = ref(false)
-const lastResult = ref<string[]>([])
+const selected = ref<string[]>([])
+const cacheCategories = [
+  { label: '系统-系统设置', value: 'sysset' },
+  { label: '商城-系统设置', value: 'shop_sysset' },
+  { label: '商户-系统设置', value: 'business_sysset' },
+]
+
+const testCategory = ref('')
+const testParam = ref('')
+const testResult = ref('')
+const categoryOptions = [
+  { label: '系统设置', value: 'sysset' },
+  { label: '商城设置', value: 'shop' },
+  { label: '商户设置', value: 'business' },
+]
 
 async function handleClear() {
-  if (clearing.value) return
+  if (selected.value.length === 0) {
+    ElMessage.warning('请勾选要清理的内容')
+    return
+  }
   clearing.value = true
   try {
-    const data = await adminClearCache()
-    lastResult.value = data.results || []
+    await adminClearCache({ keys: selected.value })
     ElMessage.success('缓存清理完成')
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // 拦截器统一提示
   } finally {
     clearing.value = false
   }
 }
+
+async function handleTestQuery() {
+  if (!testCategory.value) {
+    ElMessage.warning('请先选择设置分类')
+    return
+  }
+  testResult.value = '缓存数据查询结果'
+}
+
+onMounted(() => {})
 </script>
 
 <template>
-  <el-card shadow="never">
-    <template #header>
-      <span>清理缓存</span>
-    </template>
-
-    <div class="clear-box">
-      <div class="clear-icon">🧹</div>
-      <div class="clear-title">一键清理系统缓存</div>
-      <div class="clear-desc">
-        清理范围：Redis 缓存数据 + runtime 缓存文件。不删除业务数据，不清理日志。
-        遇到页面数据不更新、配置改了没生效时，可以先来这里清一下。
-      </div>
-      <el-button type="primary" size="large" :loading="clearing" @click="handleClear">
-        {{ clearing ? '正在清理…' : '立即清理缓存' }}
-      </el-button>
-
-      <div v-if="lastResult.length" class="clear-result">
-        <div class="result-title">清理明细：</div>
-        <div v-for="(line, idx) in lastResult" :key="idx" class="result-line">
-          {{ line }}
-        </div>
-      </div>
+  <div class="clear-page">
+    <div class="page-card">
+      <div class="card-title">清理缓存</div>
+      <el-form label-width="90px">
+        <el-form-item label="清理内容：">
+          <el-checkbox-group v-model="selected">
+            <el-checkbox v-for="c in cacheCategories" :key="c.value" :value="c.value">{{ c.label }}</el-checkbox>
+          </el-checkbox-group>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" :loading="clearing" @click="handleClear">提 交</el-button>
+        </el-form-item>
+      </el-form>
     </div>
-  </el-card>
+
+    <div class="page-card">
+      <div class="card-title">测试获取缓存数据</div>
+      <el-form label-width="90px">
+        <el-form-item label="设置分类：">
+          <el-select v-model="testCategory" placeholder="请选择设置分类" clearable>
+            <el-option v-for="o in categoryOptions" :key="o.value" :label="o.label" :value="o.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="设置参数：">
+          <el-select v-model="testParam" placeholder="请先选择分类" clearable :disabled="!testCategory">
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-button type="primary" @click="handleTestQuery">查 询</el-button>
+        </el-form-item>
+      </el-form>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.clear-box {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  padding: 40px 20px;
-  gap: 14px;
+.clear-page {
+  padding: 3px;
 }
-
-.clear-icon {
-  font-size: 44px;
+.page-card {
+  background: #fff;
+  border-radius: 4px;
+  padding: 12px;
+  margin-bottom: 3px;
 }
-
-.clear-title {
-  font-size: 17px;
+.card-title {
+  font-size: 14px;
   font-weight: 600;
   color: #303133;
-}
-
-.clear-desc {
-  max-width: 520px;
-  text-align: center;
-  color: #909399;
-  font-size: 13px;
-  line-height: 1.8;
-}
-
-.clear-result {
-  margin-top: 10px;
-  padding: 12px 16px;
-  background-color: #f0f9eb;
-  border-radius: 6px;
-  min-width: 320px;
-}
-
-.result-title {
-  color: #67c23a;
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 6px;
-}
-
-.result-line {
-  color: #606266;
-  font-size: 13px;
-  line-height: 1.8;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid #ebeef5;
 }
 </style>

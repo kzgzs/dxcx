@@ -74,27 +74,61 @@ class CashierService
     }
 
     /**
-     * 收银设置详情（配置 + 自定义支付字典 + 可用支付方式列表）
+     * 收银设置详情（配置 + 自定义支付字典 + 打印机 + 微信支付设置 + 地址链接）
+     * 对齐点大 cashier_set/index：收银台地址/登录地址/主色调/抹零/收款方式/交班打印机/
+     * 会员ID搜索/积分赠送/微信支付设置（普通与服务商模式）
      */
     public function deskConfig(int $aid): array
     {
         $row = $this->deskRow($aid);
 
+        // 前端单页应用地址：生产同域部署留空（取当前域名），本地 dev 配 FRONTEND_URL
+        $frontendUrl = rtrim(trim((string) env('FRONTEND_URL', '')), '/');
+        $base        = $frontendUrl !== '' ? $frontendUrl : request()->domain();
+
+        // 交班打印机候选：小票打印机（machine_type=0）
+        $printers = Db::name('wifiprint_set')
+            ->where('aid', $aid)->where('bid', self::BID)->where('machine_type', 0)
+            ->order('id', 'asc')->column('name', 'id');
+        $printerList = [];
+        foreach ($printers as $pid => $pname) {
+            $printerList[] = ['id' => (int) $pid, 'name' => (string) $pname];
+        }
+
+        // 微信支付设置（admin_setapp_cashdesk）；密钥类内容回显隐藏，只告知是否已配置
+        $pinfo = Db::name('admin_setapp_cashdesk')
+            ->where('aid', $aid)->where('bid', self::BID)->find();
+
         return [
-            'id'                   => (int) $row['id'],
-            'name'                 => (string) ($row['name'] ?? '收银台'),
-            'wxpay'                => (int) ($row['wxpay'] ?? 0) ? 1 : 0,
-            'cashpay'              => (int) ($row['cashpay'] ?? 0) ? 1 : 0,
-            'moneypay'             => (int) ($row['moneypay'] ?? 0) ? 1 : 0,
-            'remove_zero_length'   => (int) ($row['remove_zero_length'] ?? 0),
-            'paypwd_use_status'    => (int) ($row['paypwd_use_status'] ?? 0) ? 1 : 0,
-            'jiaoban_print_ids'    => (string) ($row['jiaoban_print_ids'] ?? ''),
-            'custom_pays'          => $this->customPayList($aid, false),
+            'id'                      => (int) $row['id'],
+            'name'                    => (string) ($row['name'] ?? '收银台'),
+            'color1'                  => (string) ($row['color1'] ?? '#1aad19'),
+            'wxpay'                   => (int) ($row['wxpay'] ?? 0) ? 1 : 0,
+            'cashpay'                 => (int) ($row['cashpay'] ?? 0) ? 1 : 0,
+            'moneypay'                => (int) ($row['moneypay'] ?? 0) ? 1 : 0,
+            'remove_zero_length'      => (int) ($row['remove_zero_length'] ?? 0),
+            'paypwd_use_status'       => (int) ($row['paypwd_use_status'] ?? 0) ? 1 : 0,
+            'jiaoban_print_ids'       => (string) ($row['jiaoban_print_ids'] ?? ''),
+            'is_use_mid_search'       => (int) ($row['is_use_mid_search'] ?? 1) ? 1 : 0,
+            'cashdesk_give_score_set' => in_array((int) ($row['cashdesk_give_score_set'] ?? 1), [1, 2], true) ? (int) $row['cashdesk_give_score_set'] : 1,
+            'printers'                => $printerList,
+            'cashier_url'             => $base . '/#/cashierdesk',
+            'login_url'               => $base . '/#/login?redirect=/cashierdesk',
+            'pinfo'                   => [
+                'wxpay_type'           => (int) ($pinfo['wxpay_type'] ?? 0),
+                'appid'                => (string) ($pinfo['appid'] ?? ''),
+                'wxpay_sub_mchid'      => (string) ($pinfo['wxpay_sub_mchid'] ?? ''),
+                'wxpay_mchid'          => (string) ($pinfo['wxpay_mchid'] ?? ''),
+                // 密钥/证书内容不回显明文，只回显是否已配置（对齐点大遮罩口径）
+                'wxpay_mchkey'         => !empty($pinfo['wxpay_mchkey']) ? '******' : '',
+                'wxpay_apiclient_cert' => (string) ($pinfo['wxpay_apiclient_cert'] ?? ''),
+                'wxpay_apiclient_key'  => (string) ($pinfo['wxpay_apiclient_key'] ?? ''),
+            ],
         ];
     }
 
     /**
-     * 保存收银设置
+     * 保存收银设置（含微信支付设置 pinfo）
      */
     public function saveDeskConfig(int $aid, array $data): void
     {
@@ -105,16 +139,71 @@ class CashierService
             throw new BusinessException('抹零位数取值 0-3');
         }
 
+        // 交班打印机：数组或逗号分隔串均兼容
+        $printIds = $data['jiaoban_print_ids'] ?? '';
+        if (is_array($printIds)) {
+            $printIds = implode(',', array_map('intval', $printIds));
+        }
+
         Db::name('restaurant_cashdesk')->where('id', (int) $row['id'])->update([
-            'name'               => trim((string) ($data['name'] ?? $row['name'])),
-            'wxpay'              => (int) ($data['wxpay'] ?? 0) === 1 ? 1 : 0,
-            'cashpay'            => (int) ($data['cashpay'] ?? 0) === 1 ? 1 : 0,
-            'moneypay'           => (int) ($data['moneypay'] ?? 0) === 1 ? 1 : 0,
-            'remove_zero_length' => $length,
-            'paypwd_use_status'  => (int) ($data['paypwd_use_status'] ?? 0) === 1 ? 1 : 0,
-            'jiaoban_print_ids'  => trim((string) ($data['jiaoban_print_ids'] ?? '')),
-            'updatetime'         => time(),
+            'name'                    => trim((string) ($data['name'] ?? $row['name'])),
+            'color1'                  => trim((string) ($data['color1'] ?? ($row['color1'] ?? '#1aad19'))),
+            'wxpay'                   => (int) ($data['wxpay'] ?? 0) === 1 ? 1 : 0,
+            'cashpay'                 => (int) ($data['cashpay'] ?? 0) === 1 ? 1 : 0,
+            'moneypay'                => (int) ($data['moneypay'] ?? 0) === 1 ? 1 : 0,
+            'remove_zero_length'      => $length,
+            'paypwd_use_status'       => (int) ($data['paypwd_use_status'] ?? 0) === 1 ? 1 : 0,
+            'jiaoban_print_ids'       => trim((string) $printIds),
+            'is_use_mid_search'       => (int) ($data['is_use_mid_search'] ?? 1) === 1 ? 1 : 0,
+            'cashdesk_give_score_set' => in_array((int) ($data['cashdesk_give_score_set'] ?? 1), [1, 2], true) ? (int) $data['cashdesk_give_score_set'] : 1,
+            'updatetime'              => time(),
         ]);
+
+        // 微信支付设置（admin_setapp_cashdesk）
+        $pinfo = $data['pinfo'] ?? [];
+        if (!empty($pinfo) && is_array($pinfo)) {
+            $this->savePayConfig($aid, $pinfo);
+        }
+    }
+
+    /**
+     * 保存微信支付设置（普通/服务商模式，证书需 .pem 后缀）
+     */
+    public function savePayConfig(int $aid, array $pinfo): void
+    {
+        $cert = trim((string) ($pinfo['wxpay_apiclient_cert'] ?? ''));
+        $key  = trim((string) ($pinfo['wxpay_apiclient_key'] ?? ''));
+        if ($cert !== '' && substr($cert, -4) !== '.pem') {
+            throw new BusinessException('PEM证书格式错误');
+        }
+        if ($key !== '' && substr($key, -4) !== '.pem') {
+            throw new BusinessException('证书密钥格式错误');
+        }
+
+        $save = [
+            'wxpay_type'           => (int) ($pinfo['wxpay_type'] ?? 0) === 1 ? 1 : 0,
+            'appid'                => trim((string) ($pinfo['appid'] ?? '')),
+            'wxpay_sub_mchid'      => trim((string) ($pinfo['wxpay_sub_mchid'] ?? '')),
+            'wxpay_mchid'          => trim((string) ($pinfo['wxpay_mchid'] ?? '')),
+            'wxpay_apiclient_cert' => $cert,
+            'wxpay_apiclient_key'  => $key,
+        ];
+        // 密钥回显为遮罩时不覆盖原值
+        $mchkey = (string) ($pinfo['wxpay_mchkey'] ?? '');
+        if ($mchkey !== '' && $mchkey !== '******') {
+            $save['wxpay_mchkey'] = trim($mchkey);
+        }
+
+        $exists = Db::name('admin_setapp_cashdesk')
+            ->where('aid', $aid)->where('bid', self::BID)->find();
+        if ($exists) {
+            Db::name('admin_setapp_cashdesk')
+                ->where('aid', $aid)->where('bid', self::BID)->update($save);
+        } else {
+            $save['aid'] = $aid;
+            $save['bid'] = self::BID;
+            Db::name('admin_setapp_cashdesk')->insert($save);
+        }
     }
 
     /**
@@ -1286,7 +1375,11 @@ class CashierService
             $list[] = $this->formatOrder($aid, $o, false);
         }
 
-        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize];
+        // 是否有启用的小票打印机（对齐点大 hasprint，控制操作列「打印小票」）
+        $hasprint = Db::name('wifiprint_set')
+            ->where('aid', $aid)->where('bid', self::BID)->where('status', 1)->count() > 0 ? 1 : 0;
+
+        return ['list' => $list, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize, 'hasprint' => $hasprint];
     }
 
     /**
@@ -1304,21 +1397,27 @@ class CashierService
     }
 
     /**
-     * 订单格式化
+     * 订单格式化（状态口径对齐点大：未支付/已支付/挂单/已关闭/已退款）
      */
     protected function formatOrder(int $aid, array $o, bool $withGoods): array
     {
         $statusMap = [
-            self::ORDER_WAIT   => '结算等待中',
-            self::ORDER_PAID   => '已完成',
+            self::ORDER_WAIT   => '未支付',
+            self::ORDER_PAID   => '已支付',
             self::ORDER_HANGUP => '挂单',
+            4                  => '已关闭',
             self::ORDER_REFUND => '已退款',
         ];
-        $refundMap = [0 => '', 1 => '退款审核中', 2 => '已同意退款', 3 => '已驳回退款'];
+        $refundMap = [0 => '', 1 => '已退款', 2 => '已同意退款', 3 => '已驳回退款'];
 
         $nickname = '';
+        $headimg  = '';
         if ((int) ($o['mid'] ?? 0) > 0) {
-            $nickname = (string) (Db::name('member')->where('id', (int) $o['mid'])->value('nickname') ?? '');
+            $member = Db::name('member')->where('id', (int) $o['mid'])->field('nickname,headimg')->find();
+            if (!empty($member)) {
+                $nickname = (string) ($member['nickname'] ?? '');
+                $headimg  = (string) ($member['headimg'] ?? '');
+            }
         }
         $adminUser = '超级管理员';
         if ((int) ($o['uid'] ?? 0) > 0) {
@@ -1332,6 +1431,7 @@ class CashierService
             'status_desc'     => $statusMap[(int) ($o['status'] ?? 0)] ?? '未知',
             'mid'             => (int) ($o['mid'] ?? 0),
             'nickname'        => $nickname,
+            'headimg'         => $headimg,
             'admin_user'      => $adminUser,
             'uid'             => (int) ($o['uid'] ?? 0),
             'paytypeid'       => (int) ($o['paytypeid'] ?? 0),
@@ -1339,6 +1439,8 @@ class CashierService
             'paynum'          => (string) ($o['paynum'] ?? ''),
             'pre_totalprice'  => round((float) ($o['pre_totalprice'] ?? 0), 2),
             'totalprice'      => round((float) ($o['totalprice'] ?? 0), 2),
+            'coupon_money'    => round((float) ($o['coupon_money'] ?? 0), 2),
+            'scoredk_money'   => round((float) ($o['scoredk_money'] ?? 0), 2),
             'leveldk_money'   => round((float) ($o['leveldk_money'] ?? 0), 2),
             'moling_money'    => round((float) ($o['moling_money'] ?? 0), 2),
             'remove_zero'     => (int) ($o['remove_zero'] ?? 0),
@@ -1492,6 +1594,251 @@ class CashierService
                 'refund_checkremark' => mb_substr($checkRemark, 0, 200),
             ]);
         });
+    }
+
+    /**
+     * 直接退款（对齐点大 refund：一步到位，无申请+审核流程）
+     * 校验已支付(status=1)且 refund_status∈[0,3]；余额退回会员余额并写流水、
+     * 商品回库存、更新 payorder 退款标记，置 status=10/refund_status=1
+     */
+    public function refund(int $aid, int $orderId, float $refundMoney, string $remark): void
+    {
+        $order = ScopeService::query('cashier_order', $aid)
+            ->where('bid', self::BID)->where('id', $orderId)->find();
+        if (empty($order) || self::ORDER_PAID !== (int) $order['status']
+            || !in_array((int) ($order['refund_status'] ?? 0), [0, 3], true)) {
+            throw new BusinessException('订单信息有误');
+        }
+
+        $refundMoney = round($refundMoney, 2);
+        $maxRefund   = round((float) $order['totalprice'] - (float) ($order['refund_money'] ?? 0), 2);
+        if ($refundMoney <= 0 || $refundMoney > $maxRefund) {
+            throw new BusinessException('退款金额有误');
+        }
+
+        Db::transaction(function () use ($aid, $order, $orderId, $refundMoney, $remark) {
+            $mid = (int) ($order['mid'] ?? 0);
+
+            // 余额支付：退回会员余额 + 流水
+            if (self::PAY_MONEY === (int) $order['paytypeid'] && $mid > 0) {
+                $member = Db::name('member')->where('aid', $aid)->where('id', $mid)->lock(true)->find();
+                if (!empty($member)) {
+                    $after = round((float) ($member['money'] ?? 0) + $refundMoney, 2);
+                    Db::name('member')->where('id', $mid)->where('aid', $aid)->update(['money' => $after]);
+                    Db::name('member_moneylog')->insert([
+                        'aid'        => $aid,
+                        'mid'        => $mid,
+                        'money'      => $refundMoney,
+                        'after'      => $after,
+                        'createtime' => time(),
+                        'remark'     => '收银台订单退款，订单号：' . (string) ($order['ordernum'] ?? ''),
+                        'paytype'    => 'cashier',
+                    ]);
+                }
+            }
+
+            // 商品库存回退（protype=1）
+            $goods = Db::name('cashier_order_goods')->where('aid', $aid)->where('orderid', $orderId)->select()->toArray();
+            foreach ($goods as $g) {
+                if (1 !== (int) $g['protype']) {
+                    continue;
+                }
+                $num = (int) $g['num'];
+                if ((int) $g['ggid'] > 0) {
+                    Db::name('shop_guige')->where('aid', $aid)->where('id', (int) $g['ggid'])
+                        ->inc('stock', $num)->dec('sales', $num)->update();
+                }
+                Db::name('shop_product')->where('aid', $aid)->where('id', (int) $g['proid'])
+                    ->inc('stock', $num)->dec('sales', $num)->update();
+            }
+
+            // 支付单退款标记（累加退款额）
+            if ((int) ($order['payorderid'] ?? 0) > 0) {
+                $payorder = Db::name('payorder')->where('id', (int) $order['payorderid'])->find();
+                if (!empty($payorder)) {
+                    Db::name('payorder')->where('id', (int) $order['payorderid'])->update([
+                        'refund_money' => round((float) ($payorder['refund_money'] ?? 0) + $refundMoney, 2),
+                        'refund_time'  => time(),
+                    ]);
+                }
+            }
+
+            Db::name('cashier_order')->where('id', $orderId)->update([
+                'refund_money'  => round((float) ($order['refund_money'] ?? 0) + $refundMoney, 2),
+                'refund_reason' => mb_substr($remark, 0, 200),
+                'refund_status' => 1,
+                'status'        => self::ORDER_REFUND,
+                'refund_time'   => time(),
+            ]);
+        });
+    }
+
+    /**
+     * 打印小票（对齐点大 wifiprint：校验有启用的小票打印机，生成小票内容）
+     * 云打印在线通道与餐饮打印机一致暂未开放，此处校验配置并生成小票返回
+     */
+    public function wifiprint(int $aid, int $orderId): array
+    {
+        $order = ScopeService::query('cashier_order', $aid)
+            ->where('bid', self::BID)->where('id', $orderId)->find();
+        if (empty($order)) {
+            throw new BusinessException('订单不存在', 404, 404);
+        }
+
+        $machines = Db::name('wifiprint_set')
+            ->where('aid', $aid)->where('bid', self::BID)->where('status', 1)->select()->toArray();
+        if (empty($machines)) {
+            throw new BusinessException('请先在「系统-小票打印机」中添加并启用打印机');
+        }
+
+        $goods = Db::name('cashier_order_goods')->where('orderid', $orderId)
+            ->order('id', 'asc')->select()->toArray();
+        $lines   = [];
+        $lines[] = '订单号：' . (string) ($order['ordernum'] ?? '');
+        foreach ($goods as $g) {
+            $lines[] = sprintf('%s x%d  ￥%.2f', (string) $g['proname'], (int) $g['num'], (float) $g['totalprice']);
+        }
+        $lines[] = '实际支付：￥' . number_format((float) $order['totalprice'], 2, '.', '');
+
+        return ['status' => 1, 'msg' => '小票已发送至打印机', 'content' => implode("\n", $lines)];
+    }
+
+    /**
+     * 订单导出（对齐点大 excel：返回 title + data，前端生成 CSV 下载）
+     */
+    public function orderExcel(int $aid, array $f): array
+    {
+        $query = ScopeService::query('cashier_order', $aid)->where('bid', self::BID);
+        if ('' !== (string) ($f['status'] ?? '') && null !== ($f['status'] ?? null)) {
+            $query->where('status', (int) $f['status']);
+        }
+        if ('' !== trim((string) ($f['ordernum'] ?? ''))) {
+            $query->whereLike('ordernum', '%' . trim((string) $f['ordernum']) . '%');
+        }
+        if ((int) ($f['mid'] ?? 0) > 0) {
+            $query->where('mid', (int) $f['mid']);
+        }
+        $range = $this->timeRange((string) ($f['starttime'] ?? ''), (string) ($f['endtime'] ?? ''));
+        if (null !== $range) {
+            $query->whereBetween('createtime', $range);
+        }
+
+        $list  = $query->order('id', 'desc')->select()->toArray();
+        $title = ['ID', '订单编号', '会员信息', '实付金额', '创建时间', '付款时间', '支付方式', '收银员', '状态', '备注'];
+        $data  = [];
+        foreach ($list as $vo) {
+            $o      = $this->formatOrder($aid, $vo, false);
+            $data[] = [
+                $o['id'],
+                $o['ordernum'],
+                $o['mid'] > 0 ? $o['nickname'] . '(会员ID:' . $o['mid'] . ')' : '暂无',
+                $o['totalprice'],
+                $o['createtime'] ? date('Y-m-d H:i:s', $o['createtime']) : '暂无',
+                $o['paytime'] ? date('Y-m-d H:i:s', $o['paytime']) : '暂无',
+                $o['paytype'],
+                $o['admin_user'],
+                $o['status_desc'],
+                $o['remark'],
+            ];
+        }
+
+        return ['title' => $title, 'data' => $data, 'count' => count($data)];
+    }
+
+    /**
+     * 订单统计（对齐点大 tongji：type=1 按商品 group proid2 / type=2 按规格 group ggid）
+     * 支持下单时间/付款时间范围、服务端排序（白名单）、分页、page=1 返回 totaldata 汇总
+     */
+    public function tongji(int $aid, array $f, int $page, int $pageSize): array
+    {
+        $type = 2 === (int) ($f['type'] ?? 1) ? 2 : 1;
+
+        $where   = [];
+        $where[] = ['og.aid', '=', $aid];
+        $where[] = ['og.bid', '=', self::BID];
+        if ('' !== trim((string) ($f['ctime_start'] ?? '')) && '' !== trim((string) ($f['ctime_end'] ?? ''))) {
+            $where[] = ['og.createtime', '>=', strtotime((string) $f['ctime_start'])];
+            $where[] = ['og.createtime', '<', strtotime((string) $f['ctime_end']) + 86400];
+        }
+        if ('' !== trim((string) ($f['paytime_start'] ?? '')) && '' !== trim((string) ($f['paytime_end'] ?? ''))) {
+            $where[] = ['cashier_order.paytime', '>=', strtotime((string) $f['paytime_start'])];
+            $where[] = ['cashier_order.paytime', '<', strtotime((string) $f['paytime_end']) + 86400];
+        }
+
+        $fields = 'MAX(og.proid) as proid,MAX(og.proname) as name,MAX(og.propic) as pic,MAX(og.ggname) as ggname,'
+            . 'sum(og.num) num,sum(og.totalprice) totalprice,sum(og.totalprice)/sum(og.num) as avgprice,'
+            . 'sum(og.cost_price*og.num) as chengben,sum(og.totalprice-og.cost_price*og.num) lirun';
+        $group = 2 === $type ? 'ggid' : 'proid2';
+
+        $count = 0 + Db::name('cashier_order_goods')->alias('og')
+            ->join('cashier_order', 'cashier_order.id=og.orderid')
+            ->fieldRaw(2 === $type ? 'og.ggid' : 'og.proid2')
+            ->where($where)->group($group)->count();
+
+        // 排序白名单（防注入），默认销售金额降序
+        $sortFields = ['num', 'totalprice', 'avgprice', 'chengben', 'lirun'];
+        $field      = (string) ($f['field'] ?? '');
+        $dir        = strtolower((string) ($f['order'] ?? ''));
+        $order      = in_array($field, $sortFields, true) && in_array($dir, ['asc', 'desc'], true)
+            ? $field . ' ' . $dir
+            : 'totalprice desc';
+
+        $list = Db::name('cashier_order_goods')->alias('og')
+            ->join('cashier_order', 'cashier_order.id=og.orderid')
+            ->fieldRaw($fields)->where($where)->group($group)
+            ->page($page, $pageSize)->order($order)->select()->toArray();
+
+        $totaldata = null;
+        if (1 === $page) {
+            $t = Db::name('cashier_order_goods')->alias('og')
+                ->join('cashier_order', 'cashier_order.id=og.orderid')
+                ->fieldRaw($fields)->where($where)->find();
+            if (!empty($t)) {
+                $totaldata = [
+                    'num'        => (int) ($t['num'] ?? 0),
+                    'totalprice' => round((float) ($t['totalprice'] ?? 0), 2),
+                    'chengben'   => round((float) ($t['chengben'] ?? 0), 2),
+                    'lirun'      => round((float) ($t['lirun'] ?? 0), 2),
+                ];
+            }
+        }
+
+        foreach ($list as $k => $v) {
+            $list[$k]['ph']         = ($k + 1) + ($page - 1) * $pageSize;
+            $list[$k]['num']        = (int) $v['num'];
+            $list[$k]['totalprice'] = round((float) $v['totalprice'], 2);
+            $list[$k]['avgprice']   = round((float) $v['avgprice'], 2);
+            $list[$k]['chengben']   = round((float) $v['chengben'], 2);
+            $list[$k]['lirun']      = round((float) $v['lirun'], 2);
+        }
+
+        return ['list' => $list, 'total' => $count, 'page' => $page, 'pagesize' => $pageSize, 'totaldata' => $totaldata];
+    }
+
+    /**
+     * 订单统计导出（对齐点大 tjexcel：返回 title + data）
+     */
+    public function tongjiExcel(int $aid, array $f): array
+    {
+        $type = 2 === (int) ($f['type'] ?? 1) ? 2 : 1;
+        $res  = $this->tongji($aid, $f, 1, 1000000);
+        $list = $res['list'];
+
+        if (2 === $type) {
+            $title = ['排名', '商品名称', '商品规格', '销售数量', '销售金额', '平均单价'];
+            $data  = [];
+            foreach ($list as $vo) {
+                $data[] = [$vo['ph'], $vo['name'], $vo['ggname'], $vo['num'], $vo['totalprice'], $vo['avgprice']];
+            }
+        } else {
+            $title = ['排名', '商品名称', '销售数量', '销售金额', '平均单价', '总商品成本', '毛利润'];
+            $data  = [];
+            foreach ($list as $vo) {
+                $data[] = [$vo['ph'], $vo['name'], $vo['num'], $vo['totalprice'], $vo['avgprice'], $vo['chengben'], $vo['lirun']];
+            }
+        }
+
+        return ['title' => $title, 'data' => $data, 'count' => count($data)];
     }
 
     /* ================= 统计与交接班 ================= */

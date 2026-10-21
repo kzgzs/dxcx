@@ -7,7 +7,6 @@ namespace app\api\controller;
 use app\common\exception\BusinessException;
 use app\common\service\PayService;
 use app\common\service\RestaurantService;
-use app\common\service\TakeFoodService;
 
 /**
  * 客户端 - 餐饮堂食（api 应用）
@@ -22,8 +21,7 @@ class Restaurant extends Base
     public function __construct(
         \think\App $app,
         protected RestaurantService $restaurantService,
-        protected PayService $payService,
-        protected TakeFoodService $takeFoodService
+        protected PayService $payService
     ) {
         parent::__construct($app);
     }
@@ -141,17 +139,6 @@ class Restaurant extends Base
         $this->restaurantService->completeOrder($aid, $mid, $orderId);
 
         return $this->success([], '订单已完成');
-    }
-
-    /* ================= 取餐大屏（批次6-T6-4） ================= */
-
-    /**
-     * 取餐大屏轮询（匿名；待取餐队列 + 最近叫号 + 轮播设置）
-     * GET /api/restaurant/takefood/screen?aid=
-     */
-    public function takefoodScreen()
-    {
-        return $this->success($this->takeFoodService->screen($this->aid()));
     }
 
     /**

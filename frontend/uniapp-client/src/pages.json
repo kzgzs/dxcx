@@ -1224,6 +1224,12 @@
 			"root": "pagesD",
 			"pages": [
 				{
+					"path": "form/detail",
+					"style": {
+						"navigationBarTitleText": "表单填写"
+					}
+				},
+				{
 					"path": "goldbeanshop/index",
 					"style": {
 						"navigationBarTitleText": "金豆兑换"

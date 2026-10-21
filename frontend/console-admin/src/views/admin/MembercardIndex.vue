@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue'
+import { computed, inject, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   mcDel,
@@ -43,6 +43,11 @@ function handleSearch() {
   loadData()
 }
 
+function closeEdit() {
+  mode.value = 'list'
+  loadData()
+}
+
 function formatTime(ts: number) {
   if (!ts) return '—'
   const d = new Date(ts * 1000)
@@ -83,12 +88,9 @@ const FIELD_META: { key: string; label: string; fixed: boolean }[] = [
 const CUSTOM_FIELD_OPTIONS = ['积分', '余额', '优惠券', '等级', '自定义1', '自定义2']
 
 const CODE_TYPES = [
-  { value: 'CODE_TYPE_TEXT', label: '文本' },
-  { value: 'CODE_TYPE_BARCODE', label: '一维码' },
-  { value: 'CODE_TYPE_QRCODE', label: '二维码' },
-  { value: 'CODE_TYPE_ONLY_QRCODE', label: '仅显示二维码' },
-  { value: 'CODE_TYPE_ONLY_BARCODE', label: '仅显示一维码' },
-  { value: 'CODE_TYPE_NONE', label: '不显示任何码型' },
+  { value: 'CODE_TYPE_TEXT', label: '仅显示卡号' },
+  { value: 'CODE_TYPE_BARCODE', label: '卡号+条形码' },
+  { value: 'CODE_TYPE_QRCODE', label: '卡号+二维码' },
 ]
 
 const COLORS = [
@@ -168,8 +170,18 @@ async function handleSave() {
   saving.value = true
   try {
     const rs = await mcSave({ ...(form as Partial<MembercardDetail>) })
-    ElMessage.success('保存成功')
     form.id = rs.id
+    // 本地保存成功后同步微信创建卡券（未配置公众号时后端返回 mock，不阻断）
+    try {
+      const sync = await mcSync(rs.id)
+      if (sync && sync.card_id) {
+        ElMessage.success('保存并同步微信成功')
+      } else {
+        ElMessage.success('保存成功（未配置公众号，暂未同步微信）')
+      }
+    } catch {
+      ElMessage.success('保存成功，同步微信失败，请检查公众号配置')
+    }
     mode.value = 'list'
     loadData()
   } catch {
@@ -242,6 +254,53 @@ async function handleRemark(row: MembercardRow) {
   }
 }
 
+// 批量选择
+const selected = ref<MembercardRow[]>([])
+function handleSelectionChange(rows: MembercardRow[]) {
+  selected.value = rows
+}
+async function handleBatchDelete() {
+  if (!selected.value.length) {
+    ElMessage.warning('请先选择要删除的会员卡')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${selected.value.length} 张会员卡吗？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await mcDel(selected.value.map((r) => r.id))
+    ElMessage.success('删除成功')
+    loadData()
+  } catch {
+    // 拦截器已提示
+  }
+}
+
+// 开卡链接（ret_url 为微信会员卡开卡落地页）
+async function handleOpenCard(row: MembercardRow) {
+  if (!row.card_id || !row.ret_url) {
+    ElMessage.warning('该会员卡尚未同步微信，暂无开卡链接')
+    return
+  }
+  try {
+    await navigator.clipboard.writeText(row.ret_url)
+    ElMessage.success('开卡链接已复制：' + row.ret_url)
+  } catch {
+    window.open(row.ret_url, '_blank')
+  }
+}
+
+// 跳转领取记录（按当前会员卡过滤）
+const navigateByKey = inject<(key: string) => boolean>('adminNavigateByKey', () => false)
+function handleViewRecord(row: MembercardRow) {
+  sessionStorage.setItem('mc_record_card_pk', String(row.id))
+  if (!navigateByKey('membercard-record')) {
+    ElMessage.info('请从左侧菜单「微信会员卡-领取记录」查看，已按该卡过滤')
+  }
+}
+
 onMounted(loadData)
 </script>
 
@@ -259,44 +318,43 @@ onMounted(loadData)
           @keyup.enter="handleSearch"
         />
         <el-button type="primary" @click="handleSearch">查询</el-button>
+        <el-button type="danger" plain :disabled="!selected.length" @click="handleBatchDelete">批量删除</el-button>
         <el-button type="success" @click="openEdit(0)">创建会员卡</el-button>
       </div>
 
-      <el-table :data="list" v-loading="loading" border stripe style="width: 100%; margin-top: 12px">
+      <el-table :data="list" v-loading="loading" border stripe style="width: 100%; margin-top: 12px" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="40" />
         <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="卡券" min-width="180" show-overflow-tooltip>
-          <template #default="{ row }">
-            <div class="card-name">{{ row.title }}</div>
-            <div class="card-sub">{{ row.brand_name }}</div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="card_id" label="微信卡券ID" min-width="200" show-overflow-tooltip>
+        <el-table-column prop="card_id" label="卡券ID" min-width="200" show-overflow-tooltip>
           <template #default="{ row }">{{ row.card_id || '未同步' }}</template>
         </el-table-column>
-        <el-table-column label="审核状态" width="100">
+        <el-table-column prop="brand_name" label="商户名称" min-width="120" show-overflow-tooltip />
+        <el-table-column prop="title" label="会员卡名称" min-width="120" show-overflow-tooltip />
+        <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
             <el-tag size="small" :type="statusTag(row.status)">{{ row.status_text }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="membercount" label="领取人数" width="90" align="center" />
-        <el-table-column prop="quantity" label="库存" width="90" align="center" />
         <el-table-column label="创建时间" width="150">
           <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
         </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="120" show-overflow-tooltip>
+        <el-table-column prop="membercount" label="领取数量" width="80" align="center" />
+        <el-table-column prop="remark" label="备注" min-width="110" show-overflow-tooltip>
           <template #default="{ row }">{{ row.remark || '—' }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="270" fixed="right">
+        <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
-            <el-button link type="primary" @click="openEdit(row.id)">编辑</el-button>
-            <el-button v-if="!row.card_id" link type="success" :loading="syncing === row.id" @click="handleSync(row)">
-              同步微信
-            </el-button>
-            <el-button v-if="row.card_id" link type="warning" :loading="syncing === row.id" @click="handleSyncStatus(row)">
-              同步审核状态
-            </el-button>
-            <el-button link type="primary" @click="handleRemark(row)">备注</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <div class="op-col">
+              <div class="op-line">
+                <el-button link type="primary" @click="openEdit(row.id)">编辑</el-button>
+                <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+                <el-button link type="primary" @click="handleRemark(row)">备注</el-button>
+              </div>
+              <div class="op-line">
+                <el-button link type="primary" :disabled="!row.card_id" @click="handleOpenCard(row)">开卡链接</el-button>
+                <el-button link type="primary" @click="handleViewRecord(row)">领取记录</el-button>
+              </div>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -316,11 +374,14 @@ onMounted(loadData)
 
     <!-- ============ 编辑态：大表单分组 ============ -->
     <div v-else class="page-card">
-      <div class="card-title">
-        {{ form.id ? '编辑会员卡' : '创建会员卡' }}
-        <el-tag v-if="form.card_id" size="small" :type="statusTag(form.status || 0)" style="margin-left: 8px">
-          {{ form.status_text || '审核中' }}
-        </el-tag>
+      <div class="card-title edit-head">
+        <div class="edit-title">
+          {{ form.id ? '编辑会员卡' : '创建会员卡' }}
+          <el-tag v-if="form.card_id" size="small" :type="statusTag(form.status || 0)" style="margin-left: 8px">
+            {{ form.status_text || '审核中' }}
+          </el-tag>
+        </div>
+        <el-button link class="close-x" @click="closeEdit">✕</el-button>
       </div>
 
       <el-form label-width="130px" class="mc-form">
@@ -562,6 +623,16 @@ onMounted(loadData)
   margin-bottom: 16px;
   border-bottom: 1px solid #ebeef5;
 }
+.edit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.close-x {
+  font-size: 18px;
+  color: #909399;
+  padding: 0 6px;
+}
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
@@ -575,6 +646,17 @@ onMounted(loadData)
 .card-sub {
   font-size: 12px;
   color: #909399;
+}
+.op-col {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.op-line {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  flex-wrap: nowrap;
 }
 .pager {
   display: flex;

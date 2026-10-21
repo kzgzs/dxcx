@@ -86,4 +86,15 @@ class Binding extends BaseController
 
         return $this->success($this->binding->refreshAuth($aid, $platform), '授权信息已刷新');
     }
+
+    /**
+     * 生成小程序代码包（支付宝/百度/QQ/抖音）
+     * POST /admin/binding/downloadCode/:platform
+     */
+    public function downloadCode(string $platform = '')
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        return $this->success($this->binding->downloadCode($aid, $platform), '代码包已生成');
+    }
 }

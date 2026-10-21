@@ -121,3 +121,46 @@ body {
 .layout-main .el-table .el-table__cell .cell {
   text-align: left !important;
 }
+
+/* ===== 7) 控件紧凑宽度通用类（全站通用，含弹窗内；禁止普通控件无意义撑满到最右） =====
+   用法：直接打在 el-input / el-select / el-date-picker 上，或其外层包裹。
+   仅地址、富文本、详情编辑器、备注类长文本允许 .field-full 占满。 */
+.field-md { width: 220px; }
+.field-sm { width: 160px; }
+.field-xs { width: 110px; }
+.field-date { width: 180px; }
+.field-range { width: 260px; }
+.field-full { width: 100%; }
+/* 类打在外层包裹时，内部控件撑满类宽（弹窗 teleport 到 body 也生效） */
+.field-md .el-input, .field-md .el-select, .field-md .el-date-editor,
+.field-sm .el-input, .field-sm .el-select, .field-sm .el-date-editor,
+.field-xs .el-input, .field-xs .el-select, .field-xs .el-date-editor,
+.field-date .el-input, .field-date .el-select, .field-date .el-date-editor,
+.field-range .el-input, .field-range .el-select, .field-range .el-date-editor,
+.field-full .el-input, .field-full .el-select, .field-full .el-date-editor {
+  width: 100%;
+}
+
+/* 8) 规格/规格表容器：按内容自适应，禁止 width:100% 撑满（添加/编辑页规格表） */
+.spec-table-auto {
+  width: auto;
+  min-width: 0;
+}
+.spec-table-auto table,
+.spec-table-auto .spec-group-table,
+.spec-table-auto .spec-item-table {
+  width: auto;
+}
+
+/* 9) 卡片标题紧凑：消除列表/平铺/设置页标题区多余上下留白（打在 el-card 上） */
+.admin-main .el-card.compact-title > .el-card__header,
+.layout-main .el-card.compact-title > .el-card__header {
+  padding: 6px 10px !important;
+  line-height: 1.4 !important;
+  font-size: 14px !important;
+  margin-bottom: 0 !important;
+}
+.admin-main .el-card.compact-title > .el-card__body,
+.layout-main .el-card.compact-title > .el-card__body {
+  padding-top: 6px !important;
+}

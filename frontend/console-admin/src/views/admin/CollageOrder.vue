@@ -633,7 +633,7 @@ onMounted(() => {
           </el-select>
         </el-form-item>
         <el-form-item label="快递单号" prop="express_no">
-          <el-input v-model="manualForm.express_no" placeholder="请输入快递单号" />
+          <el-input v-model="manualForm.express_no" placeholder="请输入快递单号" class="field-md" />
         </el-form-item>
       </el-form>
       <template #footer>

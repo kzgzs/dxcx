@@ -57,7 +57,7 @@ onMounted(fetchSet)
 
 <template>
   <div v-loading="loading" class="set-wrap">
-    <el-card shadow="never">
+    <el-card shadow="never" class="compact-title">
       <template #header>
         <span class="set-title">系统设置</span>
       </template>

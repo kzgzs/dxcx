@@ -428,7 +428,7 @@ onMounted(() => {
     <el-dialog v-model="moneyVisible" title="加余额" width="420px">
       <el-form label-width="90px" label-position="right">
         <el-form-item label="增加数量">
-          <el-input v-model.number="moneyForm.money" placeholder="输入负值表示扣除余额" type="number" />
+          <el-input v-model.number="moneyForm.money" placeholder="输入负值表示扣除余额" type="number" class="field-xs" />
         </el-form-item>
         <el-form-item label="备注信息">
           <el-input v-model="moneyForm.remark" placeholder="请输入备注" />

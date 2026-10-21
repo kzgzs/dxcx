@@ -1129,46 +1129,6 @@
       "key": "wx-proxyverify-set"
      }
     ]
-   },
-   {
-    "name": "活动日历",
-    "key": "huodong-calendar-sysset"
-   },
-   {
-    "name": "网约车",
-    "key": "carhailing",
-    "child": [
-     {
-      "name": "车辆分类",
-      "key": "carhailing-category"
-     },
-     {
-      "name": "车辆管理",
-      "key": "carhailing-product"
-     },
-     {
-      "name": "网约车订单",
-      "key": "carhailing-order"
-     }
-    ]
-   },
-   {
-    "name": "酒店",
-    "key": "hotel",
-    "child": [
-     {
-      "name": "酒店管理",
-      "key": "hotel-list"
-     },
-     {
-      "name": "房型管理",
-      "key": "hotel-room"
-     },
-     {
-      "name": "酒店订单",
-      "key": "hotel-order"
-     }
-    ]
    }
   ]
  },

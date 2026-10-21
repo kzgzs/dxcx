@@ -366,7 +366,7 @@ class YuyueTables extends Migrator
   `bankcardnum` varchar(100) DEFAULT NULL,
   `longitude` varchar(100) DEFAULT NULL,
   `latitude` varchar(100) DEFAULT NULL,
-  `headimg` varchar(255) DEFAULT \'https://v2d.diandashop.com/static/img/touxiang.png\',
+  `headimg` varchar(255) DEFAULT \'/static/img/touxiang.png\',
   `jineng` varchar(255) DEFAULT NULL,
   `cid` int(11) DEFAULT \'0\',
   `desc` varchar(255) DEFAULT NULL,

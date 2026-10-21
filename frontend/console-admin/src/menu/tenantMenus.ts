@@ -24,12 +24,6 @@ import Merchant from '../views/admin/Merchant.vue'
 import Store from '../views/admin/Store.vue'
 import ScoreConfig from '../views/admin/ScoreConfig.vue'
 import Promotion from '../views/admin/Promotion.vue'
-import CarCategory from '../views/admin/CarCategory.vue'
-import CarProduct from '../views/admin/CarProduct.vue'
-import CarOrder from '../views/admin/CarOrder.vue'
-import HotelList from '../views/admin/HotelList.vue'
-import HotelRoom from '../views/admin/HotelRoom.vue'
-import HotelOrder from '../views/admin/HotelOrder.vue'
 import YuyueProduct from '../views/admin/YuyueProduct.vue'
 import YuyueWorker from '../views/admin/YuyueWorker.vue'
 import YuyueOrder from '../views/admin/YuyueOrder.vue'
@@ -40,18 +34,14 @@ import DishManage from '../views/admin/DishManage.vue'
 import DishCategory from '../views/admin/DishCategory.vue'
 import RestaurantSet from '../views/admin/RestaurantSet.vue'
 import PrinterManage from '../views/admin/PrinterManage.vue'
-// ===== 餐饮订单三页（P14-2：堂食订单/外卖订单/常用备注预置） =====
+// ===== 餐饮订单两页（P14-2：堂食订单/外卖订单） =====
 import ShopOrderList from '../views/admin/ShopOrderList.vue'
 import TakeawayOrderList from '../views/admin/TakeawayOrderList.vue'
-import RemarkSet from '../views/admin/RemarkSet.vue'
 // ===== 餐饮寄存四页（批次6-T6-3 任务204：寄存管理/添加寄存/寄存位置/寄存设置） =====
 import RestaurantDeposit from '../views/admin/RestaurantDeposit.vue'
 import RestaurantDepositAdd from '../views/admin/RestaurantDepositAdd.vue'
 import RestaurantDepositPosition from '../views/admin/RestaurantDepositPosition.vue'
 import RestaurantDepositSet from '../views/admin/RestaurantDepositSet.vue'
-// ===== 餐饮取餐两页（批次6-T6-4 任务205：取餐列表/取餐设置） =====
-import RestaurantTakeFood from '../views/admin/RestaurantTakeFood.vue'
-import RestaurantTakeFoodSet from '../views/admin/RestaurantTakeFoodSet.vue'
 // ===== 排队叫号三页（批次6-T6-2 任务203：队列列表/队列分类/排队设置） =====
 import RestaurantQueue from '../views/admin/RestaurantQueue.vue'
 import RestaurantQueueCategory from '../views/admin/RestaurantQueueCategory.vue'
@@ -64,10 +54,6 @@ import CashierSet from '../views/admin/CashierSet.vue'
 import CashierDesk from '../views/admin/CashierDesk.vue'
 import CashierOrder from '../views/admin/CashierOrder.vue'
 import CashierStat from '../views/admin/CashierStat.vue'
-// ===== 餐饮收银台二期三页（批次6-T6-6 任务207：收银操作/收银设置/收银统计） =====
-import RestaurantCashdeskDesk from '../views/admin/RestaurantCashdeskDesk.vue'
-import RestaurantCashdeskSet from '../views/admin/RestaurantCashdeskSet.vue'
-import RestaurantCashdeskStat from '../views/admin/RestaurantCashdeskStat.vue'
 import MemberList from '../views/admin/MemberList.vue'
 import MemberLevel from '../views/admin/MemberLevel.vue'
 // ===== 会员组三页+共享海报引擎（P18-4） =====
@@ -164,6 +150,8 @@ import PlatformBinding from '../views/admin/PlatformBinding.vue'
 // ===== 投票活动（P15-5：活动管理/选手管理） =====
 import VoteManage from '../views/admin/VoteManage.vue'
 import VoteJoin from '../views/admin/VoteJoin.vue'
+import VoteGroup from '../views/admin/VoteGroup.vue'
+import VoteRecord from '../views/admin/VoteRecord.vue'
 // ===== 订单批量操作与送货单（P17-2） =====
 import ShdSet from '../views/admin/ShdSet.vue'
 // ===== 抽奖活动（P15-3：大转盘/刮刮卡活动管理 + 中奖记录） =====
@@ -175,6 +163,7 @@ import KanjiaOrder from '../views/admin/KanjiaOrder.vue'
 import KanjiaSet from '../views/admin/KanjiaSet.vue'
 // ===== 周期购（P15-6：商品+分类/订单+分期发货/系统设置） =====
 import CycleProduct from '../views/admin/CycleProduct.vue'
+import CycleCategory from '../views/admin/CycleCategory.vue'
 import CycleOrder from '../views/admin/CycleOrder.vue'
 import CycleSet from '../views/admin/CycleSet.vue'
 // ===== 小程序发布链（P15-2：代码发布/运营设置） =====
@@ -638,8 +627,10 @@ export const tenantMenus: MenuNode[] = [
         name: '投票活动',
         key: 'toupiao',
         child: [
-          { name: '活动管理', key: 'toupiao-index', component: VoteManage },
-          { name: '选手管理', key: 'toupiao-joinlist', component: VoteJoin },
+          { name: '活动列表', key: 'toupiao-index', component: VoteManage },
+          { name: '选手列表', key: 'toupiao-joinlist', component: VoteJoin },
+          { name: '投票分组', key: 'toupiao-group', component: VoteGroup },
+          { name: '投票记录', key: 'toupiao-record', component: VoteRecord },
         ],
       },
       {
@@ -650,7 +641,7 @@ export const tenantMenus: MenuNode[] = [
           { name: '订单管理', key: 'cycle-order-index', component: CycleOrder },
           { name: '配送管理', key: 'cycle-order-cycle-list-status-1', component: CycleOrder },
           { name: '评价管理', key: 'cycle-comment-index', component: defineAsyncComponent(() => import('../views/admin/CycleComment.vue')) },
-          { name: '商品分类', key: 'cycle-category-index', component: CycleProduct },
+          { name: '商品分类', key: 'cycle-category-index', component: CycleCategory },
           { name: '分享海报', key: 'cycle-poster-index', component: CyclePoster },
           { name: '系统设置', key: 'cycle-set-index', component: CycleSet },
         ],
@@ -668,7 +659,9 @@ export const tenantMenus: MenuNode[] = [
         key: 'cashier',
         child: [
           { name: '收银设置', key: 'cashier-set-index', component: CashierSet },
-          { name: '收银台操作', key: 'cashier-index', component: CashierDesk },
+          // 对齐点大：菜单仅三页（收银设置/收银订单/订单统计）；收银台操作隐藏保留，
+          // 收银设置页「收银台地址」链接经独立路由 /cashierdesk 打开该页
+          { name: '收银台操作', key: 'cashier-index', component: CashierDesk, hide: true },
           { name: '收银订单', key: 'cashier-order-index', component: CashierOrder },
           { name: '订单统计', key: 'cashier-order-tongji', component: CashierStat },
         ],
@@ -701,29 +694,10 @@ export const tenantMenus: MenuNode[] = [
           { name: '系统设置', key: 'wx-proxyverify-set', component: defineAsyncComponent(() => import('../views/admin/WxProxyverifySet.vue')) },
         ],
       },
-      { name: '活动日历', key: 'huodong-calendar-sysset', component: defineAsyncComponent(() => import('../views/admin/HuodongCalendarSysset.vue')) },
-      // 我方行业模块挂位（参考系统基线外，已实现页面归属：扩展下行业分组）
-      {
-        name: '网约车',
-        key: 'carhailing',
-        child: [
-          { name: '车辆分类', key: 'carhailing-category', component: CarCategory },
-          { name: '车辆管理', key: 'carhailing-product', component: CarProduct },
-          { name: '网约车订单', key: 'carhailing-order', component: CarOrder },
-        ],
-      },
-      {
-        name: '酒店',
-        key: 'hotel',
-        child: [
-          { name: '酒店管理', key: 'hotel-list', component: HotelList },
-          { name: '房型管理', key: 'hotel-room', component: HotelRoom },
-          { name: '酒店订单', key: 'hotel-order', component: HotelOrder },
-        ],
-      },
     ],
   },
-  // ==================== 餐饮（Restaurant.php getmenu() 全量，含条件开关项） ====================
+  // ==================== 餐饮（Restaurant.php getmenu()；收银台/取餐/备注预置/统计四项
+  //   受 getcustom 开关控制且默认关闭，已按点大默认配置整体移除，不做隐藏保留） ====================
   {
     name: '餐饮',
     key: 'restaurant',
@@ -805,38 +779,7 @@ export const tenantMenus: MenuNode[] = [
           { name: '促销', key: 'restaurant-cuxiao-index', component: defineAsyncComponent(() => import('../views/admin/RestaurantCuxiao.vue')) },
         ],
       },
-      {
-        name: '收银台',
-        key: 'restaurant-cashdesk',
-        child: [
-          { name: '收银台登录', key: 'restaurant-cashdesk-login', hide: true },
-          { name: '收银设置', key: 'restaurant-cashdesk-index', component: RestaurantCashdeskSet },
-          { name: '收银订单', key: 'restaurant-cashdesk-order-index', component: RestaurantCashdeskDesk },
-          { name: '订单统计', key: 'restaurant-cashdesk-order-tongji', component: RestaurantCashdeskStat },
-          { name: '自定义支付', key: 'restaurant-cashdesk-custom-pay-index', component: RestaurantCashdeskSet },
-          { name: '直接优惠', key: 'restaurant-cashdesk-discount', hide: true },
-          { name: '退款', key: 'restaurant-cashdesk-refund', hide: true },
-          { name: '出餐', key: 'restaurant-cashdesk-outfood', hide: true },
-          { name: '报表时间自定义', key: 'restaurant-cashdesk-baobiao-custom-time', hide: true },
-          { name: '临时菜', key: 'restaurant-cashdesk-linshi-product', hide: true },
-          { name: '并台结账', key: 'restaurant-cashdesk-table-merge-pay', hide: true },
-          { name: '菜品转台', key: 'restaurant-cashdesk-ordergoods-change-table', hide: true },
-          { name: '退菜和打印', key: 'restaurant-cashdesk-refund-product-print', hide: true },
-          { name: '反结账', key: 'restaurant-cashdesk-reverse-pay', hide: true },
-          { name: '组合支付', key: 'restaurant-cashdesk-multi-pay', hide: true },
-        ],
-      },
-      {
-        name: '取餐',
-        key: 'restaurant-take-food',
-        child: [
-          { name: '取餐列表', key: 'restaurant-take-food-index', component: RestaurantTakeFood },
-          { name: '取餐设置', key: 'restaurant-take-food-sysset', component: RestaurantTakeFoodSet },
-        ],
-      },
       { name: '餐厅区域打印', key: 'restaurant-print-index', component: defineAsyncComponent(() => import('../views/admin/RestaurantPrint.vue')) },
-      { name: '备注预置', key: 'restaurant-remark-index', component: RemarkSet },
-      { name: '统计', key: 'restaurant-tongji', component: defineAsyncComponent(() => import('../views/admin/RestaurantTongji.vue')) },
       { name: '设置', key: 'restaurant-sysset', component: defineAsyncComponent(() => import('../views/admin/RestaurantSysset.vue')) },
     ],
   },

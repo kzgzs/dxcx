@@ -14,6 +14,7 @@ export interface ProxyverifyAuthorizer {
   /** 0未认证 1认证中 2已认证 */
   verify_status: number
   verify_status_name: string
+  verify_type_id: number
   auth_time: number
   auth_time_text: string
   remark: string
@@ -144,8 +145,25 @@ export interface ProxyverifyOrderSaveParams {
 
 // ============ 小程序列表 ============
 
-export function getProxyverifyAuthorizerList(params: { page?: number; pagesize?: number; keyword?: string }) {
+export interface ProxyverifyAuthorizerQuery {
+  page?: number
+  pagesize?: number
+  authorizer_appid?: string
+  nick_name?: string
+  principal_name?: string
+  verify_status?: string
+  ctime?: string
+  field?: string
+  order?: string
+}
+
+export function getProxyverifyAuthorizerList(params: ProxyverifyAuthorizerQuery) {
   return request.get<unknown, PageResult<ProxyverifyAuthorizer>>('/admin/wxproxyverify/index', { params })
+}
+
+/** 授权绑定：取微信第三方平台扫码授权 URL */
+export function getAuthBindUrl() {
+  return request.get<unknown, { url: string }>('/admin/wxproxyverify/authbind')
 }
 
 export function saveAuthorizerRemark(id: number, remark: string) {
@@ -167,6 +185,7 @@ export interface ProxyverifyOrderQuery {
   pay_type?: string
   task_status?: string
   apply_status?: string
+  ctime?: string
 }
 
 export function getProxyverifyOrderList(params: ProxyverifyOrderQuery) {

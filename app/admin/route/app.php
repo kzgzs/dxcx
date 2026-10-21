@@ -347,34 +347,6 @@ Route::post('tuangou/code/make', 'Tuangou/codelistMake');
 Route::get('tuangou/code/export', 'Tuangou/codelistExport');
 Route::post('tuangou/code/delete', 'Tuangou/codelistDelete');
 
-// 行业应用 - 网约车管理（分类规则先于车辆规则注册）
-Route::get('carhailing/category/list', 'Carhailing/categoryList');
-Route::post('carhailing/category/add', 'Carhailing/categoryAdd');
-Route::post('carhailing/category/edit', 'Carhailing/categoryEdit');
-Route::post('carhailing/category/delete', 'Carhailing/categoryDelete');
-Route::get('carhailing/product/list', 'Carhailing/productList');
-Route::post('carhailing/product/add', 'Carhailing/productAdd');
-Route::post('carhailing/product/edit', 'Carhailing/productEdit');
-Route::post('carhailing/product/delete', 'Carhailing/productDelete');
-Route::post('carhailing/product/status', 'Carhailing/productStatus');
-Route::get('carhailing/order/list', 'Carhailing/orderList');
-Route::post('carhailing/order/finish', 'Carhailing/orderFinish');
-
-// 行业应用 - 酒店管理（房型规则先于酒店规则中的 order 前缀注册）
-Route::get('hotel/room/list', 'Hotel/roomList');
-Route::post('hotel/room/add', 'Hotel/roomAdd');
-Route::post('hotel/room/edit', 'Hotel/roomEdit');
-Route::post('hotel/room/delete', 'Hotel/roomDelete');
-Route::post('hotel/room/status', 'Hotel/roomStatus');
-Route::get('hotel/order/list', 'Hotel/orderList');
-Route::post('hotel/order/checkin', 'Hotel/orderCheckin');
-Route::post('hotel/order/finish', 'Hotel/orderFinish');
-Route::get('hotel/list', 'Hotel/list');
-Route::post('hotel/add', 'Hotel/add');
-Route::post('hotel/edit', 'Hotel/edit');
-Route::post('hotel/delete', 'Hotel/delete');
-Route::post('hotel/status', 'Hotel/status');
-
 // 行业应用 - 预约管理（分类规则先于项目规则注册）
 Route::get('yuyue/category/list', 'Yuyue/categoryList');
 Route::post('yuyue/category/add', 'Yuyue/categoryAdd');
@@ -439,9 +411,6 @@ Route::get('restaurant/takeawayOrder/detail', 'RestaurantTakeawayOrder/detail');
 Route::post('restaurant/takeawayOrder/jiedan', 'RestaurantTakeawayOrder/jiedan');
 Route::post('restaurant/takeawayOrder/close', 'RestaurantTakeawayOrder/close');
 Route::post('restaurant/takeawayOrder/sendExpress', 'RestaurantTakeawayOrder/sendExpress');
-Route::get('restaurant/remark/list', 'RestaurantRemark/list');
-Route::post('restaurant/remark/save', 'RestaurantRemark/save');
-Route::post('restaurant/remark/del', 'RestaurantRemark/del');
 
 // 行业应用 - 餐饮配置（P14-1：餐桌/餐桌分类/菜品/菜品分类/堂食设置/打印机；dining 前缀避免与旧 restaurant 路由冲突）
 Route::get('dining/table/list', 'RestaurantTable/list');
@@ -618,6 +587,7 @@ Route::post('toupiao/join/del', 'Toupiao/joinDel');
 Route::post('toupiao/join/addpiao', 'Toupiao/joinAddpiao');
 Route::get('toupiao/stat', 'Toupiao/stat');
 Route::get('toupiao/help/list', 'Toupiao/helpList');
+Route::post('toupiao/help/del', 'Toupiao/helpDel');
 Route::post('toupiao/vote', 'Toupiao/vote');
 
 // 营销中心 - 砍价活动（商品/发起记录/订单/核销码/设置；帮砍递减与下单链路封装 BargainService，C 端 api 预留）
@@ -648,21 +618,31 @@ Route::post('kanjia/codelist/hexiao', 'Kanjia/codelistHexiao');
 // 营销中心 - 周期购（商品+规格动态行/分类/订单状态机/按期发货 stage/退款审核；分类规则先注册）
 Route::get('cycle/sysset', 'Cycle/sysset');
 Route::post('cycle/sysset', 'Cycle/saveSysset');
-Route::get('cycle/category/list', 'Cycle/categoryList');
-Route::post('cycle/category/save', 'Cycle/categorySave');
-Route::post('cycle/category/del', 'Cycle/categoryDelete');
-Route::get('cycle/product/list', 'Cycle/productList');
-Route::get('cycle/product/detail', 'Cycle/productDetail');
-Route::post('cycle/product/save', 'Cycle/productSave');
-Route::post('cycle/product/del', 'Cycle/productDelete');
-Route::post('cycle/product/status', 'Cycle/productStatus');
-Route::post('cycle/product/check', 'Cycle/productCheck');
+// 周期购商品/分类（片A：拆分为 CycleCategory / CycleProduct 独立控制器）
+Route::get('cycle/category/list', 'CycleCategory/categoryList');
+Route::post('cycle/category/save', 'CycleCategory/categorySave');
+Route::post('cycle/category/del', 'CycleCategory/categoryDelete');
+Route::get('cycle/product/list', 'CycleProduct/productList');
+Route::get('cycle/product/detail', 'CycleProduct/productDetail');
+Route::post('cycle/product/save', 'CycleProduct/productSave');
+Route::post('cycle/product/del', 'CycleProduct/productDelete');
+Route::post('cycle/product/status', 'CycleProduct/productStatus');
+Route::post('cycle/product/check', 'CycleProduct/productCheck');
 Route::get('cycle/order/list', 'Cycle/orderList');
 Route::get('cycle/order/detail', 'Cycle/orderDetail');
 Route::post('cycle/order/ship', 'Cycle/orderShip');
 Route::post('cycle/order/stageCollect', 'Cycle/orderStageCollect');
 Route::post('cycle/order/refundCheck', 'Cycle/orderRefundCheck');
 Route::post('cycle/order/remark', 'Cycle/orderRemark');
+
+// 周期购订单/配送（片B：配送三视图/周期计划平铺页/发货/送货单/查物流/核销/删除/完成）
+Route::get('cycle/order/stageList', 'CycleOrder/stageList');
+Route::post('cycle/order/hexiao', 'CycleOrder/hexiao');
+Route::get('cycle/order/shd', 'CycleOrder/shd');
+Route::get('cycle/order/express', 'CycleOrder/express');
+Route::post('cycle/order/delete', 'CycleOrder/delete');
+Route::post('cycle/order/finish', 'CycleOrder/finish');
+Route::get('cycle/order/export', 'CycleOrder/export');
 
 // 页面设计器（页面装修：页面 CRUD / 设首页 / 模板套用；保存即发布无草稿）
 Route::get('designer/page/list', 'Designer/pageList');
@@ -707,6 +687,7 @@ Route::get('binding/wxAuthUrl', 'Binding/wxAuthUrl');
 Route::post('binding/refreshAuth', 'Binding/refreshAuth');
 Route::get('binding/config/:platform', 'Binding/config');
 Route::post('binding/save/:platform', 'Binding/save');
+Route::post('binding/downloadCode/:platform', 'Binding/downloadCode');
 
 // 小程序发布链（选模板→上传 commit→提审→审核状态→发布/撤回/回退；体验码/体验者/更新记录）
 Route::get('wxapp/overview', 'Wxapp/overview');
@@ -1036,14 +1017,6 @@ Route::post('restaurant/queue/del', 'RestaurantQueue/del');
 Route::get('restaurant/queue/set', 'RestaurantQueueSet/index');
 Route::post('restaurant/queue/set', 'RestaurantQueueSet/save');
 
-// 行业应用 - 餐饮取餐（批次6-T6-4 任务205：取餐列表 出餐/叫号/完成取餐 + 大屏轮播设置；支付成功自动生成取餐号，24h未取过期挂 schedule:run）
-Route::get('restaurant/takefood/list', 'RestaurantTakeFood/list');
-Route::post('restaurant/takefood/out', 'RestaurantTakeFood/out');
-Route::post('restaurant/takefood/call', 'RestaurantTakeFood/call');
-Route::post('restaurant/takefood/finish', 'RestaurantTakeFood/finish');
-Route::get('restaurant/takefood/set', 'RestaurantTakeFood/set');
-Route::post('restaurant/takefood/set', 'RestaurantTakeFood/saveSet');
-
 // 行业应用 - 餐饮寄存（批次6-T6-3 任务204：寄存管理/添加寄存/位置编号字典/寄存设置；状态机 0审核中→1寄存中/3未通过→2全部取出）
 Route::get('restaurant/deposit/list', 'RestaurantDeposit/list');
 Route::get('restaurant/deposit/detail', 'RestaurantDeposit/detail');
@@ -1067,12 +1040,11 @@ Route::post('restaurant/deposit/set/save', 'RestaurantDepositSet/save');
 
 // 行业应用 - 通用收银台一期（批次6-T6-5 任务206：收银设置/收银操作/收银订单/统计交接班；
 // 支付口径 paytypeid：1微信付款码mock 3现金 4余额 100+自定义字典id；bid=0 平台自营）
+// 注意：路由默认非完整匹配（route_complete_match=false），子路径路由必须注册在父路径之前，
+// 否则 cashier/set 会吞掉 cashier/set/paylist 等子路径（按注册顺序首个命中即返回）
+Route::get('cashier/set/paylist', 'CashierSet/payList');
 Route::get('cashier/set', 'CashierSet/index');
 Route::post('cashier/set', 'CashierSet/save');
-Route::get('cashier/set/customlist', 'CashierSet/customList');
-Route::post('cashier/set/customsave', 'CashierSet/customSave');
-Route::post('cashier/set/customdelete', 'CashierSet/customDelete');
-Route::get('cashier/set/paylist', 'CashierSet/payList');
 
 Route::get('cashier/categories', 'Cashier/categories');
 Route::get('cashier/products', 'Cashier/products');
@@ -1090,12 +1062,18 @@ Route::get('cashier/hanguplist', 'Cashier/hangupList');
 Route::post('cashier/paypreview', 'Cashier/payPreview');
 Route::post('cashier/pay', 'Cashier/pay');
 
-Route::get('cashier/order', 'CashierOrder/index');
+// 子路径路由同样须注册在父路径之前（非完整匹配下 cashier/order 会吞掉子路径）
 Route::get('cashier/order/detail', 'CashierOrder/detail');
 Route::post('cashier/order/refundapply', 'CashierOrder/refundApply');
 Route::post('cashier/order/refundaudit', 'CashierOrder/refundAudit');
+Route::post('cashier/order/refund', 'CashierOrder/refund');
+Route::post('cashier/order/wifiprint', 'CashierOrder/wifiprint');
+Route::get('cashier/order/excel', 'CashierOrder/excel');
 Route::post('cashier/order/delete', 'CashierOrder/delete');
+Route::get('cashier/order', 'CashierOrder/index');
 
+Route::get('cashier/stat/tongji', 'CashierStat/tongji');
+Route::get('cashier/stat/tjexcel', 'CashierStat/tjexcel');
 Route::get('cashier/stat', 'CashierStat/index');
 Route::get('cashier/jiaoban', 'CashierStat/jiaoban');
 
@@ -1107,30 +1085,6 @@ Route::post('restaurant/booking/setremark', 'RestaurantBookingOrder/setremark');
 Route::post('restaurant/booking/close', 'RestaurantBookingOrder/close');
 Route::get('restaurant/booking/set', 'RestaurantBookingSet/index');
 Route::post('restaurant/booking/set', 'RestaurantBookingSet/save');
-
-// 行业应用 - 餐饮收银台二期（批次6-T6-6 任务207：开台/点餐加菜(含加料)/改价抹零/退菜/结账/反结账/统计；
-// 支付口径沿用一期：1微信mock 3现金 4余额 100+自定义字典id；canzhao RestaurantCashdesk 缺失，自研）
-Route::get('restaurant/cashdesk/desk', 'RestaurantCashdesk/desk');
-Route::post('restaurant/cashdesk/open', 'RestaurantCashdesk/open');
-Route::get('restaurant/cashdesk/categories', 'RestaurantCashdesk/categories');
-Route::get('restaurant/cashdesk/products', 'RestaurantCashdesk/products');
-Route::post('restaurant/cashdesk/addgoods', 'RestaurantCashdesk/addgoods');
-Route::post('restaurant/cashdesk/changenum', 'RestaurantCashdesk/changenum');
-Route::post('restaurant/cashdesk/changeprice', 'RestaurantCashdesk/changeprice');
-Route::post('restaurant/cashdesk/removezero', 'RestaurantCashdesk/removezero');
-Route::post('restaurant/cashdesk/refundgoods', 'RestaurantCashdesk/refundgoods');
-Route::get('restaurant/cashdesk/orderdetail', 'RestaurantCashdesk/orderdetail');
-Route::get('restaurant/cashdesk/orderlist', 'RestaurantCashdesk/orderlist');
-Route::post('restaurant/cashdesk/pay', 'RestaurantCashdesk/pay');
-Route::get('restaurant/cashdesk/paylist', 'RestaurantCashdesk/paylist');
-Route::post('restaurant/cashdesk/reversepay', 'RestaurantCashdesk/reversepay');
-Route::post('restaurant/cashdesk/reverseaudit', 'RestaurantCashdesk/reverseaudit');
-Route::get('restaurant/cashdesk/config', 'RestaurantCashdesk/config');
-Route::post('restaurant/cashdesk/saveconfig', 'RestaurantCashdesk/saveconfig');
-Route::get('restaurant/cashdesk/customlist', 'RestaurantCashdesk/customlist');
-Route::post('restaurant/cashdesk/customsave', 'RestaurantCashdesk/customsave');
-Route::post('restaurant/cashdesk/customdelete', 'RestaurantCashdesk/customdelete');
-Route::get('restaurant/cashdesk/stat', 'RestaurantCashdesk/stat');
 
 // 公众号运营（批次7-2 任务210：菜单设置/关键字回复/被关注回复，OPEN_PLATFORM_MOCK=1 全链路 mock）
 Route::get('mp/menu', 'MpMenu/index');
@@ -1167,6 +1121,12 @@ Route::post('live/save', 'Live/save');
 Route::post('live/setst', 'Live/setst');
 Route::post('live/del', 'Live/del');
 Route::post('live/getpusherqr', 'Live/getpusherqr');
+Route::post('live/tongbu', 'Live/tongbu');
+Route::get('live/goodslist', 'Live/goodslist');
+Route::post('live/goodsadd', 'Live/goodsadd');
+Route::post('live/goodsupd', 'Live/goodsupd');
+Route::post('live/goodsdel', 'Live/goodsdel');
+Route::post('live/roomaddgoods', 'Live/roomaddgoods');
 
 // 微信消息 - 公众号模板消息（批次7-3 任务211：模板消息设置/类目模板消息/已添加的模板；
 // 添加模板 apiAddTemplate（自动行业设置，45026/48001 错误分支）；对标 canzhao Mptmpl）
@@ -1188,6 +1148,7 @@ Route::post('wxtmpl/getTmplId', 'Wxtmpl/getTmplId');
 
 // 微信代认证（批次7-8 任务216：小程序列表/认证订单全流程/三类代缴额度设置，OPEN_PLATFORM_MOCK=1 全链路 mock）
 Route::get('wxproxyverify/index', 'WxProxyverify/index');
+Route::get('wxproxyverify/authbind', 'WxProxyverify/authbind');
 Route::post('wxproxyverify/authorizer/remark', 'WxProxyverify/authorizerRemark');
 Route::post('wxproxyverify/authorizer/del', 'WxProxyverify/authorizerDel');
 Route::get('wxproxyverify/callbackxcx', 'WxProxyverify/callbackxcx');
@@ -1329,9 +1290,12 @@ Route::get('cycleComment/list', 'CycleComment/list');
 Route::post('cycleComment/check', 'CycleComment/check');
 Route::post('cycleComment/reply', 'CycleComment/reply');
 Route::post('cycleComment/delete', 'CycleComment/delete');
+Route::post('cycleComment/detail', 'CycleComment/detail');
 
-Route::get('huodongCalendar/get', 'HuodongCalendar/get');
-Route::post('huodongCalendar/save', 'HuodongCalendar/save');
+// 周期购评价/海报/设置（片C）：评价详情 / 海报进页面幂等播种8平台默认模板 / 系统设置读写
+Route::get('cyclePoster/index', 'CyclePoster/index');
+Route::get('cycleSet/get', 'CycleSet/get');
+Route::post('cycleSet/save', 'CycleSet/save');
 
 Route::get('designer/mobile/get', 'Designer/mobileGet');
 Route::post('designer/mobile/save', 'Designer/mobileSave');
@@ -1447,6 +1411,9 @@ Route::post('ewaybill/add', 'Ewaybill/add');
 Route::post('ewaybill/cancel', 'Ewaybill/cancel');
 Route::post('ewaybill/del', 'Ewaybill/del');
 Route::post('ewaybill/print', 'Ewaybill/printOrder');
+Route::get('ewaybill/excel', 'Ewaybill/excel');
+Route::get('ewaybill/noticeInit', 'Ewaybill/noticeInit');
+Route::post('ewaybill/yuyueNotice', 'Ewaybill/yuyueNotice');
 
 Route::get('ewaybillSet/index', 'EwaybillSet/index');
 Route::post('ewaybillSet/save', 'EwaybillSet/save');
@@ -1498,9 +1465,6 @@ Route::get('restaurant/cuxiao/list', 'RestaurantCuxiao/list');
 Route::get('restaurant/cuxiao/detail', 'RestaurantCuxiao/detail');
 Route::post('restaurant/cuxiao/save', 'RestaurantCuxiao/save');
 Route::post('restaurant/cuxiao/del', 'RestaurantCuxiao/del');
-
-Route::get('restaurant/tongji/list', 'RestaurantTongji/list');
-Route::get('restaurant/tongji/overview', 'RestaurantTongji/overview');
 
 Route::get('restaurant/sysset/index', 'RestaurantSysset/index');
 Route::post('restaurant/sysset/save', 'RestaurantSysset/save');

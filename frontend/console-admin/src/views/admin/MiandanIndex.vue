@@ -248,7 +248,7 @@ onMounted(fetchList)
         </el-table-column>
         <el-table-column label="操作" min-width="120" align="left">
           <template #default="{ row }">
-            <div class="ops">
+            <div class="row-ops">
               <el-button link type="primary" @click="openPrint(row)">打印面单</el-button>
               <el-button link type="primary" @click="openPath(row)">查询轨迹</el-button>
               <el-button v-if="row.status === 1" link type="primary" @click="handleCancel(row)">取消</el-button>
@@ -373,15 +373,10 @@ onMounted(fetchList)
 .bold {
   font-weight: 600;
 }
-.ops {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.6;
-}
 .pager {
   display: flex;
   justify-content: flex-end;
-  margin-top: 10px;
+  margin-top: 3px;
 }
 .print-frame {
   width: 100%;

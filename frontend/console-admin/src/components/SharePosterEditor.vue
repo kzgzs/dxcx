@@ -5,7 +5,7 @@ import PosterEditor from './PosterEditor.vue'
 // 营销活动分享海报统一外壳：顶部「分享海报设置/参团海报设置」× 8 平台子 tab
 // 以活动种类 kind 注入两套海报 type（分享/参团）与默认平台，视觉与按钮风格全站统一。
 // 后续新活动只需在 KIND_CONFIG 增加一项映射即可复用本外壳。
-type PosterKind = 'collage' | 'lucky_collage' | 'kanjia' | 'tuangou' | 'scoreshop' | 'yuyue' | 'kecheng'
+type PosterKind = 'collage' | 'lucky_collage' | 'kanjia' | 'tuangou' | 'scoreshop' | 'yuyue' | 'kecheng' | 'cycle'
 
 type EditorType =
   | 'collage'
@@ -19,6 +19,7 @@ type EditorType =
   | 'scoreshop'
   | 'yuyue'
   | 'kecheng'
+  | 'cycle'
 
 type PosterPlatform = 'mp' | 'wx' | 'alipay' | 'baidu' | 'toutiao' | 'qq' | 'h5' | 'app'
 
@@ -33,6 +34,8 @@ const KIND_CONFIG: Record<PosterKind, { share: EditorType; team: EditorType; tea
   scoreshop: { share: 'scoreshop', team: 'scoreshop', teamLabel: '分享海报设置', defaultPlatform: 'wx' },
   yuyue: { share: 'yuyue', team: 'yuyue', teamLabel: '预约海报设置', defaultPlatform: 'wx' },
   kecheng: { share: 'kecheng', team: 'kecheng', teamLabel: '课程海报设置', defaultPlatform: 'wx' },
+  // 周期购：仅一种分享海报（无参团海报），用 single 模式，8 平台子 tab
+  cycle: { share: 'cycle', team: 'cycle', teamLabel: '分享海报设置', defaultPlatform: 'wx' },
 }
 
 const config = computed(() => KIND_CONFIG[props.kind])

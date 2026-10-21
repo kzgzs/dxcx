@@ -7,7 +7,6 @@ import type {
   CycleProductListQuery,
   CycleProductListResult,
   CycleProductDetail,
-  CycleGuigeSaveItem,
   CycleOrderListQuery,
   CycleOrderListResult,
   CycleOrderDetail,
@@ -33,32 +32,74 @@ export interface CycleProductRow extends Omit<CycleProductDetail, 'cname'> {
   cname?: string
   ischecked?: number
   check_reason?: string
+  // 片A 新增字段（对齐截图/canzhao）
+  market_price?: number
+  weight?: number
+  everyday_item?: string
+  advance_pay_days?: number
+  advance_pay_time?: number
+  advance_extend_days?: number
+  min_num?: number
+  min_qsnum?: number
+  freighttype?: number
+  freightdata?: string
+  commissionset?: number
+  guigedata?: string
 }
 
-// 保存入参扩展（后端 productSave 支持 pics/ps_cycle）
+// 规格项目表行（cycle_guige）
+export interface CycleGuigeItem {
+  name: string
+  procode: string
+  market_price: number
+  sell_price: number
+  weight: number
+  stock: number
+  pic: string
+}
+
+// 保存入参扩展（对齐截图两部分字段）
 export interface CycleProductSavePayload {
   id?: number
   name: string
   pic?: string
   pics?: string
   cid?: number
+  // 第一部分
+  commissionset?: number
+  // 第二部分
   ps_cycle?: number
+  everyday_item?: number[]
+  advance_pay_days?: number
+  advance_pay_time?: number
+  advance_extend_days?: number
+  min_num?: number
+  min_qsnum?: number
+  freighttype?: number
+  freightdata?: string
+  sales?: number
   sort?: number
   status?: number
   detail?: string
-  guiges: CycleGuigeSaveItem[]
+  guigedata?: string
+  guiges: CycleGuigeItem[]
 }
 
 /* ================= 周期购设置 ================= */
 
-// 读取周期购设置（自动收货天数/评价开关）
+// 读取周期购设置（自动收货天数/商品评价/评价审核/会员等级折扣）
 export function getCycleSysset() {
-  return request.get<unknown, CycleSyssetData>('/admin/cycle/sysset')
+  return request.get<unknown, CycleSyssetData>('/admin/cycleSet/get')
 }
 
 // 保存周期购设置
 export function saveCycleSysset(data: CycleSyssetSaveParams) {
-  return request.post<unknown, null>('/admin/cycle/sysset', data)
+  return request.post<unknown, null>('/admin/cycleSet/save', data)
+}
+
+// 分享海报：进页面幂等确保 8 平台默认模板行已生成（对齐参考系统首次加载播种）
+export function ensureCyclePoster() {
+  return request.get<unknown, { platforms: string[] }>('/admin/cyclePoster/index')
 }
 
 /* ================= 商品分类 ================= */
@@ -152,4 +193,51 @@ export function checkCycleOrderRefund(id: number, pass: number, remark = '') {
 // 订单备注
 export function remarkCycleOrder(id: number, remark: string) {
   return request.post<unknown, null>('/admin/cycle/order/remark', { id, remark })
+}
+
+/* ================= 片B：配送管理 / 周期计划 ================= */
+
+/** 分期配送列表（配送三视图 + 订单「周期计划」平铺页共用） */
+export function cycleStageList(params: {
+  page?: number
+  pagesize?: number
+  status?: string | number
+  orderid?: number
+  ordernum?: string
+  linkman?: string
+  tel?: string
+  start_date?: string
+  end_date?: string
+}) {
+  return request.get<unknown, { list: any[]; total: number }>('/admin/cycle/order/stageList', { params })
+}
+
+/** 核销（到店自提：当期 → 已完成） */
+export function cycleOrderHexiao(stageid: number) {
+  return request.post<unknown, null>('/admin/cycle/order/hexiao', { stageid })
+}
+
+/** 送货单数据（按 stage 生成，前端平铺打印） */
+export function cycleOrderShd(stageid: number) {
+  return request.get<unknown, any>('/admin/cycle/order/shd', { params: { stageid } })
+}
+
+/** 查物流 / 配送信息 */
+export function cycleOrderExpress(stageid: number) {
+  return request.get<unknown, any>('/admin/cycle/order/express', { params: { stageid } })
+}
+
+/** 删除订单（软删） */
+export function cycleOrderDelete(id: number) {
+  return request.post<unknown, null>('/admin/cycle/order/delete', { id })
+}
+
+/** 完成（整单收口） */
+export function cycleOrderFinish(id: number) {
+  return request.post<unknown, null>('/admin/cycle/order/finish', { id })
+}
+
+/** 订单导出 CSV（blob 下载） */
+export function cycleOrderExport(params: Record<string, any>) {
+  return request.get('/admin/cycle/order/export', { params, responseType: 'blob', timeout: 180000 }) as Promise<Blob>
 }

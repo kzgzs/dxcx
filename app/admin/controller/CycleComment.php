@@ -59,6 +59,12 @@ class CycleComment extends BaseController
             $query->where('status', $status);
         }
 
+        // 评价内容精确模糊（对齐参考系统「评价内容」搜索框）
+        $content = trim((string) $this->request->get('content', ''));
+        if ('' !== $content) {
+            $query->where('content', 'like', '%' . $content . '%');
+        }
+
         $startTime = (int) $this->request->get('start_time', 0);
         $endTime   = (int) $this->request->get('end_time', 0);
 
@@ -72,7 +78,15 @@ class CycleComment extends BaseController
 
         $total = (clone $query)->count();
 
-        $rows = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
+        // 排序：评分 score / 评价时间 createtime 可点列头排序，默认 id desc
+        $orderField = trim((string) $this->request->get('order_field', 'id'));
+        $orderType  = strtolower((string) $this->request->get('order_type', 'desc'));
+        if (!in_array($orderField, ['id', 'score', 'createtime'], true)) {
+            $orderField = 'id';
+        }
+        $orderType = 'asc' === $orderType ? 'asc' : 'desc';
+
+        $rows = $query->order($orderField, $orderType)->page($page, $pageSize)->select()->toArray();
 
         foreach ($rows as &$row) {
             $row['createtime_text'] = (int) $row['createtime'] > 0 ? date('Y-m-d H:i:s', (int) $row['createtime']) : '';
@@ -91,27 +105,43 @@ class CycleComment extends BaseController
     }
 
     /**
-     * 审核（通过/驳回）
-     * POST /admin/cycleComment/check {id, status}
+     * 审核（通过=1 / 驳回=2 / 取消审核=0，批量 ids 或单 id）
+     * POST /admin/cycleComment/check {ids:[], status} 或 {id, status}
      */
     public function check()
     {
         $aid    = ScopeService::aidOf($this->request);
-        $id     = (int) $this->request->post('id', 0);
         $status = (int) $this->request->post('status', 1);
 
-        if (!in_array($status, [self::STATUS_APPROVED, self::STATUS_REJECTED], true)) {
+        if (!in_array($status, [self::STATUS_PENDING, self::STATUS_APPROVED, self::STATUS_REJECTED], true)) {
             throw new BusinessException('审核状态不合法');
         }
 
-        $comment = $this->findComment($aid, $id);
+        $ids = (array) $this->request->post('ids/a', []);
+        if (empty($ids)) {
+            $ids = [(int) $this->request->post('id', 0)];
+        }
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $ids = array_filter($ids, fn ($v) => $v > 0);
+        if (empty($ids)) {
+            throw new BusinessException('请选择评价');
+        }
+
+        $rows = ScopeService::query('cycle_comment', $aid)->whereIn('id', $ids)->select()->toArray();
+        if (empty($rows)) {
+            throw new BusinessException('评价不存在');
+        }
 
         Db::startTrans();
 
         try {
-            Db::name('cycle_comment')->where('id', (int) $comment['id'])->update(['status' => $status]);
+            Db::name('cycle_comment')->where('aid', $aid)->whereIn('id', $ids)->update(['status' => $status]);
 
-            $this->recalcProduct($aid, (int) $comment['proid']);
+            // 重算每条商品的评价聚合
+            $proIds = array_values(array_unique(array_map(fn ($r) => (int) $r['proid'], $rows)));
+            foreach ($proIds as $proId) {
+                $this->recalcProduct($aid, $proId);
+            }
 
             Db::commit();
         } catch (\Throwable $e) {
@@ -150,26 +180,37 @@ class CycleComment extends BaseController
     }
 
     /**
-     * 删除（物理删除）+ 重算商品聚合
-     * POST /admin/cycleComment/delete {id}
+     * 删除（物理删除，批量 ids 或单 id）+ 重算商品聚合
+     * POST /admin/cycleComment/delete {ids:[]} 或 {id}
      */
     public function delete()
     {
         $aid = ScopeService::aidOf($this->request);
-        $id  = (int) $this->request->post('id', 0);
 
-        if ($id <= 0) {
+        $ids = (array) $this->request->post('ids/a', []);
+        if (empty($ids)) {
+            $ids = [(int) $this->request->post('id', 0)];
+        }
+        $ids = array_values(array_unique(array_map('intval', $ids)));
+        $ids = array_filter($ids, fn ($v) => $v > 0);
+        if (empty($ids)) {
             throw new BusinessException('请选择评价');
         }
 
-        $comment = $this->findComment($aid, $id);
+        $rows = ScopeService::query('cycle_comment', $aid)->whereIn('id', $ids)->select()->toArray();
+        if (empty($rows)) {
+            throw new BusinessException('评价不存在');
+        }
 
         Db::startTrans();
 
         try {
-            Db::name('cycle_comment')->where('id', (int) $comment['id'])->delete();
+            Db::name('cycle_comment')->where('aid', $aid)->whereIn('id', $ids)->delete();
 
-            $this->recalcProduct($aid, (int) $comment['proid']);
+            $proIds = array_values(array_unique(array_map(fn ($r) => (int) $r['proid'], $rows)));
+            foreach ($proIds as $proId) {
+                $this->recalcProduct($aid, $proId);
+            }
 
             Db::commit();
         } catch (\Throwable $e) {
@@ -179,6 +220,33 @@ class CycleComment extends BaseController
         }
 
         return $this->success([], '删除成功');
+    }
+
+    /**
+     * 评价详情（含评价人信息，对齐参考系统 getdetail）
+     * POST /admin/cycleComment/detail {id}
+     */
+    public function detail()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $id  = (int) $this->request->post('id', 0);
+
+        $comment = $this->findComment($aid, $id);
+
+        $member = ScopeService::query('member', $aid)
+            ->where('id', (int) $comment['mid'])
+            ->field('id,nickname,headimg,realname,tel')
+            ->find();
+
+        if (empty($member)) {
+            $member = ['nickname' => $comment['nickname'] ?? '', 'headimg' => $comment['headimg'] ?? ''];
+        }
+
+        $comment['content_pic_arr'] = !empty($comment['content_pic']) ? explode(',', (string) $comment['content_pic']) : [];
+        $comment['createtime_text'] = (int) $comment['createtime'] > 0 ? date('Y-m-d H:i', (int) $comment['createtime']) : '';
+        $comment['reply_time_text'] = (int) ($comment['reply_time'] ?? 0) > 0 ? date('Y-m-d H:i', (int) $comment['reply_time']) : '';
+
+        return $this->success(['detail' => $comment, 'member' => $member]);
     }
 
     // ================= 内部工具 =================

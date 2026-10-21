@@ -74,6 +74,22 @@ Route::post('restaurant/order/pay', 'Restaurant/orderPay');
 Route::post('restaurant/order/cancel', 'Restaurant/orderCancel');
 Route::post('restaurant/order/complete', 'Restaurant/orderComplete');
 
+// 餐饮外卖（匿名：info，白名单见 AuthMiddleware；订单接口鉴权 role=member）
+Route::get('restaurantTakeaway/info', 'RestaurantTakeaway/info');
+Route::post('restaurantTakeaway/order/create', 'RestaurantTakeaway/orderCreate');
+Route::get('restaurantTakeaway/order/list', 'RestaurantTakeaway/orderList');
+Route::get('restaurantTakeaway/order/detail', 'RestaurantTakeaway/orderDetail');
+Route::post('restaurantTakeaway/order/pay', 'RestaurantTakeaway/orderPay');
+Route::post('restaurantTakeaway/order/cancel', 'RestaurantTakeaway/orderCancel');
+Route::post('restaurantTakeaway/order/complete', 'RestaurantTakeaway/orderComplete');
+Route::post('restaurantTakeaway/order/refund', 'RestaurantTakeaway/orderRefund');
+
+// 自定义表单（匿名：detail，白名单见 AuthMiddleware；提交/支付/我的记录鉴权 role=member）
+Route::get('form/detail', 'Form/detail');
+Route::post('form/submit', 'Form/submit');
+Route::post('form/pay', 'Form/pay');
+Route::get('form/mydata', 'Form/mydata');
+
 // 会员收货地址（鉴权：role=member）
 Route::post('address/add', 'Address/add');
 Route::post('address/edit', 'Address/edit');
@@ -305,9 +321,6 @@ Route::post('restaurantQueue/quhao', 'RestaurantQueue/quhao');
 Route::post('restaurantQueue/cancel', 'RestaurantQueue/cancel');
 Route::get('restaurantQueue/record', 'RestaurantQueue/record');
 Route::get('restaurantQueue/getqueuelist', 'RestaurantQueue/getqueuelist');
-
-// 餐饮 - 取餐（批次6-T6-4 任务205：大屏轮询匿名，白名单见 AuthMiddleware，aid 走 query）
-Route::get('restaurant/takefood/screen', 'Restaurant/takefoodScreen');
 
 // 餐饮 - 寄存（批次6-T6-3 任务204，鉴权：role=member；无取件码，取件凭登录身份）
 Route::get('restaurantDeposit/orderlist', 'RestaurantDeposit/orderlist');

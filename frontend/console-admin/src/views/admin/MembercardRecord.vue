@@ -1,9 +1,10 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { inject, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   mcList,
   mcRecordDel,
+  mcRecordDetail,
   mcRecordExport,
   mcRecordList,
   mcSendScore,
@@ -34,6 +35,80 @@ const scoreVisible = ref(false)
 const sending = ref(false)
 const scoreForm = reactive({ cardId: '' as number | '', score: 10, remark: '' })
 const scoreProgress = ref('')
+
+// 批量选择
+const selected = ref<MembercardRecordRow[]>([])
+function handleSelectionChange(rows: MembercardRecordRow[]) {
+  selected.value = rows
+}
+async function handleBatchDelete() {
+  if (!selected.value.length) {
+    ElMessage.warning('请先选择要删除的记录')
+    return
+  }
+  try {
+    await ElMessageBox.confirm(`确定删除选中的 ${selected.value.length} 条领取记录吗？`, '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await mcRecordDel(selected.value.map((r) => r.id))
+    ElMessage.success('删除成功')
+    loadData()
+  } catch {
+    // 拦截器已提示
+  }
+}
+
+// 查看详情弹窗
+const detailVisible = ref(false)
+const detailLoading = ref(false)
+const detail = ref<MembercardRecordRow | null>(null)
+async function handleView(row: MembercardRecordRow) {
+  detailVisible.value = true
+  detailLoading.value = true
+  detail.value = row
+  try {
+    detail.value = await mcRecordDetail(row.id)
+  } catch {
+    // 保留行数据
+  } finally {
+    detailLoading.value = false
+  }
+}
+
+function statusText(status: number): string {
+  if (status === 1 || status === 0) return '正常'
+  if (status === 2) return '已注销'
+  if (status === 3) return '已过期'
+  return '正常'
+}
+
+// 跳转会员卡列表
+const navigateByKey = inject<(key: string) => boolean>('adminNavigateByKey', () => false)
+function goMembercard() {
+  if (!navigateByKey('membercard-index')) {
+    ElMessage.info('请从左侧菜单「微信会员卡-会员卡/创建」查看')
+  }
+}
+
+async function handleDeleteDetail() {
+  if (!detail.value) return
+  const row = detail.value
+  try {
+    await ElMessageBox.confirm('确定删除该领取记录吗？', '提示', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await mcRecordDel([row.id])
+    ElMessage.success('删除成功')
+    detailVisible.value = false
+    loadData()
+  } catch {
+    // 拦截器已提示
+  }
+}
 
 function selectedCardIdValue(): string {
   const card = cards.value.find((c) => c.id === filters.cardId)
@@ -192,8 +267,14 @@ async function handleSendScore() {
   }
 }
 
-onMounted(() => {
-  loadCards()
+onMounted(async () => {
+  // 来自会员卡列表「领取记录」的按卡过滤
+  const presetPk = sessionStorage.getItem('mc_record_card_pk')
+  if (presetPk) {
+    sessionStorage.removeItem('mc_record_card_pk')
+    filters.cardId = Number(presetPk)
+  }
+  await loadCards()
   loadData()
 })
 </script>
@@ -204,62 +285,61 @@ onMounted(() => {
       <div class="card-title">会员卡领取记录</div>
 
       <div class="filter-bar">
-        <el-select v-model="filters.cardId" placeholder="会员卡" clearable style="width: 180px">
+        <el-select v-model="filters.cardId" placeholder="会员卡" clearable style="width: 160px">
           <el-option v-for="c in cards" :key="c.id" :label="c.title" :value="c.id" />
         </el-select>
-        <el-input v-model="filters.card_code" placeholder="卡号" clearable style="width: 160px" @keyup.enter="handleSearch" />
-        <el-input v-model="filters.name" placeholder="姓名" clearable style="width: 130px" @keyup.enter="handleSearch" />
-        <el-input v-model="filters.mobile" placeholder="手机号" clearable style="width: 150px" @keyup.enter="handleSearch" />
+        <el-input v-model="filters.card_code" placeholder="卡号" clearable style="width: 150px" @keyup.enter="handleSearch" />
+        <el-input v-model="filters.name" placeholder="姓名" clearable style="width: 120px" @keyup.enter="handleSearch" />
+        <el-input v-model="filters.mobile" placeholder="手机号" clearable style="width: 140px" @keyup.enter="handleSearch" />
         <el-date-picker
           v-model="filters.range"
           type="daterange"
           value-format="YYYY-MM-DD"
-          start-placeholder="开始日期"
+          start-placeholder="领取时间"
           end-placeholder="结束日期"
-          style="width: 260px"
+          style="width: 240px"
         />
         <el-button type="primary" @click="handleSearch">查询</el-button>
         <el-button @click="handleReset">重置</el-button>
+      </div>
+      <div class="filter-bar second-row">
+        <el-button @click="goMembercard">查看会员卡</el-button>
         <el-button :loading="exporting" @click="handleExport">导出</el-button>
         <el-button type="success" @click="openSendScore()">送积分</el-button>
+        <el-button type="danger" plain :disabled="!selected.length" @click="handleBatchDelete">批量删除</el-button>
       </div>
 
-      <el-table :data="list" v-loading="loading" border stripe row-key="id" style="width: 100%; margin-top: 12px">
-        <el-table-column type="expand">
+      <el-table :data="list" v-loading="loading" border stripe row-key="id" style="width: 100%; margin-top: 6px" @selection-change="handleSelectionChange">
+        <el-table-column type="selection" width="40" />
+        <el-table-column prop="id" label="ID" width="70" />
+        <el-table-column label="头像昵称" min-width="160">
           <template #default="{ row }">
-            <div class="expand-box">
-              <div class="expand-title">开卡表单信息</div>
-              <template v-if="formFields(row).length">
-                <div v-for="f in formFields(row)" :key="f.label" class="expand-item">
-                  <span class="expand-label">{{ f.label }}</span>
-                  <span>{{ f.value }}</span>
-                </div>
-              </template>
-              <div v-else class="expand-empty">会员未填写额外信息</div>
+            <div class="user-cell">
+              <el-avatar :src="row.headimg" :size="30" class="user-avatar">
+                {{ (row.nickname || '会').charAt(0) }}
+              </el-avatar>
+              <span>{{ row.nickname || '用户' + row.mid }}</span>
             </div>
           </template>
         </el-table-column>
-        <el-table-column prop="id" label="ID" width="70" />
-        <el-table-column label="会员" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.nickname || '—' }}</template>
-        </el-table-column>
-        <el-table-column prop="card_title" label="会员卡" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.card_title || row.card_id }}</template>
-        </el-table-column>
-        <el-table-column prop="card_code" label="卡号" min-width="180" show-overflow-tooltip />
-        <el-table-column prop="name" label="姓名" width="110">
+        <el-table-column prop="card_code" label="卡号" min-width="170" show-overflow-tooltip />
+        <el-table-column prop="name" label="姓名" width="100">
           <template #default="{ row }">{{ row.name || '—' }}</template>
         </el-table-column>
         <el-table-column prop="mobile" label="手机号" width="130">
           <template #default="{ row }">{{ row.mobile || '—' }}</template>
         </el-table-column>
-        <el-table-column label="开卡时间" width="160">
+        <el-table-column label="领取时间" width="160">
           <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="150" fixed="right">
+        <el-table-column label="状态" width="80" align="center">
           <template #default="{ row }">
-            <el-button link type="success" @click="openSendScore(row)">送积分</el-button>
-            <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-tag size="small" :type="row.status === 1 ? 'success' : 'info'">{{ statusText(row.status) }}</el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="100" fixed="right">
+          <template #default="{ row }">
+            <el-button link type="primary" @click="handleView(row)">查看</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -299,6 +379,35 @@ onMounted(() => {
         <el-button type="primary" :loading="sending" @click="handleSendScore">开始赠送</el-button>
       </template>
     </el-dialog>
+
+    <!-- 查看详情弹窗 -->
+    <el-dialog v-model="detailVisible" title="领取记录详情" width="520px">
+      <div v-loading="detailLoading" class="detail-body" v-if="detail">
+        <div class="detail-head">
+          <el-avatar :src="detail.headimg" :size="44">{{ (detail.nickname || '会').charAt(0) }}</el-avatar>
+          <div>
+            <div class="detail-name">{{ detail.nickname || '用户' + detail.mid }}</div>
+            <div class="detail-sub">卡号：{{ detail.card_code }}</div>
+          </div>
+        </div>
+        <el-descriptions :column="1" border size="small">
+          <el-descriptions-item label="会员卡">{{ detail.card_title || detail.card_id }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ statusText(detail.status) }}</el-descriptions-item>
+          <el-descriptions-item label="领取时间">{{ formatTime(detail.createtime) }}</el-descriptions-item>
+          <template v-for="f in formFields(detail)" :key="f.label">
+            <el-descriptions-item :label="f.label">{{ f.value }}</el-descriptions-item>
+          </template>
+        </el-descriptions>
+      </div>
+      <template #footer>
+        <el-button
+          type="success"
+          @click="detail && openSendScore(detail); detailVisible = false"
+        >送积分</el-button>
+        <el-button type="danger" @click="handleDeleteDetail">删除</el-button>
+        <el-button @click="detailVisible = false">关闭</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -322,8 +431,34 @@ onMounted(() => {
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 3px;
   align-items: center;
+}
+.filter-bar.second-row {
+  margin-top: 3px;
+}
+.user-cell {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.user-avatar {
+  flex-shrink: 0;
+}
+.detail-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.detail-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: #303133;
+}
+.detail-sub {
+  font-size: 12px;
+  color: #909399;
 }
 .pager {
   display: flex;

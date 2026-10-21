@@ -70,6 +70,53 @@ class CashierOrder extends BaseController
     }
 
     /**
+     * 直接退款（对齐点大：一步到位，退余额+回库存+置 status=10）
+     * POST /admin/cashier/order/refund
+     */
+    public function refund()
+    {
+        $aid     = ScopeService::aidOf($this->request);
+        $orderId = (int) $this->request->post('orderid', 0);
+        $money   = (float) $this->request->post('refund_money', 0);
+        $remark  = trim((string) $this->request->post('remark', ''));
+
+        app(CashierService::class)->refund($aid, $orderId, $money, $remark);
+
+        return $this->success([], '退款成功');
+    }
+
+    /**
+     * 打印小票（对齐点大：校验有启用打印机，生成小票内容）
+     * POST /admin/cashier/order/wifiprint
+     */
+    public function wifiprint()
+    {
+        $aid     = ScopeService::aidOf($this->request);
+        $orderId = (int) $this->request->post('id', 0);
+
+        return $this->success(app(CashierService::class)->wifiprint($aid, $orderId), '打印任务已提交');
+    }
+
+    /**
+     * 导出订单EXCEL（对齐点大：返回 title+data，前端生成 CSV 下载）
+     * GET /admin/cashier/order/excel
+     */
+    public function excel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+
+        $filters = [
+            'status'    => $this->request->get('status', ''),
+            'ordernum'  => (string) $this->request->get('ordernum', ''),
+            'mid'       => (int) $this->request->get('mid', 0),
+            'starttime' => (string) $this->request->get('starttime', ''),
+            'endtime'   => (string) $this->request->get('endtime', ''),
+        ];
+
+        return $this->success(app(CashierService::class)->orderExcel($aid, $filters));
+    }
+
+    /**
      * 退款审核（同意：退余额+回库存，status=10/refund_status=2；驳回：refund_status=3）
      * POST /admin/cashier/order/refundaudit
      */

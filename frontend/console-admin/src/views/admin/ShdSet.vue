@@ -53,34 +53,26 @@ onMounted(() => {
   <div class="shd-set-page" v-loading="loading">
     <div class="page-card">
       <div class="card-title">送货单设置</div>
-      <el-form :model="form" label-width="150px" class="set-form">
-        <el-form-item label="送货单标题">
+      <el-form :model="form" label-width="120px" class="set-form">
+        <el-form-item label="打印标题：">
           <el-input
             v-model="form.shipping_pagetitle"
-            placeholder="打印送货单时显示的标题，留空使用默认标题"
-            maxlength="50"
-            show-word-limit
-            style="width: 420px"
+            style="width: 240px"
           />
+          <el-button link type="primary" style="margin-left:8px">示例</el-button>
         </el-form-item>
-        <el-form-item label="每页打印行数">
-          <el-input-number v-model="form.shipping_pagenum" :min="0" :max="200" :step="1" />
-          <span class="form-tip">每页打印的明细行数，超出自动分页；0 表示不分页</span>
+        <el-form-item label="每页行数：">
+          <el-input v-model="form.shipping_pagenum" style="width: 240px" />
+          <span class="form-tip">控制每页显示和打印行数（根据纸张大小修改），0为不限制</span>
         </el-form-item>
-        <el-form-item label="每页表格固定行数">
-          <el-input-number v-model="form.shipping_linenum" :min="0" :max="200" :step="1" />
-          <span class="form-tip">不足时用空行补齐，保证每页表格行数一致；0 表示不固定</span>
+        <el-form-item label="品名及规格行数：">
+          <el-input v-model="form.shipping_linenum" style="width: 240px" />
+          <span class="form-tip">控制"品名及规格"文字显示几行，多出的用省略号表示，0为不限制</span>
         </el-form-item>
         <el-form-item>
-          <el-button type="primary" :loading="saving" @click="handleSave">保存设置</el-button>
+          <el-button type="primary" :loading="saving" @click="handleSave">提 交</el-button>
         </el-form-item>
       </el-form>
-      <div class="page-note">
-        <p>说明：</p>
-        <p>1. 在「订单管理」列表勾选订单后点击「打印送货单」，按此处设置生成打印页。</p>
-        <p>2. 每页打印行数大于 0 时，明细超出部分自动续页打印，不足按固定行数补空行。</p>
-        <p>3. 送货单金额自动转人民币大写，末页含合计与签收栏。</p>
-      </div>
     </div>
   </div>
 </template>

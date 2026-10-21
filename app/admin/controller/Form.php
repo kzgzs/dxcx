@@ -6,18 +6,24 @@ namespace app\admin\controller;
 
 use app\BaseController;
 use app\common\exception\BusinessException;
+use app\common\service\FormService;
 use app\common\service\ScopeService;
 use think\facade\Db;
 use util\ExcelUtil;
 
 /**
- * 租户后台 - 自定义表单（对照 canzhao app/controller/Form.php + ApiAdminForm.php）
+ * 租户后台 - 自定义表单
  *
  * 双表结构：form（表单定义）+ form_order（提交记录，form0~form50 动态字段）。
  * 列表支持 bid 过滤（form-index-showtype-2 商户视图经 merchantViewOf 双挂同组件）。
  */
 class Form extends BaseController
 {
+    public function __construct(\think\App $app, protected FormService $formService)
+    {
+        parent::__construct($app);
+    }
+
     /**
      * 表单列表（name/bid 筛选，附加未处理记录数 st0count）
      * GET /admin/form/list?page&pagesize&name&bid
@@ -43,16 +49,31 @@ class Form extends BaseController
         $rows  = $query->field('f.*')->order('f.sort', 'desc')->order('f.id', 'desc')
             ->page($page, $pageSize)->select()->toArray();
 
-        // 未处理记录数（status=0）
+        // 待处理记录数（开启在线支付且默认金额>0 时，仅统计已支付的待处理记录）
         $ids = array_map(static fn ($r) => (int) $r['id'], $rows);
         $st0Map = [];
+        $payIds = [];
+        foreach ($rows as $r) {
+            if ((int) $r['payset'] === 1 && (float) $r['price'] > 0) {
+                $payIds[] = (int) $r['id'];
+            }
+        }
         if (!empty($ids)) {
             $st0Map = Db::name('form_order')->where('aid', $aid)
                 ->whereIn('formid', $ids)->where('status', 0)->where('isudel', 0)
+                ->when(!empty($payIds), function ($q) use ($payIds) {
+                    $q->whereNotIn('formid', $payIds);
+                })
                 ->group('formid')->column('count(*)', 'formid');
+            if (!empty($payIds)) {
+                $payMap = Db::name('form_order')->where('aid', $aid)
+                    ->whereIn('formid', $payIds)->where('status', 0)->where('paystatus', 1)->where('isudel', 0)
+                    ->group('formid')->column('count(*)', 'formid');
+                $st0Map += $payMap;
+            }
         }
 
-        // 商户名映射（bid=0 平台自营；对照 canzhao Db::name('business')->where('aid',$aid)->column('name','id')）
+        // 商户名映射（bid=0 平台自营）
         $bnameArr = Db::name('business')->where('aid', $aid)->column('name', 'id');
 
         foreach ($rows as &$row) {
@@ -73,7 +94,7 @@ class Form extends BaseController
     }
 
     /**
-     * 表单详情
+     * 表单详情（附加 aglevellist：默认分类下具有分销权限的会员等级）
      * GET /admin/form/detail?id=
      */
     public function detail()
@@ -81,12 +102,32 @@ class Form extends BaseController
         $aid = ScopeService::aidOf($this->request);
         $id  = (int) $this->request->get('id', 0);
 
+        // id=0：新建场景，仅下发 aglevellist 供分销设置渲染
+        if ($id <= 0) {
+            return $this->success(['aglevellist' => $this->agentLevelList($aid)]);
+        }
+
         $row = ScopeService::query('form', $aid)->where('id', $id)->find();
         if (empty($row)) {
             throw new BusinessException('表单不存在');
         }
 
+        $row['aglevellist'] = $this->agentLevelList($aid);
+
         return $this->success($row);
+    }
+
+    /**
+     * 具有分销权限的会员等级列表（默认分类 + can_agent<>0）
+     * @return array<int, array<string, mixed>>
+     */
+    protected function agentLevelList(int $aid): array
+    {
+        $cid = (int) Db::name('member_level_category')->where('aid', $aid)->where('isdefault', 1)->value('id');
+
+        return Db::name('member_level')->where('aid', $aid)->where('cid', $cid)
+            ->where('can_agent', '<>', 0)->order('sort,id')
+            ->field('id,name,can_agent')->select()->toArray();
     }
 
     /**
@@ -188,7 +229,7 @@ class Form extends BaseController
     }
 
     /**
-     * 表单复制（name+'-复制'，对照 canzhao copyform）
+     * 表单复制（name+'-复制'）
      * POST /admin/form/copy {id}
      */
     public function copy()
@@ -258,7 +299,7 @@ class Form extends BaseController
         $total = (clone $query)->count();
         $rows  = $query->order('o.id', 'desc')->page($page, $pageSize)->select()->toArray();
 
-        // 表单定义（动态列渲染）+ upload_pics 字段拆数组（对照 canzhao record()）
+        // 表单定义（动态列渲染）+ upload_pics 字段拆数组
         $formdef = null;
         $formcontent = [];
         if ($formid > 0) {
@@ -306,8 +347,12 @@ class Form extends BaseController
     }
 
     /**
-     * 提交记录改状态（st：1确认/2驳回，驳回须 reason；对照 canzhao recordsetst）
-     * POST /admin/form/recordsetst {ids[], st, reason}
+     * 提交记录改状态
+     *
+     * st=1 确认：发放分销佣金（commissionset!=-1 且未发放未退款 → addCommission → is_send_commission=1）
+     * st=2 驳回：写驳回原因；istuikuan=1 时原路退款 + 扣回商户结算 + 扣回已发佣金（→2，isrefund=1）
+     *
+     * POST /admin/form/recordsetst {ids[], st, reason, istuikuan}
      */
     public function recordsetst()
     {
@@ -315,6 +360,7 @@ class Form extends BaseController
         $ids = array_values(array_filter(array_map('intval', (array) $this->request->post('ids/a', []))));
         $st  = (int) $this->request->post('st', 1);
         $reason = trim((string) $this->request->post('reason', ''));
+        $istuikuan = (int) $this->request->post('istuikuan', 0) === 1 ? 1 : 0;
 
         if (empty($ids)) {
             throw new BusinessException('请选择记录');
@@ -326,18 +372,33 @@ class Form extends BaseController
             throw new BusinessException('请填写驳回原因');
         }
 
-        $update = ['status' => $st];
-        if (2 === $st) {
-            $update['reason'] = $reason;
-        }
+        $uid = (int) ($this->request->authUid ?? 0);
+        $orders = ScopeService::query('form_order', $aid)->whereIn('id', $ids)->select()->toArray();
 
-        ScopeService::query('form_order', $aid)->whereIn('id', $ids)->update($update);
+        foreach ($orders as $order) {
+            if (2 === $st) {
+                // 驳回：先落状态与原因
+                Db::name('form_order')->where('aid', $aid)->where('id', (int) $order['id'])
+                    ->update(['status' => 2, 'reason' => $reason]);
+
+                // 退款：原路退款 + 扣回商户结算 + 扣回已发佣金
+                if (1 === $istuikuan) {
+                    $this->formService->refundOrder((array) $order, $reason);
+                }
+            } else {
+                // 确认：发放佣金（内部校验 commissionset!=-1 且 is_send_commission=0 且 isrefund=0）
+                $this->formService->sendCommission($uid, (array) $order);
+
+                Db::name('form_order')->where('aid', $aid)->where('id', (int) $order['id'])
+                    ->update(['status' => 1]);
+            }
+        }
 
         return $this->success([], 1 === $st ? '已确认' : '已驳回');
     }
 
     /**
-     * 提交记录删除（软删 isudel=1，对照 canzhao recorddel）
+     * 提交记录删除（软删 isudel=1）
      * POST /admin/form/recorddel {ids[]}
      */
     public function recorddel()
@@ -355,7 +416,7 @@ class Form extends BaseController
     }
 
     /**
-     * 表单数据新增/编辑（对照 canzhao recordsave）
+     * 表单数据新增/编辑
      * POST /admin/form/recordsave {formid, id?, mid, status, paystatus, money, reason, fields:{form0..formN}}
      */
     public function recordsave()
@@ -385,7 +446,7 @@ class Form extends BaseController
                 $value = implode(',', array_filter($value, static fn ($x) => '' !== (string) $x));
             }
             $data['form' . $k] = strval($value);
-            // 必填校验（对照 canzhao：val3==1 且为空则报错；map 类型除外）
+            // 必填校验（val3==1 且为空则报错；map 类型除外）
             if (($v['val3'] ?? 0) == 1 && '' === $data['form' . $k] && 'map' !== $key) {
                 throw new BusinessException(($v['val1'] ?? '该项') . ' 必填');
             }
@@ -426,7 +487,7 @@ class Form extends BaseController
     }
 
     /**
-     * 表单数据导出（CSV/XLSX，对照 canzhao recordexcel；动态列按表单内容生成）
+     * 表单数据导出（CSV/XLSX，动态列按表单内容生成）
      * GET /admin/form/recordexcel?formid&status&keyword&starttime&endtime&bid
      */
     public function recordexcel()

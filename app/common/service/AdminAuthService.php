@@ -348,27 +348,9 @@ class AdminAuthService
             [
                 'name'     => '扩展',
                 'fullname' => '扩展功能',
-                'path'     => '/admin/carhailing/category',
+                'path'     => '/admin/yuyue/product',
                 'icon'     => 'extend',
                 'children' => [
-                    [
-                        'name'     => '网约车管理',
-                        'path'     => '/admin/carhailing',
-                        'children' => [
-                            ['name' => '车辆分类', 'path' => '/admin/carhailing/category'],
-                            ['name' => '车辆管理', 'path' => '/admin/carhailing/product'],
-                            ['name' => '用车订单', 'path' => '/admin/carhailing/order'],
-                        ],
-                    ],
-                    [
-                        'name'     => '酒店管理',
-                        'path'     => '/admin/hotel',
-                        'children' => [
-                            ['name' => '酒店列表', 'path' => '/admin/hotel/list'],
-                            ['name' => '房型管理', 'path' => '/admin/hotel/room'],
-                            ['name' => '酒店订单', 'path' => '/admin/hotel/order'],
-                        ],
-                    ],
                     [
                         'name'     => '预约管理',
                         'path'     => '/admin/yuyue',

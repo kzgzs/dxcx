@@ -1,10 +1,22 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { onMounted, reactive, ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type { FormInstance, FormRules } from 'element-plus'
+import { useAuthStore } from '../../stores/auth'
 import { getMerchantList } from '../../api/merchant'
 import { addStore, deleteStore, editStore, getStoreList } from '../../api/store'
 import type { MerchantItem, StoreItem } from '../../api/types'
+
+const authStore = useAuthStore()
+const uploadUrl = '/admin/upload'
+const uploadHeaders = computed(() => ({ Authorization: `Bearer ${authStore.token}` }))
+function handleUploadSuccess(response: any) {
+  if (response && response.code === 0 && response.data?.url) {
+    form.pic = response.data.url
+  } else {
+    ElMessage.error(response?.msg || '上传失败')
+  }
+}
 
 // ============ 商户下拉选项 ============
 const merchantOptions = ref<MerchantItem[]>([])
@@ -130,6 +142,7 @@ const form = reactive({
   id: 0,
   merchant_id: '' as number | '',
   name: '',
+  pic: '',
   contacts: '',
   phone: '',
   province: '',
@@ -152,6 +165,7 @@ function openAdd() {
     id: 0,
     merchant_id: '',
     name: '',
+    pic: '',
     contacts: '',
     phone: '',
     province: '',
@@ -171,6 +185,7 @@ function openEdit(row: StoreItem) {
     id: row.id,
     merchant_id: row.merchant_id,
     name: row.name,
+    pic: (row as any).pic ?? '',
     contacts: row.contacts,
     phone: row.phone,
     province: row.province,
@@ -194,6 +209,7 @@ async function handleSubmit() {
         id: form.id,
         merchant_id: Number(form.merchant_id),
         name: form.name,
+        pic: form.pic,
         contacts: form.contacts,
         phone: form.phone,
         province: form.province,
@@ -339,6 +355,21 @@ onMounted(() => {
         </el-form-item>
         <el-form-item label="门店名称" prop="name">
           <el-input v-model="form.name" placeholder="请输入门店名称" />
+          <span class="form-help">填写该门店所在的社区名称，方便客户寻找；若没有可不用填写</span>
+        </el-form-item>
+        <el-form-item label="门店图片">
+          <el-upload
+            class="store-uploader"
+            :action="uploadUrl"
+            :headers="uploadHeaders"
+            :show-file-list="false"
+            :on-success="handleUploadSuccess"
+            accept="image/*"
+          >
+            <img v-if="form.pic" :src="form.pic" class="store-preview" />
+            <div v-else class="store-upload-placeholder">上传图片</div>
+          </el-upload>
+          <span class="form-help">建议尺寸：640×640像素</span>
         </el-form-item>
         <el-form-item label="联系人">
           <el-input v-model="form.contacts" placeholder="请输入联系人" />
@@ -400,5 +431,35 @@ onMounted(() => {
   display: flex;
   gap: 8px;
   width: 100%;
+}
+
+.form-help {
+  color: #909399;
+  font-size: 12px;
+  margin-left: 10px;
+  line-height: 1.6;
+}
+
+.store-uploader :deep(.el-upload) {
+  border: 1px solid #dcdfe6;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 120px;
+  height: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.store-upload-placeholder {
+  color: #909399;
+  font-size: 13px;
+}
+
+.store-preview {
+  width: 120px;
+  height: 120px;
+  object-fit: cover;
 }
 </style>

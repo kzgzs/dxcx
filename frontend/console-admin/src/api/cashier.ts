@@ -2,27 +2,31 @@ import request from './request'
 
 /* ================= 类型（批次6-T6-5 任务206 通用收银台一期） ================= */
 
-// 自定义支付方式字典行
-export interface CustomPayItem {
-  id: number
-  title: string
-  sort: number
-  status: number
-  paytypeid: number
-  createtime: number
-}
-
 // 收银设置
 export interface CashdeskConfig {
   id: number
   name: string
+  color1: string
   wxpay: number
   cashpay: number
   moneypay: number
   remove_zero_length: number
   paypwd_use_status: number
   jiaoban_print_ids: string
-  custom_pays: CustomPayItem[]
+  is_use_mid_search: number
+  cashdesk_give_score_set: number
+  printers: { id: number; name: string }[]
+  cashier_url: string
+  login_url: string
+  pinfo: {
+    wxpay_type: number
+    appid: string
+    wxpay_sub_mchid: string
+    wxpay_mchid: string
+    wxpay_mchkey: string
+    wxpay_apiclient_cert: string
+    wxpay_apiclient_key: string
+  }
 }
 
 // 结算弹窗可用支付方式
@@ -170,6 +174,7 @@ export interface CashierOrderItem {
   status_desc: string
   mid: number
   nickname: string
+  headimg: string
   admin_user: string
   uid: number
   paytypeid: number
@@ -177,6 +182,8 @@ export interface CashierOrderItem {
   paynum: string
   pre_totalprice: number
   totalprice: number
+  coupon_money: number
+  scoredk_money: number
   leveldk_money: number
   moling_money: number
   remove_zero: number
@@ -246,26 +253,18 @@ export function getCashdeskConfig() {
 
 export function saveCashdeskConfig(data: {
   name?: string
+  color1?: string
   wxpay: number
   cashpay: number
   moneypay: number
   remove_zero_length: number
   paypwd_use_status?: number
   jiaoban_print_ids?: string
+  is_use_mid_search?: number
+  cashdesk_give_score_set?: number
+  pinfo?: Record<string, unknown>
 }) {
   return request.post<unknown, null>('/admin/cashier/set', data)
-}
-
-export function getCustomPayList() {
-  return request.get<unknown, { list: CustomPayItem[] }>('/admin/cashier/set/customlist')
-}
-
-export function saveCustomPay(data: { id?: number; title: string; sort?: number; status?: number }) {
-  return request.post<unknown, { id: number }>('/admin/cashier/set/customsave', data)
-}
-
-export function deleteCustomPay(id: number) {
-  return request.post<unknown, null>('/admin/cashier/set/customdelete', { id })
 }
 
 export function getPayList() {
@@ -399,6 +398,37 @@ export function deleteCashierOrders(ids: number[]) {
   return request.post<unknown, null>('/admin/cashier/order/delete', { ids })
 }
 
+// 直接退款（对齐点大：一步到位）
+export function cashierRefund(orderid: number, refund_money: number, remark: string) {
+  return request.post<unknown, null>('/admin/cashier/order/refund', {
+    orderid,
+    refund_money,
+    remark,
+  })
+}
+
+// 打印小票
+export function cashierWifiprint(id: number) {
+  return request.post<unknown, { status: number; msg: string; content: string }>(
+    '/admin/cashier/order/wifiprint',
+    { id },
+  )
+}
+
+// 导出订单（返回 title+data，前端生成 CSV）
+export function exportCashierOrders(params: {
+  status?: string | number
+  ordernum?: string
+  mid?: number
+  starttime?: string
+  endtime?: string
+}) {
+  return request.get<unknown, { title: string[]; data: (string | number)[][]; count: number }>(
+    '/admin/cashier/order/excel',
+    { params },
+  )
+}
+
 /* ================= 统计与交接班 ================= */
 
 export function getCashierStat(params?: { starttime?: string; endtime?: string }) {
@@ -407,4 +437,57 @@ export function getCashierStat(params?: { starttime?: string; endtime?: string }
 
 export function getCashierJiaoban() {
   return request.get<unknown, JiaobanData>('/admin/cashier/jiaoban')
+}
+
+// 订单统计行（按商品/按规格）
+export interface CashierTongjiRow {
+  ph: number
+  proid: string
+  name: string
+  pic: string
+  ggname: string
+  num: number
+  totalprice: number
+  avgprice: number
+  chengben: number
+  lirun: number
+}
+
+export interface CashierTongjiResult {
+  list: CashierTongjiRow[]
+  total: number
+  page: number
+  pagesize: number
+  totaldata: { num: number; totalprice: number; chengben: number; lirun: number } | null
+}
+
+// 订单统计（按商品/按规格）
+export function getCashierTongji(params: {
+  type?: number
+  ctime_start?: string
+  ctime_end?: string
+  paytime_start?: string
+  paytime_end?: string
+  field?: string
+  order?: string
+  page?: number
+  pagesize?: number
+}) {
+  return request.get<unknown, CashierTongjiResult>('/admin/cashier/stat/tongji', { params })
+}
+
+// 订单统计导出
+export function exportCashierTongji(params: {
+  type?: number
+  ctime_start?: string
+  ctime_end?: string
+  paytime_start?: string
+  paytime_end?: string
+  field?: string
+  order?: string
+}) {
+  return request.get<unknown, { title: string[]; data: (string | number)[][]; count: number }>(
+    '/admin/cashier/stat/tjexcel',
+    { params },
+  )
 }

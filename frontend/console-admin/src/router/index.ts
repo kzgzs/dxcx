@@ -74,6 +74,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/admin/DesignerPage.vue'),
     meta: { role: 'admin', title: '设计器' },
   },
+  // 收银台操作页（对齐点大：菜单不显示，收银设置页「收银台地址」链接经此独立路由打开）
+  {
+    path: '/cashierdesk',
+    name: 'CashierDesk',
+    component: () => import('../views/admin/CashierDesk.vue'),
+    meta: { role: 'admin', title: '收银台' },
+  },
   // ============ 旧路径兼容：重定向到角色对应新入口 ============
   { path: '/', redirect: legacyRedirect },
   { path: '/admin', redirect: legacyRedirect },

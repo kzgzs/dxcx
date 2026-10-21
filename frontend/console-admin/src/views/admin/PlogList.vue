@@ -133,7 +133,7 @@ onMounted(() => {
     <!-- 搜索工具栏 -->
     <el-card shadow="never" class="toolbar-card">
       <el-form inline @submit.prevent>
-        <el-form-item v-if="canFilter" label="操作人">
+        <el-form-item v-if="canFilter" label="账号">
           <el-select v-model="query.uid" placeholder="全部" clearable filterable style="width: 160px">
             <el-option
               v-for="u in userOptions"
@@ -184,12 +184,12 @@ onMounted(() => {
       >
         <el-table-column type="selection" width="45" />
         <el-table-column prop="id" label="ID" width="80" />
-        <el-table-column prop="un" label="操作人" width="140" show-overflow-tooltip />
-        <el-table-column prop="remark" label="操作内容" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="ip" label="IP" width="140" />
+        <el-table-column prop="un" label="账号" width="140" show-overflow-tooltip />
         <el-table-column label="操作时间" width="180">
           <template #default="{ row }">{{ formatTime(row.createtime) }}</template>
         </el-table-column>
+        <el-table-column prop="remark" label="操作内容" min-width="240" show-overflow-tooltip />
+        <el-table-column prop="ip" label="IP" width="140" />
         <el-table-column label="操作" width="90" fixed="right">
           <template #default="{ row }">
             <el-button link type="danger" @click="handleDelete([row.id])">删除</el-button>

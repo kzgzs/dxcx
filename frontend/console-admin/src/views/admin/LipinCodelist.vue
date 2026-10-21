@@ -10,7 +10,11 @@ import {
 } from '../../api/lipin'
 import type { LipinCodeItem, LipinItem } from '../../api/lipin'
 
-const CODE_STATUS: Record<number, string> = { 0: '未使用', 1: '已使用', 2: '已售' }
+const CODE_STATUS: Record<number, { text: string; type: 'info' | 'success' | 'danger' }> = {
+  0: { text: '未售', type: 'info' },
+  1: { text: '已使用', type: 'success' },
+  2: { text: '已售', type: 'danger' },
+}
 
 // ============ 列表 ============
 const loading = ref(false)
@@ -142,6 +146,37 @@ async function handleExport() {
   }
 }
 
+// ============ 行操作 ============
+async function rowSetStatus(row: LipinCodeItem, st: number) {
+  const label = st === 1 ? '已使用' : '已售'
+  try {
+    await ElMessageBox.confirm(`确定将兑换码「${row.code}」改为「${label}」吗？`, '操作确认', { type: 'warning' })
+  } catch {
+    return
+  }
+  try {
+    await lipinSetst([row.id], st)
+    ElMessage.success('操作成功')
+    fetchList()
+  } catch {
+    // 错误提示已由 axios 拦截器统一弹出
+  }
+}
+
+function rowDelete(row: LipinCodeItem) {
+  ElMessageBox.confirm(`确定删除兑换码「${row.code}」吗？`, '删除确认', { type: 'warning' })
+    .then(async () => {
+      try {
+        await lipinCodelistDel([row.id])
+        ElMessage.success('删除成功')
+        fetchList()
+      } catch {
+        // 错误提示已由 axios 拦截器统一弹出
+      }
+    })
+    .catch(() => {})
+}
+
 onMounted(() => {
   fetchList()
   fetchHuodongs()
@@ -174,7 +209,7 @@ onMounted(() => {
         <el-input v-model="query.mid" placeholder="使用人ID" clearable style="width: 110px" @keyup.enter="handleSearch" />
         <el-input v-model="query.nickname" placeholder="昵称" clearable style="width: 120px" @keyup.enter="handleSearch" />
         <el-select v-model="query.status" placeholder="状态" clearable style="width: 110px" @change="handleSearch">
-          <el-option value="0" label="未使用" />
+          <el-option value="0" label="未售" />
           <el-option value="1" label="已使用" />
           <el-option value="2" label="已售" />
         </el-select>
@@ -216,12 +251,19 @@ onMounted(() => {
         </el-table-column>
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
-            <el-tag :type="row.status === 1 ? 'success' : row.status === 2 ? 'warning' : 'info'" size="small">
-              {{ CODE_STATUS[row.status] || '-' }}
+            <el-tag :type="CODE_STATUS[Number(row.status)]?.type || 'info'" size="small">
+              {{ CODE_STATUS[Number(row.status)]?.text || '-' }}
             </el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="remark" label="备注" min-width="120" />
+        <el-table-column label="操作" width="200">
+          <template #default="{ row }">
+            <el-button link type="primary" v-if="row.status !== 2" @click="rowSetStatus(row, 2)">改为已售</el-button>
+            <el-button link type="primary" v-if="row.status !== 1" @click="rowSetStatus(row, 1)">改为已使用</el-button>
+            <el-button link type="danger" @click="rowDelete(row)">删除</el-button>
+          </template>
+        </el-table-column>
       </el-table>
 
       <el-pagination

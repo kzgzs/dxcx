@@ -93,6 +93,8 @@ class Toupiao extends BaseController
             'color2'       => trim((string) $this->request->post('color2', '#1C83FF')),
             'listtype'     => (int) $this->request->post('listtype', 0),
             'helptext'     => trim((string) $this->request->post('helptext', '投TA一票')),
+            'join_num_text'  => trim((string) $this->request->post('join_num_text', '参与人数')),
+            'join_name_text' => trim((string) $this->request->post('join_name_text', '选手名称')),
             'starttime'    => $starttime,
             'endtime'      => $endtime,
             'canapply'     => (int) $this->request->post('canapply', 1),
@@ -446,7 +448,7 @@ class Toupiao extends BaseController
     }
 
     /**
-     * 后台加票（运营补偿/活动造势，直接累加票数）
+     * 后台加票（运营补偿/活动造势）：累加票数，并写入一条投票记录（mid=0 后台操作，可在投票记录回读）
      * POST /admin/toupiao/join/addpiao {id, num}
      */
     public function joinAddpiao()
@@ -463,7 +465,33 @@ class Toupiao extends BaseController
             throw new BusinessException('选手不存在');
         }
 
-        ScopeService::query('toupiao_join', $aid)->where('id', $id)->inc('helpnum', $num)->update();
+        $hid = (int) $join['hid'];
+
+        Db::startTrans();
+        try {
+            // 累加票数（同时累加访问次数，与 C端投票口径一致）
+            ScopeService::query('toupiao_join', $aid)
+                ->where('id', $id)->inc('helpnum', $num)->inc('readcount', $num)->update();
+            // 写投票记录：按加票数写入对应条数，投票人记为「后台加票」
+            $rows = [];
+            for ($i = 0; $i < $num; $i++) {
+                $rows[] = [
+                    'aid'        => $aid,
+                    'mid'        => 0,
+                    'headimg'    => '',
+                    'nickname'   => '后台加票',
+                    'tel'        => '',
+                    'hid'        => $hid,
+                    'joinid'     => $id,
+                    'createtime' => time(),
+                ];
+            }
+            ScopeService::query('toupiao_help', $aid)->insertAll($rows);
+            Db::commit();
+        } catch (\Throwable $e) {
+            Db::rollback();
+            throw new BusinessException('加票失败：' . $e->getMessage());
+        }
 
         return $this->success([], '已加 ' . $num . ' 票');
     }
@@ -507,8 +535,8 @@ class Toupiao extends BaseController
     }
 
     /**
-     * 投票记录列表（附活动名/选手名/编号）
-     * GET /admin/toupiao/help/list?page&pagesize&hid&joinid
+     * 投票记录列表（附活动名/选手名/编号；支持按活动/选手/投票时间区间筛选）
+     * GET /admin/toupiao/help/list?page&pagesize&hid&joinid&ctime
      */
     public function helpList()
     {
@@ -519,6 +547,7 @@ class Toupiao extends BaseController
         $pageSize = $pageSize > 0 ? min($pageSize, 100) : 10;
         $hid      = (int) $this->request->get('hid', 0);
         $joinid   = (int) $this->request->get('joinid', 0);
+        $ctime    = trim((string) $this->request->get('ctime', ''));
 
         $query = ScopeService::query('toupiao_help', $aid);
         if ($hid > 0) {
@@ -526,6 +555,17 @@ class Toupiao extends BaseController
         }
         if ($joinid > 0) {
             $query->where('joinid', $joinid);
+        }
+        if ('' !== $ctime && false !== strpos($ctime, ' ~ ')) {
+            [$ctStart, $ctEnd] = array_map('trim', explode(' ~ ', $ctime, 2));
+            $tsStart = strtotime($ctStart);
+            $tsEnd   = strtotime($ctEnd);
+            if (false !== $tsStart) {
+                $query->where('createtime', '>=', $tsStart);
+            }
+            if (false !== $tsEnd) {
+                $query->where('createtime', '<', $tsEnd + 86400);
+            }
         }
 
         $total = $query->count();
@@ -544,6 +584,22 @@ class Toupiao extends BaseController
         }
 
         return $this->success(['list' => $rows, 'total' => $total, 'page' => $page, 'pagesize' => $pageSize]);
+    }
+
+    /**
+     * 投票记录删除（单条/批量，仅删记录不动选手票数）
+     * POST /admin/toupiao/help/del {ids[]}
+     */
+    public function helpDel()
+    {
+        $aid = ScopeService::aidOf($this->request);
+        $ids = array_values(array_filter(array_map('intval', (array) $this->request->post('ids', []))));
+        if (empty($ids)) {
+            throw new BusinessException('请选择要删除的投票记录');
+        }
+        ScopeService::query('toupiao_help', $aid)->where('id', 'in', $ids)->delete();
+
+        return $this->success([], '删除成功');
     }
 
     /**

@@ -1,23 +1,27 @@
 <script setup lang="ts">
 /**
  * 电子面单 - 面单记录（ewaybill_order）
- * - 筛选：订单号模糊 / 订单类型（shop/tuangou/seckill/collage）/ 收件人 / 状态
- * - 详情 el-descriptions 双列；打印 iframe :srcdoc 渲染 ewaybill/print 返回 HTML
- * - 取消仅 status=1（快递鸟限制仅当日可取消）；删除单条/批量
+ * 对齐参考「扩展--电子面单--面单记录」：
+ * - 顶部绿色提示块（电子面单取消 / 通知取件 说明）
+ * - 工具栏 通知取件 / 导出 / 批量打印面单 / 删除 与搜索项同一行（框收窄不换行）
+ * - 表格列：ID / 订单信息 / 快递信息 / 收货信息 / 商品信息 / 揽件时间 / 创建时间 / 状态 / 操作
+ * - 导出(ewaybill-excel)、删除(ewaybill-del) 为隐藏动作工具栏按钮；行操作 详情/打印/取消/删除
  */
 import { onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   cancelEwaybill,
   deleteEwaybill,
+  exportEwaybill,
   getEwaybillDetail,
   getEwaybillList,
+  getNoticeExpressList,
   printEwaybill,
+  yuyueNoticeEwaybill,
 } from '../../api/ewaybill'
 import type { EwaybillOrder } from '../../api/ewaybill'
 
 const loading = ref(false)
-const isMock = ref(false)
 const tableData = ref<EwaybillOrder[]>([])
 const total = ref(0)
 const selectedIds = ref<number[]>([])
@@ -59,7 +63,6 @@ async function fetchList() {
     })
     tableData.value = data.list || []
     total.value = data.total || 0
-    isMock.value = !!data.is_mock
   } catch {
     // 错误提示已由 axios 拦截器统一弹出
   } finally {
@@ -72,19 +75,67 @@ function handleSearch() {
   fetchList()
 }
 
-function handleReset() {
-  query.ordernum = ''
-  query.ordertype = ''
-  query.name = ''
-  query.status = ''
-  handleSearch()
-}
-
 function handleSelectionChange(rows: EwaybillOrder[]) {
   selectedIds.value = rows.map((r) => r.id)
 }
 
-// ============ 详情（el-descriptions 双列） ============
+/* ================= 导出（xlsx Blob） ================= */
+async function handleExport() {
+  try {
+    const blob = await exportEwaybill({
+      ordernum: query.ordernum || undefined,
+      ordertype: query.ordertype || undefined,
+      name: query.name || undefined,
+      status: query.status || undefined,
+    })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `电子面单记录_${new Date().getTime()}.xlsx`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    ElMessage.success('导出成功')
+  } catch {
+    // ignore
+  }
+}
+
+/* ================= 通知取件 ================= */
+const noticeVisible = ref(false)
+const noticeLoading = ref(false)
+const noticeList = ref<{ name: string; code: string }[]>([])
+const noticeCodes = ref<string[]>([])
+
+async function openNotice() {
+  noticeVisible.value = true
+  noticeLoading.value = true
+  noticeCodes.value = []
+  try {
+    const data = await getNoticeExpressList()
+    noticeList.value = data.list || []
+  } catch {
+    noticeList.value = []
+  } finally {
+    noticeLoading.value = false
+  }
+}
+
+async function handleNoticeSubmit() {
+  if (!noticeCodes.value.length) {
+    ElMessage.warning('请选择快递公司')
+    return
+  }
+  try {
+    await yuyueNoticeEwaybill(noticeCodes.value)
+    noticeVisible.value = false
+  } catch {
+    // ignore（失败消息由 axios 拦截器统一弹出）
+  }
+}
+
+/* ================= 详情（el-descriptions 双列） ================= */
 const detailVisible = ref(false)
 const detailLoading = ref(false)
 const detail = ref<EwaybillOrder | null>(null)
@@ -102,7 +153,7 @@ async function openDetail(row: EwaybillOrder) {
   }
 }
 
-// ============ 打印（iframe srcdoc 渲染打印模板 HTML） ============
+/* ================= 打印（iframe srcdoc 渲染打印模板 HTML） ================= */
 const printVisible = ref(false)
 const printLoading = ref(false)
 const printHtml = ref('')
@@ -125,7 +176,7 @@ async function openPrint(ids: number[]) {
   }
 }
 
-// ============ 取消 / 删除 ============
+/* ================= 取消 / 删除 ================= */
 async function handleCancel(row: EwaybillOrder) {
   try {
     await ElMessageBox.confirm(
@@ -141,7 +192,7 @@ async function handleCancel(row: EwaybillOrder) {
     ElMessage.success('取消成功')
     fetchList()
   } catch {
-    // 错误提示已由 axios 拦截器统一弹出
+    // ignore
   }
 }
 
@@ -161,7 +212,7 @@ function handleDelete(ids: number[]) {
         ElMessage.success('删除成功')
         fetchList()
       } catch {
-        // 错误提示已由 axios 拦截器统一弹出
+        // ignore
       }
     })
     .catch(() => {})
@@ -172,64 +223,90 @@ onMounted(fetchList)
 
 <template>
   <div>
-    <el-card shadow="never">
+    <el-card shadow="never" class="compact-title">
       <template #header>
         <div class="card-header">
           <span>面单记录</span>
-          <el-tag v-if="isMock" type="warning" size="small">EWAYBILL_MOCK 演示模式</el-tag>
         </div>
       </template>
 
-      <div class="filter-bar">
-        <el-input
-          v-model="query.ordernum"
-          placeholder="订单号"
-          clearable
-          style="width: 180px"
-          @keyup.enter="handleSearch"
-        />
-        <el-select v-model="query.ordertype" placeholder="订单类型" clearable style="width: 140px">
-          <el-option v-for="t in ORDER_TYPES" :key="t.value" :label="t.label" :value="t.value" />
-        </el-select>
-        <el-input
-          v-model="query.name"
-          placeholder="收件人姓名/手机号"
-          clearable
-          style="width: 180px"
-          @keyup.enter="handleSearch"
-        />
-        <el-select v-model="query.status" placeholder="状态" clearable style="width: 120px">
-          <el-option label="待处理" value="0" />
-          <el-option label="正常" value="1" />
-          <el-option label="已取消" value="2" />
-        </el-select>
-        <el-button type="primary" @click="handleSearch">查询</el-button>
-        <el-button @click="handleReset">重置</el-button>
-        <div class="filter-right">
-          <el-button type="primary" plain @click="openPrint(selectedIds)">批量打印</el-button>
-          <el-button type="danger" @click="handleDelete(selectedIds)">批量删除</el-button>
+      <!-- 顶部提示块（绿色左边框） -->
+      <div class="notice-block">
+        <div>1、电子面单取消：</div>
+        <div class="indent">（1）仅支持取消当天下单成功且未被快递员揽收的订单。</div>
+        <div class="indent">（2）支持快递公司：优速快递、德邦速递、京东快递、韵达速递、跨越速运。</div>
+        <div>2、通知取件：</div>
+        <div class="indent">（1）目前支持顺丰速运、中通快递、圆通速递、韵达速递、优速快递、申通快递。</div>
+        <div class="indent">（2）预约时间仅限当日。</div>
+      </div>
+
+      <!-- 工具栏：按钮与搜索同一行 -->
+      <div class="toolbar">
+        <div class="toolbar-btns">
+          <el-button size="small" @click="openNotice">通知取件</el-button>
+          <el-button size="small" @click="handleExport">导出</el-button>
+          <el-button size="small" type="primary" plain @click="openPrint(selectedIds)">批量打印面单</el-button>
+          <el-button size="small" type="danger" plain @click="handleDelete(selectedIds)">删除</el-button>
+        </div>
+        <div class="toolbar-search">
+          <el-input
+            v-model="query.ordernum"
+            placeholder="订单号、运单号、面单订单号"
+            clearable
+            class="w-220"
+            @keyup.enter="handleSearch"
+          />
+          <el-input
+            v-model="query.name"
+            placeholder="姓名、手机号或座机号"
+            clearable
+            class="w-180"
+            @keyup.enter="handleSearch"
+          />
+          <el-select v-model="query.ordertype" placeholder="全部" clearable class="w-120">
+            <el-option v-for="t in ORDER_TYPES" :key="t.value" :label="t.label" :value="t.value" />
+          </el-select>
+          <el-select v-model="query.status" placeholder="请选择" clearable class="w-110">
+            <el-option label="待处理" value="0" />
+            <el-option label="正常" value="1" />
+            <el-option label="已取消" value="2" />
+          </el-select>
+          <el-button type="primary" @click="handleSearch">查询</el-button>
         </div>
       </div>
 
       <el-table v-loading="loading" :data="tableData" border stripe @selection-change="handleSelectionChange">
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="ordertype_name" label="订单类型" width="100" />
-        <el-table-column prop="ordernum" label="订单号" min-width="160" show-overflow-tooltip />
-        <el-table-column prop="order_code" label="面单订单号" min-width="150" show-overflow-tooltip />
-        <el-table-column prop="express_com" label="快递公司" width="100" />
-        <el-table-column prop="express_no" label="快递单号" min-width="150" show-overflow-tooltip />
-        <el-table-column label="收件人" min-width="130">
+        <el-table-column type="selection" width="40" />
+        <el-table-column prop="id" label="ID" width="70" sortable />
+        <el-table-column label="订单信息" min-width="170" show-overflow-tooltip>
           <template #default="{ row }">
-            <div>{{ row.receiver_name }}</div>
-            <div class="sub-text">{{ row.receiver_mobile || row.receiver_tel }}</div>
+            <div>{{ row.ordernum }}</div>
+            <div class="sub-text">面单号：{{ row.order_code }}</div>
           </template>
         </el-table-column>
-        <el-table-column label="包裹" width="110">
+        <el-table-column label="快递信息" min-width="160" show-overflow-tooltip>
           <template #default="{ row }">
-            <div>{{ row.quantity }} 件</div>
-            <div class="sub-text">{{ row.weight }} kg</div>
+            <div>{{ row.express_com || '-' }}</div>
+            <div class="sub-text">{{ row.express_no || '-' }}</div>
           </template>
         </el-table-column>
+        <el-table-column label="收货信息" min-width="180" show-overflow-tooltip>
+          <template #default="{ row }">
+            <div>{{ row.receiver_name }} {{ row.receiver_mobile || row.receiver_tel }}</div>
+            <div class="sub-text">{{ row.receiver_full_address }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="商品信息" min-width="150" show-overflow-tooltip>
+          <template #default="{ row }">
+            <span>{{ row.goods_detail || '-' }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="揽件时间" width="150">
+          <template #default="{ row }">
+            {{ row.expect_start_time_text || '-' }}
+          </template>
+        </el-table-column>
+        <el-table-column prop="createtime_text" label="创建时间" width="150" sortable />
         <el-table-column label="状态" width="90">
           <template #default="{ row }">
             <el-tag :type="statusTag(row.status).type as 'success'" size="small">
@@ -237,8 +314,7 @@ onMounted(fetchList)
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="createtime_text" label="创建时间" width="165" />
-        <el-table-column label="操作" width="210" fixed="right">
+        <el-table-column label="操作" width="200">
           <template #default="{ row }">
             <el-button link type="primary" @click="openDetail(row)">详情</el-button>
             <el-button link type="primary" @click="openPrint([row.id])">打印</el-button>
@@ -260,6 +336,22 @@ onMounted(fetchList)
         />
       </div>
     </el-card>
+
+    <!-- 通知取件弹窗 -->
+    <el-dialog v-model="noticeVisible" title="通知取件" width="420px">
+      <div v-loading="noticeLoading">
+        <el-checkbox-group v-model="noticeCodes" v-if="noticeList.length">
+          <el-checkbox v-for="item in noticeList" :key="item.code" :value="item.code" style="display: block; margin-bottom: 8px">
+            {{ item.name }}（{{ item.code }}）
+          </el-checkbox>
+        </el-checkbox-group>
+        <el-empty v-else-if="!noticeLoading" description="暂无可通知的快递公司（需有已出单且支持预约的面单）" />
+      </div>
+      <template #footer>
+        <el-button @click="noticeVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleNoticeSubmit">通知取件</el-button>
+      </template>
+    </el-dialog>
 
     <!-- 详情弹窗 -->
     <el-dialog v-model="detailVisible" title="面单详情" width="760px">
@@ -318,23 +410,48 @@ onMounted(fetchList)
   gap: 10px;
 }
 
-.filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  margin-bottom: 14px;
+.notice-block {
+  background: #f5f7fa;
+  border-left: 3px solid #19be6b;
+  padding: 12px 16px;
+  margin-bottom: 3px;
+  line-height: 1.9;
+  font-size: 13px;
+  color: #515a6e;
+}
+.notice-block .indent {
+  padding-left: 2em;
 }
 
-.filter-right {
-  margin-left: auto;
+.toolbar {
   display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
   gap: 10px;
+  margin-bottom: 3px;
 }
+.toolbar-btns {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.toolbar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  flex-wrap: nowrap;
+  justify-content: flex-end;
+}
+.w-220 { width: 220px; }
+.w-180 { width: 180px; }
+.w-120 { width: 120px; }
+.w-110 { width: 110px; }
 
 .pager {
   display: flex;
   justify-content: flex-end;
-  margin-top: 14px;
+  margin-top: 3px;
 }
 
 .sub-text {

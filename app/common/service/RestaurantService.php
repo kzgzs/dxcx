@@ -985,15 +985,6 @@ class RestaurantService
             return true;
         });
 
-        // 批次6-T6-4：支付成功自动生成取餐号（TakeFoodService 内部幂等防重复；失败仅记日志不影响入账）
-        if ($paid) {
-            try {
-                app(TakeFoodService::class)->generate($orderId);
-            } catch (\Throwable $e) {
-                \think\facade\Log::error('takefood generate fail order=' . $orderId . ': ' . $e->getMessage());
-            }
-        }
-
         return $paid;
     }
 

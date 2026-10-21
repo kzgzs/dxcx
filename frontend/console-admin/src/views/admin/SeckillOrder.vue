@@ -540,7 +540,7 @@ onMounted(fetchList)
           </el-select>
         </el-form-item>
         <el-form-item label="快递单号" prop="express_no">
-          <el-input v-model="manualForm.express_no" placeholder="请输入快递单号" />
+          <el-input v-model="manualForm.express_no" placeholder="请输入快递单号" class="field-md" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -580,10 +580,10 @@ onMounted(fetchList)
 
             <div class="ew-block">收件人信息</div>
             <el-form-item label="姓名" required>
-              <el-input v-model="ewayForm.receiver_name" />
+              <el-input v-model="ewayForm.receiver_name" class="field-md" />
             </el-form-item>
             <el-form-item label="手机号码" required>
-              <el-input v-model="ewayForm.receiver_mobile" />
+              <el-input v-model="ewayForm.receiver_mobile" class="field-md" />
             </el-form-item>
             <el-form-item label="地区">
               <el-input v-model="ewayForm.receiver_province" placeholder="省" style="width:120px" />
@@ -594,16 +594,16 @@ onMounted(fetchList)
               <el-input v-model="ewayForm.receiver_address" />
             </el-form-item>
             <el-form-item label="邮编">
-              <el-input v-model="ewayForm.receiver_post_code" placeholder="邮政/EMS 必填 可填000000" />
+              <el-input v-model="ewayForm.receiver_post_code" placeholder="邮政/EMS 必填 可填000000" class="field-md" />
             </el-form-item>
 
             <div class="ew-tip-bar">发件人信息会自动获取上一单的发件人信息（仅需填写一次），如需要修改请手动输入。</div>
             <div class="ew-block">发件人信息</div>
             <el-form-item label="姓名" required>
-              <el-input v-model="ewayForm.sender_name" />
+              <el-input v-model="ewayForm.sender_name" class="field-md" />
             </el-form-item>
             <el-form-item label="手机号码" required>
-              <el-input v-model="ewayForm.sender_mobile" />
+              <el-input v-model="ewayForm.sender_mobile" class="field-md" />
             </el-form-item>
             <el-form-item label="地区">
               <el-input v-model="ewayForm.sender_province" placeholder="省" style="width:120px" />
@@ -614,7 +614,7 @@ onMounted(fetchList)
               <el-input v-model="ewayForm.sender_address" />
             </el-form-item>
             <el-form-item label="邮编">
-              <el-input v-model="ewayForm.sender_post_code" />
+              <el-input v-model="ewayForm.sender_post_code" class="field-md" />
             </el-form-item>
           </el-form>
         </div>

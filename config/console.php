@@ -24,5 +24,13 @@ return [
         'demo:lottery' => \app\command\DemoLottery::class, // 生成抽奖活动（大转盘+刮刮卡）演示数据，记录覆盖未领取/已领取/未中奖，--purge 清除
         'demo:confirmreward' => \app\command\DemoConfirmReward::class, // 生成租户后台「确认收货奖励」演示数据（设置+12条记录，DEMO-CR- 前缀，--purge 清除）
         'demo:miandan' => \app\command\DemoMiandan::class, // 生成租户后台「扩展·物流助手」演示数据（运单正常/已取消/物流账号/打印员，DEMO-WL- 前缀，--purge 清除）
+        'demo:ewaybill' => \app\command\DemoEwaybill::class, // 生成租户后台「扩展·电子面单」演示数据（账号2条/面单记录正常已取消，DEMO-EB- 前缀，--purge 清除）
+        'demo:toupiao' => \app\command\DemoToupiao::class, // 生成租户后台「扩展·投票活动」演示数据（活动2[进行中/已结束]/分组2/选手6[三态]/投票记录7条，DEMO-TP- 前缀，--purge 清除）
+        'demo:cycle' => \app\command\DemoCycle::class, // 生成租户后台「扩展·周期购」演示数据（分类4/商品5[上下架]/订单五状态/分期配送[待发/已发/已核销]/评价四态，DEMO-CYC- 前缀，--purge 清除）
+        'demo:mingpian' => \app\command\DemoMingpian::class, // 生成租户后台「扩展·名片」演示数据（名片5张[头衔/联系信息/经纬度/简介]+浏览/收藏记录，DEMO-MP- 前缀，--purge 清除）
+        'demo:cashier' => \app\command\DemoCashier::class, // 生成租户后台「扩展·收银台」演示数据（收银订单8条全状态+交班打印机1台，DEMO-CS- 前缀，--purge 清除）
+        'demo:giftcard' => \app\command\DemoGiftcard::class, // 生成租户后台「扩展·礼品卡」演示数据（分类3/礼品卡3[进行中/已结束]/兑换码[未用/已用/已售]，DEMO-GCARD- 前缀，--purge 清除）
+        'demo:live' => \app\command\DemoLive::class, // 生成租户后台「扩展·小程序直播」演示数据（商品库三态4个+直播间3个，DEMO-LIVE- 前缀，--purge 清除）
+        'demo:restaurant' => \app\command\DemoRestaurant::class, // 生成租户后台「餐饮」演示数据（区域/餐桌/菜品/订单/排队/预定/寄存/营销全菜单页，DEMO-RT- 前缀，--purge 清除）
     ],
 ];

@@ -479,7 +479,7 @@ onMounted(fetchList)
 }
 
 .pagination {
-  margin-top: 12px;
+  margin-top: 3px;
   justify-content: flex-end;
 }
 

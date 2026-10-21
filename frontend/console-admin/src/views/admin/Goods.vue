@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch, watchEffect } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import type {
   FormRules,
@@ -38,6 +38,7 @@ import type {
 import type { DesignerModule } from '../../api/designer'
 import { defaultModule } from './designerModules'
 import GoodsDetailEditor from '../../components/GoodsDetailEditor.vue'
+import GoodsSpecEditor from '../../components/GoodsSpecEditor.vue'
 import ImgIconPicker from '../../components/ImgIconPicker.vue'
 import LinkAddressModal from '../../components/LinkAddressModal.vue'
 
@@ -398,162 +399,40 @@ const rules = computed<FormRules>(() => ({
   name: [{ required: true, message: '请输入商品名称', trigger: 'blur' }],
 }))
 
-// ============ 规格 / SKU 矩阵 ============
-const specMode = ref<'single' | 'multi'>('single')
+// ============ 规格 / SKU 矩阵（共享组件 GoodsSpecEditor） ============
+const specEditorRef = ref<InstanceType<typeof GoodsSpecEditor> | null>(null)
 const specGroups = ref<GoodsSpecGroup[]>([])
-const skuMap = reactive<Record<string, GoodsSkuOption>>({})
+let skuMap = reactive<Record<string, GoodsSkuOption>>({})
+
+// 新建 SKU 行时的种子值（取自主表单价格/重量/积分）
+const defaultSpecSku = computed(() => ({
+  market_price: form.market_price,
+  cost_price: form.cost_price,
+  sell_price: form.price,
+  weight: form.weight,
+  givescore: form.givescore,
+}))
 
 function resetSpecState() {
-  specMode.value = 'single'
   specGroups.value = [{ title: '规格', items: [{ title: '默认规格' }] }]
   Object.keys(skuMap).forEach((k) => delete skuMap[k])
 }
-function addGroup() {
-  specGroups.value.push({ title: '', items: [{ title: '' }] })
-}
-function removeGroup(index: number) {
-  specGroups.value.splice(index, 1)
-}
-function addItem(group: GoodsSpecGroup) {
-  group.items.push({ title: '' })
-}
-function removeItem(group: GoodsSpecGroup, index: number) {
-  group.items.splice(index, 1)
-}
-const validGroups = computed(() =>
-  specGroups.value
-    .filter((g) => g.title.trim() !== '')
-    .map((g) => ({
-      title: g.title.trim(),
-      items: g.items.filter((it) => it.title.trim() !== ''),
-    }))
-    .filter((g) => g.items.length > 0),
-)
-// 规格结构自动判定单/多规格：规格组多于 1 个、或规格值总数大于 1 即为多规格
-watch(
-  specGroups,
-  () => {
-    const valid = validGroups.value
-    const total = valid.reduce((s, g) => s + g.items.length, 0)
-    specMode.value = valid.length > 1 || total > 1 ? 'multi' : 'single'
-  },
-  { deep: true },
-)
-const skuRows = computed(() => {
-  const groups = validGroups.value
-  if (groups.length === 0) return []
-  const rows: { ks: string; names: string[] }[] = []
-  const walk = (gi: number, ksArr: number[], names: string[]) => {
-    if (gi === groups.length) {
-      rows.push({ ks: ksArr.join(','), names: [...names] })
-      return
-    }
-    groups[gi].items.forEach((it, vi) => {
-      walk(gi + 1, [...ksArr, vi], [...names, it.title])
-    })
-  }
-  walk(0, [], [])
-  return rows
-})
-function cellSpan(rowIndex: number, groupIndex: number): number {
-  const groups = validGroups.value
-  let span = 1
-  for (let g = groupIndex + 1; g < groups.length; g++) {
-    span *= groups[g].items.length
-  }
-  return rowIndex % span === 0 ? span : 0
-}
-function skuOf(ks: string, names: string[]): GoodsSkuOption {
-  if (!skuMap[ks]) {
-    skuMap[ks] = {
-      name: names.join(' '),
-      pic: '',
-      market_price: Number(form.market_price) || 0,
-      cost_price: Number(form.cost_price) || 0,
-      sell_price: Number(form.price) || 0,
-      weight: Number(form.weight) || 0,
-      stock: 0,
-      givescore: Number(form.givescore) || 0,
-      procode: '',
-      barcode: '',
-    }
-  }
-  return skuMap[ks]
-}
-watchEffect(() => {
-  for (const row of skuRows.value) {
-    skuOf(row.ks, row.names)
-  }
-})
-const bulk = reactive({
-  market_price: undefined as number | undefined,
-  sell_price: undefined as number | undefined,
-  cost_price: undefined as number | undefined,
-  stock: undefined as number | undefined,
-})
-function applyBulk() {
-  const fields: (keyof typeof bulk)[] = ['market_price', 'sell_price', 'cost_price', 'stock']
-  const hasValue = fields.some((f) => bulk[f] !== undefined && bulk[f] !== null)
-  if (!hasValue) {
-    ElMessage.warning('请先填写要批量设置的值')
-    return
-  }
-  for (const row of skuRows.value) {
-    const sku = skuOf(row.ks, row.names)
-    for (const f of fields) {
-      if (bulk[f] !== undefined && bulk[f] !== null) {
-        ;(sku as unknown as Record<string, number>)[f] = Number(bulk[f])
-      }
-    }
-  }
-  ElMessage.success('已应用到全部规格行')
-}
+
 // 开启 / 关闭会员价（按钮切换）
 function toggleLvprice() {
   form.lvprice = form.lvprice === 1 ? 0 : 1
 }
-// 更新规格项目表：依据当前规格组补齐 SKU 行
-function refreshSpec() {
-  skuRows.value.forEach((r) => skuOf(r.ks, r.names))
-  ElMessage.success('规格项目表已更新')
+
+// 组件选图事件 → 复用本页选图弹窗回填
+function onSpecPickImage(_current: string, done: (url: string) => void) {
+  openImgPicker((urls) => {
+    if (urls[0]) done(urls[0])
+  })
 }
+
+// 保存时多规格校验与载荷（单规格由主表单 price/stock 提供，组件内 no-op）
 function buildSpecPayload(params: Record<string, unknown>): boolean {
-  if (specMode.value !== 'multi') {
-    params.specs = []
-    params.options = {}
-    return true
-  }
-  const groups = validGroups.value
-  if (groups.length === 0) {
-    ElMessage.warning('请至少填写一组规格及规格值')
-    return false
-  }
-  const skuList = skuRows.value
-  const options: Record<string, GoodsSkuOption> = {}
-  let totalStock = 0
-  let minSell = Infinity
-  let maxMarket = 0
-  for (const row of skuList) {
-    const sku = skuOf(row.ks, row.names)
-    if (!(Number(sku.sell_price) > 0)) {
-      ElMessage.warning(`规格「${row.names.join(' ')}」未填写销售价`)
-      return false
-    }
-    sku.name = row.names.join(' ')
-    options[row.ks] = { ...sku }
-    totalStock += Number(sku.stock) || 0
-    minSell = Math.min(minSell, Number(sku.sell_price))
-    maxMarket = Math.max(maxMarket, Number(sku.market_price) || 0)
-  }
-  params.specs = groups.map((g) => ({
-    title: g.title,
-    items: g.items.map((it) => ({ title: it.title, ggpic_wholesale: it.ggpic_wholesale || '' })),
-  }))
-  params.options = options
-  params.stock = totalStock
-  params.price = minSell === Infinity ? form.price : minSell
-  params.market_price = maxMarket || Number(params.price)
-  return true
+  return specEditorRef.value?.buildMultiSpecPayload(params) ?? true
 }
 
 // ============ 选图弹窗 ============
@@ -787,9 +666,8 @@ async function openEdit(row: GoodsItem) {
     Object.keys(paramdata).forEach((k) => delete paramdata[k])
     Object.assign(paramdata, detail.paramdata)
   }
-  // 规格回显
+  // 规格回显（单/多规格由共享组件按 groups 结构自动判定）
   if (detail.specs && detail.specs.length > 0) {
-    specMode.value = 'multi'
     specGroups.value = detail.specs.map((g) => ({
       title: g.title,
       items: (g.items || []).map((it) => ({ title: it.title, ggpic_wholesale: it.ggpic_wholesale || '' })),
@@ -1188,134 +1066,38 @@ onMounted(() => {
               <el-input v-model="form.barcode" style="width: 300px" placeholder="商品条形码" />
             </el-form-item>
 
-            <!-- 二、规格 / SKU / 价格 -->
+            <!-- 二、规格 / SKU / 价格（共享规格编辑器） -->
             <el-form-item label="设置规格">
-              <table class="gg-table">
-                <thead>
-                  <tr>
-                    <th style="width: 150px">规格分组</th>
-                    <th>规格名称</th>
-                    <th style="width: 90px">操作</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr v-for="(group, gi) in specGroups" :key="gi">
-                    <td>
-                      <el-input v-model="group.title" style="width: 120px" placeholder="规格分组" />
-                    </td>
-                    <td>
-                      <div v-for="(item, ii) in group.items" :key="ii" class="gg-name-line">
-                        <el-input v-model="item.title" style="width: 180px" placeholder="请输入规格名称" />
-                        <el-button size="small" @click="addItem(group)">+</el-button>
-                        <el-button v-if="ii > 0" size="small" type="danger" plain @click="removeItem(group, ii)">×</el-button>
-                        <el-image
-                          v-if="item.ggpic_wholesale"
-                          :src="item.ggpic_wholesale"
-                          fit="cover"
-                          class="spec-value-pic"
-                          @click="openImgPicker((urls) => { if (urls[0]) item.ggpic_wholesale = urls[0] })"
-                        />
-                        <el-button
-                          v-else
-                          size="small"
-                          link
-                          type="primary"
-                          @click="openImgPicker((urls) => { if (urls[0]) item.ggpic_wholesale = urls[0] })"
-                        >规格图</el-button>
-                      </div>
-                    </td>
-                    <td>
-                      <el-button v-if="gi === 0" size="small" @click="addGroup">添加</el-button>
-                      <el-button v-else size="small" type="danger" plain @click="removeGroup(gi)">删除</el-button>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </el-form-item>
-            <el-form-item label=" ">
-              <div class="ge-block-hint">
-                提示：若是新添加的规格，请先提交保存后再移动；<br>
-                先点击“添加”添加规格分组，如：“颜色”，“尺码”，若只有一种规格则不需要添加规格分组；<br>
-                然后分别点击“+”号添加规格名称，如：“红色”，“蓝色”；“大号”，“小号”；<br>
-                设置完成后点击“更新规格项目表”按钮进行编辑各个规格的价格、库存等信息
-              </div>
-            </el-form-item>
-            <el-form-item label=" ">
-              <el-button @click="refreshSpec">更新规格项目表</el-button>
-              <el-button @click="toggleLvprice">{{ form.lvprice === 1 ? '关闭会员价' : '开启会员价' }}</el-button>
-            </el-form-item>
-            <el-form-item v-if="specMode === 'multi' && skuRows.length > 0" label=" ">
-              <div class="sku-bulk">
-                <span class="sku-bulk-label">批量设置：</span>
-                <el-input-number v-model="bulk.market_price" :min="0" :precision="2" :controls="false" placeholder="市场价" style="width: 100px" />
-                <el-input-number v-model="bulk.sell_price" :min="0" :precision="2" :controls="false" placeholder="销售价" style="width: 100px" />
-                <el-input-number v-model="bulk.cost_price" :min="0" :precision="2" :controls="false" placeholder="成本价" style="width: 100px" />
-                <el-input-number v-model="bulk.stock" :min="0" :controls="false" placeholder="库存" style="width: 100px" />
-                <el-button type="primary" plain @click="applyBulk">应用到全部行</el-button>
-              </div>
-            </el-form-item>
-            <el-form-item label="SKU项目表">
-              <div class="sku-table-wrap">
-                <table class="sku-table">
-                  <thead>
-                    <tr>
-                      <template v-if="specMode === 'multi'">
-                        <th v-for="g in validGroups" :key="g.title">{{ g.title }}</th>
-                      </template>
-                      <th v-else>规格</th>
-                      <th>规格编号</th>
-                      <th>市场价(元)</th>
-                      <th>成本价(元)</th>
-                      <th>销售价(元)</th>
-                      <th>重量(克)</th>
-                      <th>库存</th>
-                      <th>赠积分(个)</th>
-                      <th>图片</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr v-if="specMode === 'single'">
-                      <td class="sku-spec-cell">默认规格</td>
-                      <td><el-input v-model="form.procode" placeholder="编号" style="width: 100px" /></td>
-                      <td><el-input-number v-model="form.market_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
-                      <td><el-input-number v-model="form.cost_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
-                      <td><el-input-number v-model="form.price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
-                      <td><el-input-number v-model="form.weight" :min="0" :controls="false" style="width: 80px" /></td>
-                      <td><el-input-number v-model="form.stock" :min="0" :controls="false" style="width: 80px" /></td>
-                      <td><el-input-number v-model="form.givescore" :min="0" :controls="false" style="width: 80px" /></td>
-                      <td>
-                        <el-image v-if="form.image" :src="form.image" fit="cover" class="sku-pic" @click="openImgPicker((urls) => { if (urls[0]) form.image = urls[0] })" />
-                        <span v-else class="sku-pic-empty" @click="openImgPicker((urls) => { if (urls[0]) form.image = urls[0] })">上传</span>
-                      </td>
-                    </tr>
-                    <tr v-for="(row, ri) in skuRows" :key="row.ks" v-else>
-                      <template v-for="(name, gi) in row.names" :key="gi">
-                        <td v-if="cellSpan(ri, gi) > 0" :rowspan="cellSpan(ri, gi)" class="sku-spec-cell">{{ name }}</td>
-                      </template>
-                      <td><el-input v-model="skuOf(row.ks, row.names).procode" placeholder="编号" style="width: 100px" /></td>
-                      <td><el-input-number v-model="skuOf(row.ks, row.names).market_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
-                      <td><el-input-number v-model="skuOf(row.ks, row.names).cost_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
-                      <td><el-input-number v-model="skuOf(row.ks, row.names).sell_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
-                      <td><el-input-number v-model="skuOf(row.ks, row.names).weight" :min="0" :controls="false" style="width: 80px" /></td>
-                      <td><el-input-number v-model="skuOf(row.ks, row.names).stock" :min="0" :controls="false" style="width: 80px" /></td>
-                      <td><el-input-number v-model="skuOf(row.ks, row.names).givescore" :min="0" :controls="false" style="width: 80px" /></td>
-                      <td>
-                        <el-image
-                          v-if="skuOf(row.ks, row.names).pic"
-                          :src="skuOf(row.ks, row.names).pic"
-                          fit="cover"
-                          class="sku-pic"
-                          @click="openImgPicker((urls) => { skuOf(row.ks, row.names).pic = urls[0] })"
-                        />
-                        <span v-else class="sku-pic-empty" @click="openImgPicker((urls) => { skuOf(row.ks, row.names).pic = urls[0] })">上传</span>
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div class="ge-block-hint">
-                注：开启会员价可设置不同会员等级显示不同价格；赠积分确认收货才赠送，与系统设置中的消费赠送积分(支付就赠送积分)有差异；开启后，会员价优先，会员等级折扣不再叠加
-              </div>
+              <GoodsSpecEditor
+                ref="specEditorRef"
+                v-model:groups="specGroups"
+                v-model:skus="skuMap"
+                :default-sku="defaultSpecSku"
+                @pick-image="onSpecPickImage"
+              >
+                <template #single-row>
+                  <td class="sku-spec-cell">默认规格</td>
+                  <td><el-input v-model="form.procode" placeholder="编号" style="width: 100px" /></td>
+                  <td><el-input-number v-model="form.market_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
+                  <td><el-input-number v-model="form.cost_price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
+                  <td><el-input-number v-model="form.price" :min="0" :precision="2" :controls="false" style="width: 90px" /></td>
+                  <td><el-input-number v-model="form.weight" :min="0" :controls="false" style="width: 80px" /></td>
+                  <td><el-input-number v-model="form.stock" :min="0" :controls="false" style="width: 80px" /></td>
+                  <td><el-input-number v-model="form.givescore" :min="0" :controls="false" style="width: 80px" /></td>
+                  <td>
+                    <el-image v-if="form.image" :src="form.image" fit="cover" class="sku-pic" @click="openImgPicker((urls) => { if (urls[0]) form.image = urls[0] })" />
+                    <span v-else class="sku-pic-empty" @click="openImgPicker((urls) => { if (urls[0]) form.image = urls[0] })">上传</span>
+                  </td>
+                </template>
+                <template #actions>
+                  <el-button @click="toggleLvprice">{{ form.lvprice === 1 ? '关闭会员价' : '开启会员价' }}</el-button>
+                </template>
+                <template #footer>
+                  <div class="ge-block-hint">
+                    注：开启会员价可设置不同会员等级显示不同价格；赠积分确认收货才赠送，与系统设置中的消费赠送积分(支付就赠送积分)有差异；开启后，会员价优先，会员等级折扣不再叠加
+                  </div>
+                </template>
+              </GoodsSpecEditor>
             </el-form-item>
             <el-form-item v-if="form.lvprice === 1" label="会员等级价格">
               <div class="ge-lvprice">

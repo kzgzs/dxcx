@@ -1,4 +1,20 @@
 import request from './request'
+import { reactive } from 'vue'
+
+/**
+ * 跨页导航共享状态：活动列表行操作「选手列表/投票记录」、选手列表行操作「投票记录」
+ * 通过 adminNavigateByKey 切页后，目标页 onActivated 读取本状态完成筛选与返回。
+ */
+export const voteNavState = reactive({
+  /** 选手列表页要锁定的活动 id（从活动列表「选手列表」进入） */
+  joinHid: 0,
+  /** 投票记录页要锁定的活动 id */
+  recordHid: 0,
+  /** 投票记录页要锁定的选手 id（从选手行「投票记录」进入） */
+  recordJoinid: 0,
+  /** 嵌套打开时的来源叶子 key，X 返回用；空=菜单直达（不显示 X） */
+  returnTo: '',
+})
 
 // ============ 类型（本模块私有，避免改动共享 types.ts） ============
 
@@ -10,6 +26,8 @@ export interface VoteActivityItem {
   color2: string
   listtype: number
   helptext: string
+  join_num_text?: string
+  join_name_text?: string
   starttime: number
   endtime: number
   canapply: number
@@ -100,6 +118,8 @@ export interface VoteActivitySaveParams {
   color2?: string
   listtype?: number
   helptext?: string
+  join_num_text?: string
+  join_name_text?: string
   starttime: number | string
   endtime: number | string
   canapply?: number
@@ -207,8 +227,12 @@ export function getVoteStat(hid: number, top?: number) {
   })
 }
 
-export function getVoteHelpList(params: { page?: number; pagesize?: number; hid?: number; joinid?: number }) {
+export function getVoteHelpList(params: { page?: number; pagesize?: number; hid?: number; joinid?: number; ctime?: string }) {
   return request.get<unknown, PageResult<VoteHelpItem>>('/admin/toupiao/help/list', { params })
+}
+
+export function deleteVoteHelp(ids: number[]) {
+  return request.post<unknown, null>('/admin/toupiao/help/del', { ids })
 }
 
 export function doVote(mid: number, joinid: number) {

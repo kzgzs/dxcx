@@ -75,9 +75,9 @@ onMounted(() => {
       <el-transfer
         v-model="selected"
         :data="transferData"
-        :titles="['候选快递公司', '已启用']"
+        :titles="['系统快递', '自定义快递']"
         filterable
-        filter-placeholder="搜索快递公司"
+        filter-placeholder="关键词搜索"
       />
 
       <div class="save-row">

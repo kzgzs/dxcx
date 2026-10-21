@@ -433,4 +433,77 @@ class BindingService
 
         return trim((string) preg_replace('/[\s\r\n]+/', '', $value));
     }
+
+    /**
+     * 生成小程序代码包（支付宝/百度/QQ/抖音）
+     *
+     * 模板目录 runtime/codepkg/{platform}（由运营部署对应端 uniapp 编译产物），
+     * 打包时注入当前租户 appid 到 project.config，输出到 public/download/codepkg/{aid}_{platform}.zip。
+     *
+     * @return array{status:int,url:string}
+     */
+    public function downloadCode(int $aid, string $platform): array
+    {
+        $allowed = ['alipay', 'baidu', 'qq', 'toutiao'];
+        if (!in_array($platform, $allowed, true)) {
+            throw new BusinessException('该端不支持下载代码包');
+        }
+
+        $root = runtime_path() . 'codepkg' . DIRECTORY_SEPARATOR . $platform;
+        if (!is_dir($root)) {
+            throw new BusinessException('代码包模板未部署，请在服务器 runtime/codepkg/' . $platform . ' 放置对应端编译产物');
+        }
+
+        $cfg = $this->getConfig($aid, $platform);
+        if ('' === (string) ($cfg['appid'] ?? '')) {
+            throw new BusinessException('请先填写并保存小程序ID后再下载代码包');
+        }
+
+        $outDir = public_path() . 'download' . DIRECTORY_SEPARATOR . 'codepkg';
+        if (!is_dir($outDir)) {
+            @mkdir($outDir, 0755, true);
+        }
+        $zipName = $aid . '_' . $platform . '.zip';
+        $zipPath = $outDir . DIRECTORY_SEPARATOR . $zipName;
+        if (is_file($zipPath)) {
+            @unlink($zipPath);
+        }
+
+        $zip = new \ZipArchive();
+        if (true !== $zip->open($zipPath, \ZipArchive::CREATE)) {
+            throw new BusinessException('代码包创建失败，请检查目录权限');
+        }
+        $this->addDirToZip($zip, $root, '');
+        // 注入租户 appid
+        $zip->addFromString('project.config.json', json_encode(
+            ['appid' => (string) $cfg['appid'], 'appid_alipay' => (string) $cfg['appid']],
+            JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT,
+        ));
+        $zip->close();
+
+        return ['status' => 1, 'url' => '/download/codepkg/' . $zipName];
+    }
+
+    /** 递归把目录加入 zip（保持相对结构） */
+    protected function addDirToZip(\ZipArchive $zip, string $dir, string $prefix): void
+    {
+        $handle = opendir($dir);
+        if (false === $handle) {
+            return;
+        }
+        while (false !== ($entry = readdir($handle))) {
+            if ('.' === $entry || '..' === $entry) {
+                continue;
+            }
+            $path = $dir . DIRECTORY_SEPARATOR . $entry;
+            $local = '' === $prefix ? $entry : $prefix . '/' . $entry;
+            if (is_dir($path)) {
+                $zip->addEmptyDir($local);
+                $this->addDirToZip($zip, $path, $local);
+            } else {
+                $zip->addFile($path, $local);
+            }
+        }
+        closedir($handle);
+    }
 }

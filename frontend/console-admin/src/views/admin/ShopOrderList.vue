@@ -5,7 +5,6 @@ import {
   changeShopOrderPrice,
   checkShopOrderRefund,
   closeShopOrder,
-  getRemarkList,
   getShopOrderDetail,
   getShopOrderList,
   printShopOrder,
@@ -178,29 +177,22 @@ function handleIspay(row: ShopOrderItem) {
     .catch(() => {})
 }
 
-// ============ 备注（常用备注选取或手填） ============
+// ============ 备注（手填，写入订单 remark） ============
 const remarkVisible = ref(false)
 const remarkRow = ref<ShopOrderItem | null>(null)
 const remarkValue = ref('')
-const remarkOptions = ref<string[]>([])
 
-async function openRemark(row: ShopOrderItem) {
+function openRemark(row: ShopOrderItem) {
   remarkRow.value = row
   remarkValue.value = row.remark || ''
   remarkVisible.value = true
-  try {
-    const data = await getRemarkList({ page: 0 })
-    remarkOptions.value = (data.list || []).filter((r) => r.status === 1).map((r) => r.content)
-  } catch {
-    remarkOptions.value = []
-  }
 }
 
 async function handleRemarkSubmit() {
   if (!remarkRow.value) return
   const remark = (remarkValue.value || '').trim()
   if (!remark) {
-    ElMessage.warning('请填写或选择备注内容')
+    ElMessage.warning('请填写备注内容')
     return
   }
   try {
@@ -489,16 +481,15 @@ onMounted(fetchList)
           <span>{{ remarkRow?.ordernum }}</span>
         </el-form-item>
         <el-form-item label="备注内容">
-          <el-select
+          <el-input
             v-model="remarkValue"
-            filterable
-            allow-create
-            default-first-option
-            placeholder="选择常用备注或手动输入"
+            type="textarea"
+            :rows="3"
+            maxlength="200"
+            show-word-limit
+            placeholder="请输入备注内容"
             style="width: 100%"
-          >
-            <el-option v-for="item in remarkOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+          />
         </el-form-item>
       </el-form>
       <template #footer>

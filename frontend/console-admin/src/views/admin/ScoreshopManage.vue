@@ -1214,7 +1214,7 @@ onMounted(async () => {
 
       <el-dialog v-model="catDialog" :title="catForm.id ? '编辑商品分类' : '+添加商品分类'" width="480px" append-to-body>
         <el-form label-width="90px" size="small">
-          <el-form-item label="分类名称"><el-input v-model="catForm.name" /></el-form-item>
+          <el-form-item label="分类名称"><el-input v-model="catForm.name" class="field-md" /></el-form-item>
           <el-form-item label="分类图标">
             <div v-if="catForm.pic" class="cat-pic"><el-image :src="catForm.pic" fit="cover" style="width:60px;height:60px" /></div>
             <div v-else class="ge-upload-add" @click="openImgPicker((urls) => { if (urls[0]) catForm.pic = urls[0] })">+</div>

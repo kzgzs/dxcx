@@ -145,21 +145,21 @@ onMounted(load)
       </div>
       <el-form label-width="110px" style="max-width: 640px; margin-top: 3px" @submit.prevent>
         <el-form-item label="快递公司：" required>
-          <el-select v-model="form.delivery_id" style="width: 200px">
+          <el-select v-model="form.delivery_id" class="field-md">
             <el-option v-for="o in options" :key="o.delivery_id" :label="o.delivery_name" :value="o.delivery_id" />
           </el-select>
           <span class="tip-inline">快递公司</span>
         </el-form-item>
         <el-form-item label="客户编码：" required>
-          <el-input v-model="form.biz_id" style="width: 200px" placeholder="" />
+          <el-input v-model="form.biz_id" class="field-md" placeholder="" />
           <span class="tip-inline">快递公司客户编码（韵达为客户K码）</span>
         </el-form-item>
         <el-form-item label="客户密码：" required>
-          <el-input v-model="form.password" style="width: 200px" placeholder="" />
+          <el-input v-model="form.password" class="field-md" placeholder="" />
           <span class="tip-inline">快递公司客户密码, ems，顺丰，京东非必填</span>
         </el-form-item>
         <el-form-item label="备注内容：">
-          <el-input v-model="form.remark_content" style="width: 200px" placeholder="" />
+          <el-input v-model="form.remark_content" class="field-md" placeholder="" />
           <span class="tip-inline">提交EMS审核需要</span>
         </el-form-item>
         <el-form-item>

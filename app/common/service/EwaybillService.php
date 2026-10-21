@@ -387,6 +387,145 @@ class EwaybillService
         return ['list' => array_values($waybills)];
     }
 
+    /**
+     * 导出数据（与列表同口径筛选；对标参考系统 excel 标题列）
+     *
+     * @return array{0: string[], 1: array<int, array<int, mixed>>}
+     */
+    public function exportData(int $aid, array $filters): array
+    {
+        $query = ScopeService::query('ewaybill_order', $aid)
+            ->where('bid', self::BID)
+            ->where('status', '<>', 0);
+
+        if ('' !== trim((string) ($filters['ordernum'] ?? ''))) {
+            $kw = (string) $filters['ordernum'];
+            $query->where(function ($q) use ($kw) {
+                $q->whereLike('ordernum', '%' . $kw . '%')
+                    ->whereOr('order_code', 'like', '%' . $kw . '%')
+                    ->whereOr('express_no', 'like', '%' . $kw . '%');
+            });
+        }
+        if ('' !== trim((string) ($filters['ordertype'] ?? ''))) {
+            $query->where('ordertype', (string) $filters['ordertype']);
+        }
+        if ('' !== trim((string) ($filters['name'] ?? ''))) {
+            $name = (string) $filters['name'];
+            $query->where(function ($q) use ($name) {
+                $q->whereLike('receiver_name', '%' . $name . '%')
+                    ->whereOr('receiver_mobile', 'like', '%' . $name . '%')
+                    ->whereOr('receiver_tel', 'like', '%' . $name . '%');
+            });
+        }
+        $status = (string) ($filters['status'] ?? '');
+        if ('' !== $status) {
+            $query->where('status', (int) $status);
+        }
+
+        $rows = $query->order('id', 'desc')->limit(10000)->select()->toArray();
+
+        $titles = ['ID', '订单类型', '订单号', '面单订单号', '快递公司', '快递单号', '商品信息', '收件人姓名', '收件人地址', '收件人手机号', '收件人座机号', '是否保价', '保价金额', '包裹数量', '包裹重量', '包裹体积', '状态', '创建时间'];
+        $data   = [];
+        foreach ($rows as $row) {
+            $row = $this->decorateRow($row);
+            $data[] = [
+                $row['id'],
+                $row['ordertype_name'] ?? '',
+                $row['ordernum'] ?? '',
+                $row['order_code'] ?? '',
+                $row['express_com'] ?? '',
+                $row['express_no'] ?? '',
+                $row['goods_detail'] ?? '',
+                $row['receiver_name'] ?? '',
+                $row['receiver_full_address'] ?? '',
+                $row['receiver_mobile'] ?? '',
+                $row['receiver_tel'] ?? '',
+                (int) ($row['insure'] ?? 0) === 1 ? '是' : '否',
+                $row['insure_value'] ?? 0,
+                $row['quantity'] ?? 0,
+                ($row['weight'] ?? 0) . 'kg',
+                ($row['volume'] ?? 0) . 'm³',
+                (int) ($row['status'] ?? 0) === 2 ? '已取消' : '正常',
+                $row['createtime_text'] ?? '',
+            ];
+        }
+
+        return [$titles, $data];
+    }
+
+    /**
+     * 通知取件候选快递公司（对标参考系统 noticeInit）：取 status=1 面单用到、且 isYuyue=1 的快递公司去重
+     *
+     * @return array<int, array{name: string, code: string}>
+     */
+    public function noticeExpressList(int $aid): array
+    {
+        $codes = ScopeService::query('ewaybill_order', $aid)
+            ->where('bid', self::BID)
+            ->where('status', 1)
+            ->where('shipper_code', '<>', '')
+            ->group('shipper_code')
+            ->column('shipper_code');
+
+        $list = [];
+        foreach ($codes as $code) {
+            $express = Kdniao::expressData((string) $code);
+            if (!empty($express) && (int) ($express['isYuyue'] ?? 0) === 1) {
+                $list[] = ['name' => (string) ($express['name'] ?? $code), 'code' => (string) $code];
+            }
+        }
+
+        return $list;
+    }
+
+    /**
+     * 预约（通知）取件（对标参考系统 yuyueNotice）：按快递公司取该公司最新一条 status=1 面单发起预约
+     *
+     * @param array<int, string> $codes 快递公司编码数组
+     */
+    public function yuyueNotice(int $aid, int $uid, array $codes): string
+    {
+        $codes = array_values(array_unique(array_filter(array_map('strval', $codes))));
+        if (empty($codes)) {
+            throw new BusinessException('请选择快递公司');
+        }
+
+        $kdniao      = new Kdniao($aid, self::BID);
+        $successList = [];
+        $failList    = [];
+        foreach ($codes as $code) {
+            $order = ScopeService::query('ewaybill_order', $aid)
+                ->where('bid', self::BID)
+                ->where('status', 1)
+                ->where('shipper_code', $code)
+                ->order('id', 'desc')
+                ->find();
+            if (empty($order)) {
+                $expressName     = Kdniao::expressData($code)['name'] ?? $code;
+                $failList[]      = ['express' => $expressName, 'msg' => '订单不存在'];
+                continue;
+            }
+            $res = $kdniao->yuyueOrder($order);
+            if ((int) ($res['status'] ?? 0) === 1) {
+                $successList[] = (string) ($order['express_com'] ?? $code);
+            } else {
+                $failList[] = ['express' => (string) ($order['express_com'] ?? $code), 'msg' => (string) ($res['msg'] ?? '未知错误')];
+            }
+        }
+
+        PlogService::write($aid, $uid, '通知取件：' . implode(',', $codes), self::BID);
+
+        if (empty($failList)) {
+            return '通知成功';
+        }
+        $failMsgs = array_map(fn($item) => "【{$item['express']}】: {$item['msg']}", $failList);
+        if (empty($successList)) {
+            throw new BusinessException("通知失败：\n" . implode("\n", $failMsgs));
+        }
+
+        return "部分成功：成功 " . count($successList) . " 家；失败 " . count($failList) . " 家。" . implode('；', $failMsgs);
+    }
+
     /* ================= 面单设置 ================= */
 
     /** 面单设置读取（不存在自动初始化，对标参考系统 EwaybillSet::index） */
@@ -403,7 +542,7 @@ class EwaybillService
                 'print_shop'         => 1,
                 'print_shop_content' => implode(',', ['shop_alias', 'guige_name']),
                 'createtime'         => time(),
-                'status'             => 0,
+                'status'             => 1,
             ];
             $info['id'] = Db::name('ewaybill_set')->insertGetId($info);
         }
@@ -432,6 +571,7 @@ class EwaybillService
         $content = array_values(array_intersect($content, array_keys(self::PRINT_CONTENT_MAP)));
 
         $update = [
+            'status'            => (int) ($info['status'] ?? 1),
             'account_id'         => (string) $info['account_id'],
             'account_secret'     => (string) $info['account_secret'],
             'print_remarks'      => (int) ($info['print_remarks'] ?? 0),
@@ -472,6 +612,8 @@ class EwaybillService
         $rows  = $query->order('id', 'desc')->page($page, $pageSize)->select()->toArray();
 
         foreach ($rows as &$row) {
+            // 对标参考系统 expressAccount：快递公司名后拼接编码 → “圆通速递(YTO)”
+            $row['express_text']   = (string) $row['express'] . '(' . $row['express_code'] . ')';
             $row['paytype_text']    = (string) Kdniao::paytype((int) $row['paytype']);
             $row['createtime_text'] = $row['createtime'] ? date('Y-m-d H:i:s', (int) $row['createtime']) : '';
         }
@@ -638,8 +780,49 @@ class EwaybillService
             $row['sender_area'] ?? '',
             $row['sender_address'] ?? '',
         ]));
+        // 商品信息（对标参考系统 index：shop 取 shop_order_goods，其余取订单 proname；表结构差异兜底已存字段/“商品”）
+        $row['goods_detail'] = $this->buildGoodsDetail($row);
 
         return $row;
+    }
+
+    /**
+     * 商品信息列（列表/导出共用）。
+     * 优先读 ewaybill_order.goods_detail（demo/手工预置）；否则按订单类型实时拼装，表结构差异时静默兜底。
+     */
+    protected function buildGoodsDetail(array $row): string
+    {
+        $stored = trim((string) ($row['goods_detail'] ?? ''));
+        if ('' !== $stored) {
+            return $stored;
+        }
+        $ordertype = (string) ($row['ordertype'] ?? '');
+        $orderid   = (int) ($row['orderid'] ?? 0);
+        if ('' === $ordertype || $orderid <= 0) {
+            return '';
+        }
+        try {
+            if ('shop' === $ordertype) {
+                $goods = Db::name('shop_order_goods')
+                    ->where('aid', $row['aid'] ?? 0)
+                    ->where('orderid', $orderid)
+                    ->select()
+                    ->toArray();
+                $parts = [];
+                foreach ($goods as $g) {
+                    $parts[] = ($g['name'] ?? '商品') . ' × ' . ($g['num'] ?? 1);
+                }
+                return $parts ? implode('；', $parts) : '';
+            }
+            $order = Db::name($ordertype . '_order')->where('aid', $row['aid'] ?? 0)->where('id', $orderid)->find();
+            if (!empty($order)) {
+                return ($order['proname'] ?? '商品') . ' × ' . ($order['num'] ?? 1);
+            }
+        } catch (\Throwable $e) {
+            // 表结构差异兜底
+        }
+
+        return '';
     }
 
     /** 创建面单表单校验（对标参考系统 validateData 口径） */

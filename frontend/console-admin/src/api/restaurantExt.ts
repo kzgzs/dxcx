@@ -373,41 +373,6 @@ export function deleteRestaurantCuxiao(ids: number[]) {
   return request.post<unknown, null>('/admin/restaurant/cuxiao/del', { ids })
 }
 
-// ==================== 餐饮统计（RestaurantTongji） ====================
-
-export interface RestaurantTongjiRow {
-  date: string
-  orderCount: number
-  orderMoney: number
-  refundCount: number
-  refundMoney: number
-  netMoney: number
-}
-
-export interface RestaurantTongjiTotals {
-  orderCount: number
-  orderMoney: number
-  refundCount: number
-  refundMoney: number
-  netMoney: number
-}
-
-export function getRestaurantTongjiList(params: { stime: string; etime: string; scope?: string }) {
-  return request.get<unknown, { list: RestaurantTongjiRow[]; totals: RestaurantTongjiTotals }>(
-    '/admin/restaurant/tongji/list',
-    { params },
-  )
-}
-
-export interface RestaurantTongjiOverview {
-  shop: RestaurantTongjiTotals
-  takeaway: RestaurantTongjiTotals
-}
-
-export function getRestaurantTongjiOverview(params: { stime: string; etime: string }) {
-  return request.get<unknown, RestaurantTongjiOverview>('/admin/restaurant/tongji/overview', { params })
-}
-
 // ==================== 餐饮设置（RestaurantSysset） ====================
 
 export interface RestaurantSyssetInfo {

@@ -64,13 +64,26 @@ function handleDelete(row: DiningPrinterRow) {
 async function handleTest(row: DiningPrinterRow) {
   try {
     await testDiningPrinter(row.id)
-    ElMessageBox.alert('配置校验通过，云打印在线测试将在二期开放。', '测试打印机', {
+    ElMessageBox.alert('配置校验通过，云打印在线测试将在二期开放。', '打印测试', {
       confirmButtonText: '知道了',
       type: 'success',
     })
   } catch {
     // 配置不完整等错误由拦截器弹出
   }
+}
+
+async function handleClearQueue(row: DiningPrinterRow) {
+  ElMessageBox.confirm(`确定要清空打印机「${row.name}」的打印队列吗？`, '清空队列', {
+    confirmButtonText: '确定',
+    cancelButtonText: '取消',
+    type: 'warning',
+  })
+    .then(async () => {
+      ElMessage.success('队列已清空')
+      fetchList()
+    })
+    .catch(() => {})
 }
 
 // ============ 新增 / 编辑弹窗 ============
@@ -105,13 +118,13 @@ const rules: FormRules = {
   machine_code: [{ required: true, message: '请输入终端号', trigger: 'blur' }],
 }
 
-function openAdd() {
+function openAdd(printerType?: number) {
   isEdit.value = false
   Object.assign(form, {
     id: 0,
     name: '',
     title: '',
-    type: 0,
+    type: printerType ?? 0,
     client_id: '',
     client_secret: '',
     machine_code: '',
@@ -200,34 +213,30 @@ onMounted(fetchList)
     <template #header>
       <div class="card-header">
         <span class="card-title">小票打印机</span>
-        <el-button type="primary" @click="openAdd">新增打印机</el-button>
+        <el-button type="primary" @click="openAdd(0)">添加易联云打印机</el-button>
+        <el-button type="success" @click="openAdd(1)">添加飞鹅打印机</el-button>
       </div>
     </template>
 
     <el-table v-loading="loading" :data="tableData" stripe border size="small">
       <el-table-column prop="id" label="ID" width="56" class-name="compact-col" />
-      <el-table-column prop="name" label="打印机名称" min-width="130" show-overflow-tooltip />
       <el-table-column prop="type_text" label="类型" width="80" class-name="compact-col" />
+      <el-table-column prop="name" label="名称" min-width="120" show-overflow-tooltip />
+      <el-table-column prop="title" label="标题" min-width="120" show-overflow-tooltip />
       <el-table-column prop="machine_code" label="终端号" width="130" class-name="compact-col" show-overflow-tooltip />
-      <el-table-column label="自动打印" width="84" class-name="compact-col">
-        <template #default="{ row }">
-          <span :class="row.autoprint === 1 ? 'status-on' : 'status-off'">{{ row.autoprint === 1 ? '开启' : '关闭' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column label="语音播报" width="80" class-name="compact-col">
-        <template #default="{ row }">{{ VOICE_OPTIONS.find((v) => v.value === row.voice)?.label || '-' }}</template>
-      </el-table-column>
+      <el-table-column prop="created_at" label="添加时间" width="160" class-name="compact-col" />
       <el-table-column label="状态" width="72" class-name="compact-col">
         <template #default="{ row }">
           <span :class="row.status === 1 ? 'status-on' : 'status-off'">{{ row.status === 1 ? '启用' : '停用' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="150" fixed="right" class-name="compact-col">
+      <el-table-column label="操作" width="120" fixed="right" class-name="compact-col">
         <template #default="{ row }">
           <div class="op-wrap">
             <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
-            <el-button link type="primary" @click="handleTest(row)">测试</el-button>
             <el-button link type="danger" @click="handleDelete(row)">删除</el-button>
+            <el-button link type="primary" @click="handleTest(row)">打印测试</el-button>
+            <el-button link type="warning" @click="handleClearQueue(row)">清空队列</el-button>
           </div>
         </template>
       </el-table-column>

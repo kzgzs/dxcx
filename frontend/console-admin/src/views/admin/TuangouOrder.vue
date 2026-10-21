@@ -151,25 +151,25 @@
         </el-form-item>
 
         <el-divider content-position="left">收件人信息</el-divider>
-        <el-form-item label="姓名" required><el-input v-model="ewb.receiver_name" /></el-form-item>
-        <el-form-item label="手机号码" required><el-input v-model="ewb.receiver_mobile" /></el-form-item>
+        <el-form-item label="姓名" required><el-input v-model="ewb.receiver_name" class="field-md" /></el-form-item>
+        <el-form-item label="手机号码" required><el-input v-model="ewb.receiver_mobile" class="field-md" /></el-form-item>
         <el-form-item label="地区" required>
-          <el-input v-model="ewb.receiver_region" placeholder="省/市/区" />
+          <el-input v-model="ewb.receiver_region" placeholder="省/市/区" class="field-md" />
         </el-form-item>
-        <el-form-item label="详细地址" required><el-input v-model="ewb.receiver_address" /></el-form-item>
-        <el-form-item label="座机号码"><el-input v-model="ewb.receiver_tel" /></el-form-item>
-        <el-form-item label="公司名称"><el-input v-model="ewb.receiver_company" /></el-form-item>
-        <el-form-item label="邮编"><el-input v-model="ewb.receiver_post_code" /></el-form-item>
+        <el-form-item label="详细地址" required><el-input v-model="ewb.receiver_address" class="field-full" /></el-form-item>
+        <el-form-item label="座机号码"><el-input v-model="ewb.receiver_tel" class="field-md" /></el-form-item>
+        <el-form-item label="公司名称"><el-input v-model="ewb.receiver_company" class="field-md" /></el-form-item>
+        <el-form-item label="邮编"><el-input v-model="ewb.receiver_post_code" class="field-md" /></el-form-item>
 
         <el-divider content-position="left">发件人信息</el-divider>
         <el-alert type="info" :closable="false" show-icon title="发件人信息会自动获取上一单的发件人信息（仅需填写一次），如需要修改请手动输入。" style="margin-bottom:10px" />
-        <el-form-item label="姓名" required><el-input v-model="ewb.sender_name" /></el-form-item>
-        <el-form-item label="手机号码" required><el-input v-model="ewb.sender_mobile" /></el-form-item>
-        <el-form-item label="地区" required><el-input v-model="ewb.sender_region" placeholder="省/市/区" /></el-form-item>
-        <el-form-item label="详细地址" required><el-input v-model="ewb.sender_address" /></el-form-item>
-        <el-form-item label="座机号码"><el-input v-model="ewb.sender_tel" /></el-form-item>
-        <el-form-item label="公司名称"><el-input v-model="ewb.sender_company" /></el-form-item>
-        <el-form-item label="邮编"><el-input v-model="ewb.sender_post_code" /></el-form-item>
+        <el-form-item label="姓名" required><el-input v-model="ewb.sender_name" class="field-md" /></el-form-item>
+        <el-form-item label="手机号码" required><el-input v-model="ewb.sender_mobile" class="field-md" /></el-form-item>
+        <el-form-item label="地区" required><el-input v-model="ewb.sender_region" placeholder="省/市/区" class="field-md" /></el-form-item>
+        <el-form-item label="详细地址" required><el-input v-model="ewb.sender_address" class="field-full" /></el-form-item>
+        <el-form-item label="座机号码"><el-input v-model="ewb.sender_tel" class="field-md" /></el-form-item>
+        <el-form-item label="公司名称"><el-input v-model="ewb.sender_company" class="field-md" /></el-form-item>
+        <el-form-item label="邮编"><el-input v-model="ewb.sender_post_code" class="field-md" /></el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="ewaybillVisible = false">取消</el-button>
@@ -186,7 +186,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="快递单号">
-          <el-input v-model="manualForm.express_no" placeholder="请输入快递单号" />
+          <el-input v-model="manualForm.express_no" placeholder="请输入快递单号" class="field-md" />
         </el-form-item>
       </el-form>
       <template #footer>

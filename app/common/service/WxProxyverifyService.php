@@ -136,9 +136,10 @@ class WxProxyverifyService
     /**
      * 已授权小程序聚合列表（open_authorizer → wx_proxyverify_authorizer 快照 + 认证状态）
      *
+     * @param array<string, string> $filters authorizer_appid/nick_name/principal_name 精确、verify_status、ctime 区间、field/order 排序
      * @return array{list: array<int, array<string, mixed>>, total: int, page: int, pagesize: int}
      */
-    public function authorizerList(int $aid, int $page, int $pagesize, string $keyword = ''): array
+    public function authorizerList(int $aid, int $page, int $pagesize, array $filters = []): array
     {
         // 1. 租户已授权小程序全部同步快照
         $openRows = Db::name('open_authorizer')->where('aid', $aid)->where('auth_status', 1)->select()->toArray();
@@ -148,17 +149,32 @@ class WxProxyverifyService
 
         // 2. 快照表分页查询
         $query = ScopeService::query('wx_proxyverify_authorizer', $aid);
-        $keyword = trim($keyword);
-        if ('' !== $keyword) {
-            $query->where(function ($q) use ($keyword) {
-                $q->whereLike('nick_name', '%' . $keyword . '%')
-                    ->whereOr('authorizer_appid', 'like', '%' . $keyword . '%')
-                    ->whereOr('principal_name', 'like', '%' . $keyword . '%');
-            });
+        foreach (['authorizer_appid', 'nick_name', 'principal_name'] as $f) {
+            if ('' !== ($filters[$f] ?? '')) {
+                $query->whereLike($f, '%' . trim($filters[$f]) . '%');
+            }
+        }
+        if ('' !== ($filters['verify_status'] ?? '')) {
+            $query->where('verify_status', (int) $filters['verify_status']);
+        }
+        if ('' !== ($filters['ctime'] ?? '') && str_contains($filters['ctime'], '~')) {
+            [$start, $end] = array_map('trim', explode('~', $filters['ctime'], 2));
+            if (false !== ($ts = strtotime($start))) {
+                $query->where('auth_time', '>=', $ts);
+            }
+            if (false !== ($ts = strtotime($end))) {
+                $query->where('auth_time', '<', $ts + 86400);
+            }
+        }
+
+        $sortFields = ['auth_time' => 'auth_time', 'id' => 'id', 'createtime' => 'createtime'];
+        $orderRaw   = 'id desc';
+        if (isset($sortFields[$filters['field'] ?? '']) && in_array(strtolower($filters['order'] ?? ''), ['asc', 'desc'], true)) {
+            $orderRaw = $sortFields[$filters['field']] . ' ' . strtolower($filters['order']);
         }
 
         $total = (clone $query)->count();
-        $rows  = $query->order('id', 'desc')->page($page, $pagesize)->select()->toArray();
+        $rows  = $query->orderRaw($orderRaw)->page($page, $pagesize)->select()->toArray();
 
         $list = array_map(function (array $row): array {
             $verifyStatus = (int) $row['verify_status'];
@@ -184,6 +200,7 @@ class WxProxyverifyService
                 'qrcode_url'       => (string) ($row['qrcode_url'] ?? ''),
                 'verify_status'    => $verifyStatus,
                 'verify_status_name' => [0 => '未认证', 1 => '认证中', 2 => '已认证'][$verifyStatus] ?? '未知',
+                'verify_type_id'   => (int) ($row['verify_type_id'] ?? 0),
                 'auth_time'        => (int) ($row['auth_time'] ?? 0),
                 'auth_time_text'   => !empty($row['auth_time']) ? date('Y-m-d H:i', (int) $row['auth_time']) : '',
                 'remark'           => (string) ($row['remark'] ?? ''),
@@ -261,6 +278,15 @@ class WxProxyverifyService
         foreach (['contact_name', 'account_name'] as $field) {
             if (!empty($filters[$field])) {
                 $query->whereLike($field, '%' . trim((string) $filters[$field]) . '%');
+            }
+        }
+        if (!empty($filters['ctime']) && str_contains((string) $filters['ctime'], '~')) {
+            [$start, $end] = array_map('trim', explode('~', (string) $filters['ctime'], 2));
+            if (false !== ($ts = strtotime($start))) {
+                $query->where('createtime', '>=', $ts);
+            }
+            if (false !== ($ts = strtotime($end))) {
+                $query->where('createtime', '<', $ts + 86400);
             }
         }
 
@@ -856,10 +882,17 @@ class WxProxyverifyService
         ];
         foreach ([['', ''], ['2', '2'], ['3', '3']] as [$suffix, $sfx]) {
             $all  = max(0, (int) ($info['all' . $suffix] ?? $row['all' . $suffix] ?? 0));
-            $used = max(0, min((int) ($info['used' . $suffix] ?? $row['used' . $suffix] ?? 0), $all));
+            // 页面录入「可用次数 num」，已用 used = 总量 - 可用；兼容旧版直接传 used
+            if (isset($info['num' . $suffix])) {
+                $num  = max(0, min((int) $info['num' . $suffix], $all));
+                $used = $all - $num;
+            } else {
+                $used = max(0, min((int) ($info['used' . $suffix] ?? $row['used' . $suffix] ?? 0), $all));
+                $num  = $all - $used;
+            }
             $save['all' . $suffix]  = $all;
             $save['used' . $suffix] = $used;
-            $save['num' . $suffix]  = $all - $used;
+            $save['num' . $suffix]  = $num;
         }
 
         Db::name('wx_proxyverify_set')->where('id', $row['id'])->update($save);

@@ -552,10 +552,10 @@ onMounted(fetchList)
             <span class="ge-hint">库存为零时，本商品所有正在进行的砍价将变成砍价失败状态</span>
           </el-form-item>
           <el-form-item label="开始时间：">
-            <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择开始时间" />
+            <el-date-picker v-model="form.starttime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择开始时间" class="field-date" />
           </el-form-item>
           <el-form-item label="结束时间：">
-            <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择结束时间" />
+            <el-date-picker v-model="form.endtime" type="datetime" value-format="YYYY-MM-DD HH:mm:ss" placeholder="选择结束时间" class="field-date" />
           </el-form-item>
           <el-form-item label="直接购买：">
             <el-radio-group v-model="form.directbuy">

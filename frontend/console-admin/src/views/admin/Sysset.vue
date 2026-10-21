@@ -40,6 +40,7 @@ const formData = reactive<TenantSyssetData>({
   kfurl: '',
   wxkf: 0,
   wxkfurl: '',
+  wxkfstaff: 1,
   moneypay: 1,
   recharge: 1,
   recharge_minimum: '0.00',
@@ -56,6 +57,10 @@ const formData = reactive<TenantSyssetData>({
   withdraw_weixin: 1,
   withdraw_aliaccount: 0,
   withdraw_bankcard: 0,
+  commission2money: 0,
+  money_transfer_pwd: 0,
+  wx_transfer_type: 0,
+  login_mast: '',
   score2money: '0.01',
   scoredkmaxpercent: '100.00',
   scorein_money: '1.00',
@@ -64,11 +69,18 @@ const formData = reactive<TenantSyssetData>({
   scorecz_score: 1,
   scorebdkyf: 0,
   score_from_moneypay: 1,
+  score_from_xianxiapay: 0,
   score_transfer: 0,
   score_expire_status: 0,
   score_expire_days: 0,
   logintype_wx: '1',
   logintype_h5: '1',
+  logintype_mp: '1',
+  logintype_alipay: '1',
+  logintype_baidu: '1',
+  logintype_toutiao: '1',
+  logintype_qq: '1',
+  logintype_app: '1',
   login_setnickname: 0,
   login_bind: 0,
   reg_check: 0,
@@ -93,6 +105,13 @@ const formData = reactive<TenantSyssetData>({
   fx_differential: 0,
   commission_send_wallet: 0,
   commission_send_wallet_levelids: '',
+  fxorder_show: 1,
+  parent_show: 1,
+  commissionlog_show: 1,
+  commissionrecord_show: 1,
+  commissionrecord_withdrawlog_show: 1,
+  maidanfenxiao: 0,
+  corpid: '',
   invoice: 0,
   invoice_type: '1',
   invoice_rate: '0.00',
@@ -132,6 +151,30 @@ const logintypeH5List = computed({
     formData.logintype_h5 = [...v].sort().join(',')
   },
 })
+const logintypeMpList = computed({
+  get: () => csvToArr(formData.logintype_mp),
+  set: (v: number[]) => { formData.logintype_mp = [...v].sort().join(',') },
+})
+const logintypeAlipayList = computed({
+  get: () => csvToArr(formData.logintype_alipay),
+  set: (v: number[]) => { formData.logintype_alipay = [...v].sort().join(',') },
+})
+const logintypeBaiduList = computed({
+  get: () => csvToArr(formData.logintype_baidu),
+  set: (v: number[]) => { formData.logintype_baidu = [...v].sort().join(',') },
+})
+const logintypeToutiaoList = computed({
+  get: () => csvToArr(formData.logintype_toutiao),
+  set: (v: number[]) => { formData.logintype_toutiao = [...v].sort().join(',') },
+})
+const logintypeQqList = computed({
+  get: () => csvToArr(formData.logintype_qq),
+  set: (v: number[]) => { formData.logintype_qq = [...v].sort().join(',') },
+})
+const logintypeAppList = computed({
+  get: () => csvToArr(formData.logintype_app),
+  set: (v: number[]) => { formData.logintype_app = [...v].sort().join(',') },
+})
 
 // 提现方式三勾选 <-> 三个 0/1 字段
 const withdrawMethods = computed({
@@ -149,8 +192,14 @@ const withdrawMethods = computed({
   },
 })
 
+// 强制登录平台 <-> login_mast 逗号分隔字符串
+const forceLoginList = computed({
+  get: () => (formData.login_mast ? formData.login_mast.split(',').filter(Boolean) : []),
+  set: (v: string[]) => { formData.login_mast = v.join(',') },
+})
+
 // 文本自定义内置高频文案项（canzhao textset 默认键：余额/积分/佣金/优惠券/会员）
-const textsetKeys = ['余额', '积分', '佣金', '优惠券', '会员']
+const textsetKeys = ['余额', '积分', '佣金', '优惠券', '会员', '我的团队', '分销订单', '自定义表单', '推荐人', '一级', '二级', '下级', '下二级', '后台修改', 'token']
 
 // ============ 经纬度选择（任务308：有高德 key 走地图选点，无 key 降级手动输入） ============
 const coordDialogVisible = ref(false)
@@ -250,10 +299,15 @@ async function loadData() {
       formData.withdraw_weixin = Number(result.withdraw_weixin ?? 1)
       formData.withdraw_aliaccount = Number(result.withdraw_aliaccount ?? 0)
       formData.withdraw_bankcard = Number(result.withdraw_bankcard ?? 0)
+      formData.commission2money = Number(result.commission2money ?? 0)
+      formData.money_transfer_pwd = Number(result.money_transfer_pwd ?? 0)
+      formData.wx_transfer_type = Number(result.wx_transfer_type ?? 0)
+      formData.login_mast = String(result.login_mast ?? '')
       formData.scorein_score = Number(result.scorein_score ?? 1)
       formData.scorecz_score = Number(result.scorecz_score ?? 1)
       formData.scorebdkyf = Number(result.scorebdkyf ?? 0)
       formData.score_from_moneypay = Number(result.score_from_moneypay ?? 1)
+      formData.score_from_xianxiapay = Number(result.score_from_xianxiapay ?? 0)
       formData.score_transfer = Number(result.score_transfer ?? 0)
       formData.score_expire_status = Number(result.score_expire_status ?? 0)
       formData.score_expire_days = Number(result.score_expire_days ?? 0)
@@ -272,6 +326,14 @@ async function loadData() {
       formData.fx_differential = Number(result.fx_differential ?? 0)
       formData.commission_send_wallet = Number(result.commission_send_wallet ?? 0)
       formData.commission_send_wallet_levelids = String(result.commission_send_wallet_levelids ?? '')
+      formData.fxorder_show = Number(result.fxorder_show ?? 1)
+      formData.parent_show = Number(result.parent_show ?? 1)
+      formData.commissionlog_show = Number(result.commissionlog_show ?? 1)
+      formData.commissionrecord_show = Number(result.commissionrecord_show ?? 1)
+      formData.commissionrecord_withdrawlog_show = Number(result.commissionrecord_withdrawlog_show ?? 1)
+      formData.maidanfenxiao = Number(result.maidanfenxiao ?? 0)
+      formData.corpid = String(result.corpid ?? '')
+      formData.wxkfstaff = Number(result.wxkfstaff ?? 1)
       // textset 兜底内置键
       const ts: Record<string, string> = {}
       for (const k of textsetKeys) {
@@ -441,14 +503,27 @@ onMounted(() => {
                   <span class="inline-label">客服链接：</span>
                   <el-input v-model="formData.wxkfurl" placeholder="请输入客服链接" clearable class="narrow-input" />
                 </template>
+                <template v-if="formData.wxkf === 1">
+                  <span class="inline-label">客服人员：</span>
+                  <el-select v-model="formData.wxkfstaff" placeholder="请选择" class="narrow-input">
+                    <el-option label="系统管理员" :value="1" />
+                    <el-option label="小程序客服" :value="2" />
+                  </el-select>
+                </template>
+                <template v-if="formData.wxkf === 2">
+                  <span class="inline-label">客服链接：</span>
+                  <el-input v-model="formData.wxkfurl" placeholder="请输入客服链接" clearable class="narrow-input" />
+                  <span class="inline-label">企业ID：</span>
+                  <el-input v-model="formData.corpid" placeholder="请输入企业ID" clearable class="narrow-input" />
+                </template>
               </div>
               <div class="form-help block-help">
                 客服链接：使用填写的客服链接，不填写则使用商城内部客服系统；电话客服链接格式：tel:0539-123456
                 <br />小程序客服：前往 小程序后台-功能-客服-小程序客服，配置客服人员
                 <br />微信客服：在
-                <el-link type="primary" :underline="false" href="https://kf.weixin.qq.com/" target="_blank">微信客服</el-link>
+                <el-link type="primary" :underline="false" href="https://work.weixin.qq.com/kf" target="_blank">微信客服</el-link>
                 系统注册账号并绑定，
-                <el-link type="primary" :underline="false" href="https://kf.weixin.qq.com/" target="_blank">查看绑定流程</el-link>
+                <el-link type="primary" :underline="false" href="https://work.weixin.qq.com/nl/act/p/229e9eb2c10f417a" target="_blank">查看绑定流程</el-link>
                 ，填写企业ID后复制客服链接填入上方客服链接处
               </div>
             </div>
@@ -552,7 +627,7 @@ onMounted(() => {
             </el-radio-group>
           </el-form-item>
 
-          <el-form-item label="充值功能" prop="recharge">
+          <el-form-item label="余额充值" prop="recharge">
             <el-radio-group v-model="formData.recharge">
               <el-radio :label="1">开启</el-radio>
               <el-radio :label="0">关闭</el-radio>
@@ -562,6 +637,23 @@ onMounted(() => {
           <el-form-item label="充值门槛" prop="recharge_minimum">
             <el-input v-model="formData.recharge_minimum" placeholder="0.00" clearable class="narrow-input" />
             <span class="form-help">最低充值多少余额，单位：元，0为不限制</span>
+          </el-form-item>
+
+          <el-form-item label="佣金转余额" prop="commission2money">
+            <el-radio-group v-model="formData.commission2money">
+              <el-radio :label="1">开启</el-radio>
+              <el-radio :label="0">关闭</el-radio>
+            </el-radio-group>
+            <span class="form-help">开启后会员可以将佣金直接转入余额中用于消费</span>
+          </el-form-item>
+
+          <el-form-item label="支付密码" prop="money_transfer_pwd">
+            <el-radio-group v-model="formData.money_transfer_pwd">
+              <el-radio :label="1">开启</el-radio>
+              <el-radio :label="0">关闭</el-radio>
+              <el-radio :label="2">会员自选</el-radio>
+            </el-radio-group>
+            <span class="form-help">开启后会员必须设置支付密码才能完成余额支付；关闭后会员支付不需支付密码；会员自选可让会员自主决定是否设置</span>
           </el-form-item>
 
           <div class="group-title">余额提现</div>
@@ -582,25 +674,34 @@ onMounted(() => {
 
           <el-form-item label="提现方式">
             <el-checkbox-group v-model="withdrawMethods">
-              <el-checkbox value="weixin">微信</el-checkbox>
+              <el-checkbox value="weixin">微信钱包</el-checkbox>
               <el-checkbox value="aliaccount">支付宝</el-checkbox>
               <el-checkbox value="bankcard">银行卡</el-checkbox>
             </el-checkbox-group>
+            <span class="form-help">提现到微信钱包需开通企业付款到零钱功能</span>
           </el-form-item>
 
-          <el-form-item label="最低提现金额" prop="withdrawmin">
+          <el-form-item label="微信新版商家转账" prop="wx_transfer_type">
+            <el-radio-group v-model="formData.wx_transfer_type">
+              <el-radio :label="1">开启</el-radio>
+              <el-radio :label="0">关闭</el-radio>
+            </el-radio-group>
+            <span class="form-help">使用微信新版商家转账功能</span>
+          </el-form-item>
+
+          <el-form-item label="提现最小金额" prop="withdrawmin">
             <el-input v-model="formData.withdrawmin" placeholder="0.00" clearable class="narrow-input" />
-            <span class="form-help">单位：元</span>
+            <span class="form-help">元</span>
           </el-form-item>
 
-          <el-form-item label="单笔最高提现" prop="withdrawmax">
+          <el-form-item label="提现最高金额" prop="withdrawmax">
             <el-input-number v-model="formData.withdrawmax" :min="0" :step="1" controls-position="right" class="mini-number" />
-            <span class="form-help">单笔最高提现金额，单位：元，大于0生效，0为无限制</span>
+            <span class="form-help">元 单笔最高提现金额，大于0生效，0为无限制</span>
           </el-form-item>
 
           <el-form-item label="提现手续费" prop="withdrawfee">
             <el-input v-model="formData.withdrawfee" placeholder="0.00" clearable class="narrow-input" />
-            <span class="form-help">单位：元/笔</span>
+            <span class="form-help">%</span>
           </el-form-item>
 
           <el-form-item label="每日提现次数" prop="day_withdraw_num">
@@ -608,19 +709,19 @@ onMounted(() => {
             <span class="form-help">会员每日余额和佣金可提现总次数，设为0时为无限制提现</span>
           </el-form-item>
 
-          <el-form-item label="佣金最低提现" prop="comwithdrawmin">
+          <el-form-item label="提现最小金额" prop="comwithdrawmin">
             <el-input v-model="formData.comwithdrawmin" placeholder="0.00" clearable class="narrow-input" />
-            <span class="form-help">单位：元</span>
+            <span class="form-help">元</span>
           </el-form-item>
 
-          <el-form-item label="佣金最高提现" prop="comwithdrawmax">
+          <el-form-item label="提现最高金额" prop="comwithdrawmax">
             <el-input-number v-model="formData.comwithdrawmax" :min="0" :step="1" controls-position="right" class="mini-number" />
-            <span class="form-help">单位：元，0为无限制</span>
+            <span class="form-help">元 单笔最高提现金额，大于0生效，0为无限制</span>
           </el-form-item>
 
-          <el-form-item label="佣金提现手续费" prop="comwithdrawfee">
+          <el-form-item label="提现手续费" prop="comwithdrawfee">
             <el-input v-model="formData.comwithdrawfee" placeholder="0.00" clearable class="narrow-input" />
-            <span class="form-help">单位：%</span>
+            <span class="form-help">%</span>
           </el-form-item>
 
           <el-form-item label="提现说明" prop="withdraw_desc">
@@ -668,7 +769,7 @@ onMounted(() => {
 
           <div class="group-title">发票设置</div>
 
-          <el-form-item label="发票功能" prop="invoice">
+          <el-form-item label="发票开关" prop="invoice">
             <el-radio-group v-model="formData.invoice">
               <el-radio :label="1">开启</el-radio>
               <el-radio :label="0">关闭</el-radio>
@@ -690,21 +791,48 @@ onMounted(() => {
 
         <!-- ==================== 积分设置 ==================== -->
         <el-tab-pane label="积分设置" name="score">
-          <el-form-item label="积分抵扣比例" prop="score2money">
-            <el-input v-model="formData.score2money" placeholder="0.01" clearable class="narrow-input" />
-            <span class="form-help">1 积分可抵扣的金额（元）</span>
+          <el-form-item label="消费赠积分" prop="scorein_money">
+            <div class="field-line">
+              <span class="inline-label">消费每满</span>
+              <el-input v-model="formData.scorein_money" placeholder="0.00" clearable class="mini-input" />
+              <span class="inline-label">元</span>
+              <span class="inline-label">赠送</span>
+              <el-input-number v-model="formData.scorein_score" :min="0" :step="1" controls-position="right" class="mini-number" />
+              <span class="inline-label">积分</span>
+            </div>
+            <span class="form-help">支付后积分即到账，退款时扣除，积分不足时可扣除为负值</span>
           </el-form-item>
 
-          <el-form-item label="最高抵扣比例" prop="scoredkmaxpercent">
-            <el-input v-model="formData.scoredkmaxpercent" placeholder="100.00" clearable class="narrow-input" />
-            <span class="form-help">下单时积分最高可抵扣订单金额的百分比</span>
+          <el-form-item label="充值赠积分" prop="scorecz_money">
+            <div class="field-line">
+              <span class="inline-label">充值每满</span>
+              <el-input v-model="formData.scorecz_money" placeholder="0.00" clearable class="mini-input" />
+              <span class="inline-label">元</span>
+              <span class="inline-label">赠送</span>
+              <el-input-number v-model="formData.scorecz_score" :min="0" :step="1" controls-position="right" class="mini-number" />
+              <span class="inline-label">积分</span>
+            </div>
           </el-form-item>
 
-          <el-form-item label="积分不抵运费" prop="scorebdkyf">
-            <el-radio-group v-model="formData.scorebdkyf">
-              <el-radio :label="1">开启</el-radio>
-              <el-radio :label="0">关闭</el-radio>
-            </el-radio-group>
+          <el-form-item label="积分抵扣" prop="score2money">
+            <div class="field-line">
+              <span class="inline-label">每积分抵扣</span>
+              <el-input v-model="formData.score2money" placeholder="0" clearable class="mini-input" />
+              <span class="inline-label">元</span>
+            </div>
+            <span class="form-help">付款时一个积分可抵扣多少元，0表示不开启积分抵扣</span>
+          </el-form-item>
+
+          <el-form-item label="最多抵扣百分比" prop="scoredkmaxpercent">
+            <div class="field-line">
+              <el-input v-model="formData.scoredkmaxpercent" placeholder="0.00" clearable class="narrow-input" />
+              <span class="inline-label">%</span>
+            </div>
+            <span class="form-help">选择使用积分抵扣时，最多可抵扣订单额的百分之多少</span>
+          </el-form-item>
+
+          <el-form-item label="积分不抵扣运费" prop="scorebdkyf">
+            <el-switch v-model="formData.scorebdkyf" :active-value="1" :inactive-value="0" active-text="开启" inactive-text="关闭" />
             <span class="form-help">开启后积分不能抵扣运费</span>
           </el-form-item>
 
@@ -713,54 +841,21 @@ onMounted(() => {
               <el-radio :label="1">开启</el-radio>
               <el-radio :label="0">关闭</el-radio>
             </el-radio-group>
-            <span class="form-help">开启后余额支付订单同样按消费送积分规则赠送积分</span>
+            <span class="form-help">[营销]-[充值赠送]也可赠送积分，开启后余额支付会再次赠送</span>
           </el-form-item>
 
-          <el-form-item label="消费送积分" prop="scorein_money">
-            <div class="field-line">
-              <span class="inline-label">每消费</span>
-              <el-input v-model="formData.scorein_money" placeholder="1.00" clearable class="mini-input" />
-              <span class="inline-label">元送</span>
-              <el-input-number v-model="formData.scorein_score" :min="0" :step="1" controls-position="right" class="mini-number" />
-              <span class="inline-label">积分</span>
-            </div>
-          </el-form-item>
-
-          <el-form-item label="充值送积分" prop="scorecz_money">
-            <div class="field-line">
-              <span class="inline-label">每充值</span>
-              <el-input v-model="formData.scorecz_money" placeholder="1.00" clearable class="mini-input" />
-              <span class="inline-label">元送</span>
-              <el-input-number v-model="formData.scorecz_score" :min="0" :step="1" controls-position="right" class="mini-number" />
-              <span class="inline-label">积分</span>
-            </div>
-          </el-form-item>
-
-          <el-form-item label="积分转赠" prop="score_transfer">
-            <el-radio-group v-model="formData.score_transfer">
+          <el-form-item label="货到付款支付送积分" prop="score_from_xianxiapay">
+            <el-radio-group v-model="formData.score_from_xianxiapay">
               <el-radio :label="1">开启</el-radio>
               <el-radio :label="0">关闭</el-radio>
             </el-radio-group>
-            <span class="form-help">开启后会员之间可互相转赠积分</span>
-          </el-form-item>
-
-          <el-form-item label="积分过期" prop="score_expire_status">
-            <el-radio-group v-model="formData.score_expire_status">
-              <el-radio :label="1">开启</el-radio>
-              <el-radio :label="0">关闭</el-radio>
-            </el-radio-group>
-            <span class="form-help">开启后，达到过期天数的所有积分会过期，请谨慎操作</span>
-          </el-form-item>
-
-          <el-form-item label="过期天数" prop="score_expire_days" v-if="formData.score_expire_status === 1">
-            <el-input-number v-model="formData.score_expire_days" :min="0" :step="1" controls-position="right" class="mini-number" />
-            <span class="form-help">积分获得后多少天过期，0为不过期</span>
+            <span class="form-help">开启后使用[货到付款]支付会赠送积分</span>
           </el-form-item>
         </el-tab-pane>
 
         <!-- ==================== 分销设置 ==================== -->
         <el-tab-pane label="分销设置" name="fenxiao">
-          <div class="group-title">结算方式</div>
+          <div class="group-title">分销</div>
 
           <el-form-item label="分销结算方式" prop="fxjiesuantype">
             <el-radio-group v-model="formData.fxjiesuantype">
@@ -768,93 +863,141 @@ onMounted(() => {
               <el-radio :label="1">按成交价格</el-radio>
               <el-radio :label="2">按销售利润</el-radio>
             </el-radio-group>
-            <span class="form-help">
-              按商品价格：商品价格×提成百分比；按成交价格：成交价格×提成百分比（扣除会员折扣、满减、优惠券及积分抵扣）；按销售利润：（成交价格-商品成本）×提成百分比
-            </span>
+            <div class="form-help block-help">
+              按商品价格结算：商品价格×提成百分比；按成交价格结算：成交价格×提成百分比，即扣除会员折扣、满减优惠、优惠券抵扣及积分抵扣后计算分销；按销售利润结算：（成交价格-商品成本）×提成百分比<br />
+              <span class="help-red">特别说明：单件产品部分退款时会扣除整个产品的分销佣金（这样设计是为了保证在商品有利润的情况下才发放佣金，部分退款时无法保证商品是否还存在利润）</span>
+            </div>
           </el-form-item>
 
-          <el-form-item label="平级奖结算方式" prop="fxjiesuantype_pj">
-            <el-radio-group v-model="formData.fxjiesuantype_pj">
-              <el-radio :label="0">按上级奖励</el-radio>
-              <el-radio :label="1">按商品价格</el-radio>
-              <el-radio :label="2">按成交价格</el-radio>
-              <el-radio :label="3">按销售利润</el-radio>
-            </el-radio-group>
-            <span class="form-help">仅适用于分销提成方式按百分比计算时；按上级奖励 = 上级分销奖励金额×平级奖百分比</span>
-          </el-form-item>
-
-          <el-form-item label="发放钱包" prop="commission_send_wallet">
-            <el-radio-group v-model="formData.commission_send_wallet">
-              <el-radio :label="0">到佣金</el-radio>
-              <el-radio :label="1">到余额</el-radio>
-            </el-radio-group>
-            <span class="form-help">分销佣金结算后发放到的钱包</span>
-          </el-form-item>
-
-          <el-form-item label="发放等级限制" prop="commission_send_wallet_levelids" v-if="formData.commission_send_wallet === 1">
-            <el-input
-              v-model="formData.commission_send_wallet_levelids"
-              placeholder="如：1,2,3；留空或 -1 表示不限制"
-              clearable
-              class="narrow-input"
-            />
-            <span class="form-help">仅限发放到余额时生效，逗号分隔会员等级ID；留空或 -1 表示所有等级</span>
-          </el-form-item>
-
-          <div class="group-title">结算周期</div>
-
-          <el-form-item label="结算周期" prop="fxjiesuantime_perweek">
-            <el-radio-group v-model="formData.fxjiesuantime_perweek">
-              <el-radio :label="0">按日结算</el-radio>
-              <el-radio :label="1">按周结算</el-radio>
-            </el-radio-group>
-            <span class="form-help">按周结算时下方延迟数值为星期几（1~7，7为周日）</span>
-          </el-form-item>
-
-          <el-form-item label="结算时间" prop="fxjiesuantime">
+          <el-form-item label="分销结算时间" prop="fxjiesuantime">
             <el-radio-group v-model="formData.fxjiesuantime">
               <el-radio :label="0">确认收货后</el-radio>
               <el-radio :label="1">付款后</el-radio>
             </el-radio-group>
+            <el-input v-model="formData.fxjiesuantime_delaydays" placeholder="0" clearable class="mini-input" style="width:80px;margin:0 6px" />
+            <span class="inline-label">天结算</span>
+            <div class="form-help block-help">
+              注意：0代表付款或确认收货后立即结算，如果产生退款，已发放的佣金不会扣除
+            </div>
           </el-form-item>
 
-          <el-form-item :label="formData.fxjiesuantime_perweek === 1 ? '每周结算日' : '延迟结算天数'" prop="fxjiesuantime_delaydays">
-            <el-input v-model="formData.fxjiesuantime_delaydays" placeholder="0" clearable class="mini-input" />
-            <span class="inline-label">{{ formData.fxjiesuantime_perweek === 1 ? '结算（1~7，7为周日）' : '天结算' }}</span>
-            <span class="form-help">0 代表付款或确认收货后立即结算；如果产生退款，已发放的佣金不会扣除</span>
-          </el-form-item>
-
-          <div class="group-title">级差设置</div>
-
-          <el-form-item label="分销级差" prop="fx_differential">
-            <el-radio-group v-model="formData.fx_differential">
+          <el-form-item label="买单收款分销" prop="maidanfenxiao">
+            <el-radio-group v-model="formData.maidanfenxiao">
               <el-radio :label="1">开启</el-radio>
               <el-radio :label="0">关闭</el-radio>
             </el-radio-group>
-            <span class="form-help">开启后分销将按照级差进行计算，仅限按金额和比例方式</span>
+            <div class="form-help block-help">买单收款功能是否参与分销</div>
+          </el-form-item>
+
+          <div class="group-title">前端展示</div>
+
+          <el-form-item label="分销订单" prop="fxorder_show">
+            <el-radio-group v-model="formData.fxorder_show">
+              <el-radio :label="1">显示</el-radio>
+              <el-radio :label="0">不显示</el-radio>
+            </el-radio-group>
+            <div class="form-help block-help">前端我的佣金页面是否显示分销订单</div>
+          </el-form-item>
+
+          <el-form-item label="推荐人" prop="parent_show">
+            <el-radio-group v-model="formData.parent_show">
+              <el-radio :label="1">显示</el-radio>
+              <el-radio :label="0">不显示</el-radio>
+            </el-radio-group>
+            <div class="form-help block-help">前端我的佣金页面是否显示推荐人</div>
+          </el-form-item>
+
+          <el-form-item label="佣金明细" prop="commissionlog_show">
+            <el-radio-group v-model="formData.commissionlog_show">
+              <el-radio :label="1">显示</el-radio>
+              <el-radio :label="0">不显示</el-radio>
+            </el-radio-group>
+            <div class="form-help block-help">前端我的佣金页面是否显示佣金明细</div>
+          </el-form-item>
+
+          <el-form-item label="佣金记录" prop="commissionrecord_show">
+            <el-radio-group v-model="formData.commissionrecord_show">
+              <el-radio :label="1">显示</el-radio>
+              <el-radio :label="0">不显示</el-radio>
+            </el-radio-group>
+            <div class="form-help block-help">前端我的佣金页面是否显示佣金记录</div>
+          </el-form-item>
+
+          <el-form-item label="佣金提现记录" prop="commissionrecord_withdrawlog_show">
+            <el-radio-group v-model="formData.commissionrecord_withdrawlog_show">
+              <el-radio :label="1">显示</el-radio>
+              <el-radio :label="0">不显示</el-radio>
+            </el-radio-group>
+            <div class="form-help block-help">前端佣金提现页面是否显示佣金提现记录</div>
           </el-form-item>
         </el-tab-pane>
 
         <!-- ==================== 登录注册 ==================== -->
         <el-tab-pane label="登录注册" name="login">
-          <el-form-item label="小程序端登录方式">
+          <el-form-item label="微信公众号">
+            <el-checkbox-group v-model="logintypeMpList">
+              <el-checkbox :value="1">注册登录</el-checkbox>
+              <el-checkbox :value="2">手机号登录</el-checkbox>
+              <el-checkbox :value="3">授权登录</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+
+          <el-form-item label="微信小程序">
             <el-checkbox-group v-model="logintypeWxList">
               <el-checkbox :value="1">注册登录</el-checkbox>
               <el-checkbox :value="2">手机号登录</el-checkbox>
               <el-checkbox :value="3">授权登录</el-checkbox>
             </el-checkbox-group>
-            <span class="form-help">至少勾选一项</span>
           </el-form-item>
 
-          <el-form-item label="H5端登录方式">
+          <el-form-item label="支付宝小程序">
+            <el-checkbox-group v-model="logintypeAlipayList">
+              <el-checkbox :value="1">注册登录</el-checkbox>
+              <el-checkbox :value="2">手机号登录</el-checkbox>
+              <el-checkbox :value="3">授权登录</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+
+          <el-form-item label="百度小程序">
+            <el-checkbox-group v-model="logintypeBaiduList">
+              <el-checkbox :value="1">注册登录</el-checkbox>
+              <el-checkbox :value="2">手机号登录</el-checkbox>
+              <el-checkbox :value="3">授权登录</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+
+          <el-form-item label="抖音小程序">
+            <el-checkbox-group v-model="logintypeToutiaoList">
+              <el-checkbox :value="1">注册登录</el-checkbox>
+              <el-checkbox :value="2">手机号登录</el-checkbox>
+              <el-checkbox :value="3">授权登录</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+
+          <el-form-item label="QQ小程序">
+            <el-checkbox-group v-model="logintypeQqList">
+              <el-checkbox :value="1">注册登录</el-checkbox>
+              <el-checkbox :value="2">手机号登录</el-checkbox>
+              <el-checkbox :value="3">授权登录</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+
+          <el-form-item label="手机H5">
             <el-checkbox-group v-model="logintypeH5List">
               <el-checkbox :value="1">注册登录</el-checkbox>
               <el-checkbox :value="2">手机号登录</el-checkbox>
             </el-checkbox-group>
-            <span class="form-help">至少勾选一项</span>
           </el-form-item>
 
-          <el-form-item label="设置昵称" prop="login_setnickname">
+          <el-form-item label="手机APP">
+            <el-checkbox-group v-model="logintypeAppList">
+              <el-checkbox :value="1">注册登录</el-checkbox>
+              <el-checkbox :value="2">手机号登录</el-checkbox>
+              <el-checkbox :value="3">授权登录</el-checkbox>
+            </el-checkbox-group>
+          </el-form-item>
+
+          <el-form-item label="设置头像昵称" prop="login_setnickname">
             <el-radio-group v-model="formData.login_setnickname">
               <el-radio :label="0">不需要设置</el-radio>
               <el-radio :label="1">可选设置</el-radio>
@@ -887,6 +1030,20 @@ onMounted(() => {
               <el-radio :label="0">关闭</el-radio>
             </el-radio-group>
             <span class="form-help">开启后新注册会员需后台审核通过才可登录</span>
+          </el-form-item>
+
+          <el-form-item label="强制登录">
+            <el-checkbox-group v-model="forceLoginList">
+              <el-checkbox value="wx">微信公众号</el-checkbox>
+              <el-checkbox value="mp">微信小程序</el-checkbox>
+              <el-checkbox value="alipay">支付宝小程序</el-checkbox>
+              <el-checkbox value="baidu">百度小程序</el-checkbox>
+              <el-checkbox value="toutiao">抖音小程序</el-checkbox>
+              <el-checkbox value="qq">QQ小程序</el-checkbox>
+              <el-checkbox value="h5">手机H5</el-checkbox>
+              <el-checkbox value="app">手机APP</el-checkbox>
+            </el-checkbox-group>
+            <span class="form-help">开启后进入系统必须先登录，存在被封的可能，请谨慎开启</span>
           </el-form-item>
         </el-tab-pane>
 
@@ -1115,6 +1272,10 @@ onMounted(() => {
 .block-help {
   margin-left: 0;
   margin-top: 6px;
+}
+
+.help-red {
+  color: #f56c6c;
 }
 
 /* 富文本编辑器容器 */

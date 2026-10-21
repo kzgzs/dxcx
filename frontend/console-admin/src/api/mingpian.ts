@@ -32,6 +32,8 @@ export interface MingpianItem {
   createtime: number
   updatetime: number
   nickname?: string
+  /** 归属会员头像（list join member，别名避免覆盖名片个人照片） */
+  member_headimg?: string
   readcount?: number
   favcount?: number
 }
