@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
+import { uploadFile } from '../../api/goods'
 import {
   getWxappAccountInfo,
   setWxappNickname,
@@ -69,9 +70,71 @@ async function handleSearchStatus(open: 0 | 1) {
   try {
     await setWxappSearchStatus(open)
     ElMessage.success('修改成功')
+    loadAccount()
   } catch {
     // 错误提示由 axios 拦截器统一处理
   }
+}
+
+/* ==================== 基本信息修改弹窗 ==================== */
+const editVisible = ref(false)
+const editType = ref<'nickname' | 'headimg' | 'signature'>('nickname')
+const editVal = ref('')
+const editSaving = ref(false)
+const editTitleMap = { nickname: '修改小程序名称', headimg: '修改小程序头像', signature: '修改功能介绍' }
+const editTitle = computed(() => editTitleMap[editType.value])
+
+const categoriesText = computed(() => {
+  const list = account.value?.categories
+  if (!Array.isArray(list) || !list.length) return ''
+  return list.map((c) => String((c as Record<string, unknown>).name ?? '')).filter(Boolean).join('\n')
+})
+const liveEnabled = computed(() => {
+  const list = (account.value?.categories ?? []) as Array<Record<string, unknown>>
+  return list.some((c) => Number(c.id) === 65 || String(c.name ?? '').includes('直播'))
+})
+
+function openEdit(type: 'nickname' | 'headimg' | 'signature') {
+  editType.value = type
+  editVal.value = type === 'nickname' ? account.value?.nickname ?? '' : type === 'headimg' ? account.value?.headimg ?? '' : account.value?.signature ?? ''
+  editVisible.value = true
+}
+
+async function submitEdit() {
+  editSaving.value = true
+  try {
+    if (editType.value === 'nickname') {
+      await setWxappNickname(editVal.value)
+    } else if (editType.value === 'headimg') {
+      await setWxappHeadimg(editVal.value)
+    } else {
+      await setWxappSignature(editVal.value)
+    }
+    ElMessage.success('修改成功')
+    editVisible.value = false
+    loadAccount()
+  } catch {
+    /* 拦截器已提示 */
+  } finally {
+    editSaving.value = false
+  }
+}
+
+async function uploadHeadimg(opts: { file: File }) {
+  try {
+    const data = await uploadFile(opts.file)
+    editVal.value = data.url
+    ElMessage.success('上传成功')
+  } catch {
+    /* 拦截器已提示 */
+  }
+}
+
+function goLeimu() {
+  window.location.hash = '#/Wxleimu/index'
+}
+function goNearby() {
+  ElMessage.info('附近小程序地点需在微信小程序后台添加')
 }
 
 /* ==================== 服务器域名 ==================== */
@@ -275,7 +338,7 @@ function onTabChange(tab: string | number) {
 
 onMounted(() => {
   loading.value = true
-  Promise.all([loadAccount(), loadServerDomain(), loadJumpDomain(), loadPrivacy(), loadIcp()]).finally(() => {
+  loadAccount().finally(() => {
     loading.value = false
   })
 })
@@ -289,32 +352,113 @@ onMounted(() => {
       </template>
 
       <el-tabs v-model="activeTab" @tab-change="onTabChange">
-        <!-- 账号资料 -->
-        <el-tab-pane label="账号资料" name="account">
-          <el-form label-width="140px" class="form-narrow">
-            <el-form-item label="AppID">
-              <span class="readonly-text">{{ account?.appid || '-' }}</span>
-            </el-form-item>
-            <el-form-item label="小程序名称">
-              <el-input v-model="nickname" placeholder="2-30 个字符" maxlength="30" show-word-limit />
-            </el-form-item>
-            <el-form-item label="头像地址">
-              <el-input v-model="headimg" placeholder="图片 URL" />
-            </el-form-item>
-            <el-form-item label="功能简介">
-              <el-input v-model="signature" type="textarea" :rows="3" maxlength="120" show-word-limit />
-            </el-form-item>
-            <el-form-item label="被搜索">
-              <el-switch
-                :model-value="(account?.search_status ?? 0) === 1"
-                @change="(v: boolean | string | number) => handleSearchStatus(v ? 1 : 0)"
-              />
-              <span class="form-tip">开启后用户可在微信搜索到本小程序</span>
-            </el-form-item>
-            <el-form-item>
-              <el-button type="primary" :loading="savingAccount" @click="handleSaveAccount">保存</el-button>
-            </el-form-item>
-          </el-form>
+        <!-- 账号资料（基本信息表，对齐点大运营设置） -->
+        <el-tab-pane label="基本信息" name="account">
+          <table class="info-table">
+            <thead>
+              <tr><th style="width:110px">基本信息</th><th style="width:260px"></th><th>说明</th><th style="width:100px">操作</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="label">小程序名称</td>
+                <td class="value">{{ account?.nickname || '-' }}</td>
+                <td class="desc">小程序发布后，将不支持改名</td>
+                <td class="act"><el-button link type="primary" @click="openEdit('nickname')">修改</el-button></td>
+              </tr>
+              <tr>
+                <td class="label">小程序头像</td>
+                <td class="value">
+                  <el-image v-if="account?.headimg" :src="account.headimg" :preview-src-list="[account.headimg]" style="width:48px;height:48px;border-radius:6px" />
+                  <span v-else>-</span>
+                </td>
+                <td class="desc">一个月内可申请修改12次<br />本月还可修改12次</td>
+                <td class="act"><el-button link type="primary" @click="openEdit('headimg')">修改</el-button></td>
+              </tr>
+              <tr>
+                <td class="label">介绍</td>
+                <td class="value">{{ account?.signature || '-' }}</td>
+                <td class="desc">一个月内可申请5次修改<br />本月还可修改5次</td>
+                <td class="act"><el-button link type="primary" @click="openEdit('signature')">修改</el-button></td>
+              </tr>
+              <tr>
+                <td class="label">微信认证</td>
+                <td class="value" :class="account?.verified ? 'ok' : ''">
+                  {{ account?.verified ? '已认证' : '未认证' }}<span v-if="account?.verified" class="verify-check">✓</span>
+                </td>
+                <td class="desc"></td>
+                <td class="act"></td>
+              </tr>
+              <tr>
+                <td class="label">主体信息</td>
+                <td class="value">{{ account?.principal_name || '-' }}</td>
+                <td class="desc">企业法人及个体工商户</td>
+                <td class="act"></td>
+              </tr>
+              <tr>
+                <td class="label">AppID</td>
+                <td class="value">{{ account?.appid || '-' }}</td>
+                <td class="desc"></td>
+                <td class="act"></td>
+              </tr>
+              <tr>
+                <td class="label">服务类目</td>
+                <td class="value" v-if="categoriesText">{{ categoriesText }}</td>
+                <td class="value" v-else>-</td>
+                <td class="desc">一个月内可申请修改5次<br />本月还可修改5次</td>
+                <td class="act"><el-button link type="primary" @click="goLeimu">详情</el-button></td>
+              </tr>
+              <tr>
+                <td class="label">隐私设置</td>
+                <td class="value">{{ (account?.search_status ?? 0) === 1 ? '允许被搜索' : '不允许被搜索' }}</td>
+                <td class="desc">设置是否允许用户通过名称搜索到小程序帐号</td>
+                <td class="act">
+                  <el-button link type="primary" @click="handleSearchStatus((account?.search_status ?? 0) === 1 ? 0 : 1)">
+                    {{ (account?.search_status ?? 0) === 1 ? '关闭' : '开启' }}
+                  </el-button>
+                </td>
+              </tr>
+              <tr>
+                <td class="label">附近小程序</td>
+                <td class="value"></td>
+                <td class="desc">最大可添加地点10个<br />剩余可添加地点10个</td>
+                <td class="act"><el-button link type="primary" @click="goNearby">添加</el-button></td>
+              </tr>
+              <tr>
+                <td class="label">小程序直播</td>
+                <td class="value">{{ liveEnabled ? '已开通' : '未开通' }}</td>
+                <td class="desc"></td>
+                <td class="act"></td>
+              </tr>
+            </tbody>
+          </table>
+
+          <!-- 修改弹窗 -->
+          <el-dialog v-model="editVisible" :title="editTitle" width="480px" append-to-body destroy-on-close>
+            <el-form label-width="100px">
+              <el-form-item v-if="editType === 'nickname'" label="小程序名称">
+                <el-input v-model="editVal" placeholder="2-30 个字符" maxlength="30" show-word-limit />
+              </el-form-item>
+              <el-form-item v-else-if="editType === 'signature'" label="功能介绍">
+                <el-input v-model="editVal" type="textarea" :rows="3" maxlength="120" show-word-limit />
+              </el-form-item>
+              <el-form-item v-else label="头像">
+                <el-input v-model="editVal" placeholder="图片 URL" />
+                <el-upload
+                  class="edit-upload"
+                  :show-file-list="false"
+                  :http-request="(opts: any) => uploadHeadimg(opts)"
+                  accept="image/*"
+                >
+                  <el-button size="small">上传头像</el-button>
+                </el-upload>
+                <el-image v-if="editVal" :src="editVal" style="width:64px;height:64px;margin-top:8px;border-radius:6px" />
+              </el-form-item>
+            </el-form>
+            <template #footer>
+              <el-button @click="editVisible = false">取消</el-button>
+              <el-button type="primary" :loading="editSaving" @click="submitEdit">确定</el-button>
+            </template>
+          </el-dialog>
         </el-tab-pane>
 
         <!-- 服务器域名 -->
@@ -490,5 +634,49 @@ onMounted(() => {
   margin-bottom: 16px;
   font-size: 13px;
   color: #606266;
+}
+
+/* 基本信息表 */
+.info-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.info-table th {
+  text-align: left;
+  padding: 12px 10px;
+  background: #f7f8fa;
+  color: #909399;
+  font-weight: 500;
+  border-bottom: 1px solid #ebeef5;
+}
+.info-table td {
+  padding: 14px 10px;
+  border-bottom: 1px solid #f0f2f5;
+  vertical-align: middle;
+  color: #303133;
+  line-height: 1.6;
+}
+.info-table td.label {
+  color: #606266;
+}
+.info-table td.value {
+  white-space: pre-line;
+  word-break: break-all;
+}
+.info-table td.desc {
+  color: #909399;
+  font-size: 12px;
+}
+.info-table td.value.ok {
+  color: #2ecc71;
+  font-weight: 500;
+}
+.verify-check {
+  color: #2ecc71;
+  margin-left: 2px;
+}
+.edit-upload {
+  margin-left: 8px;
 }
 </style>

@@ -82,6 +82,7 @@ class WxappSetService
     {
         $appid = $this->resolveAppid($aid);
         $row   = (array) (Db::name('admin_setapp_wx')->where('aid', $aid)->find() ?: []);
+        $auth  = Db::name('open_authorizer')->where('authorizer_appid', $appid)->find() ?: [];
 
         $searchStatus = 0;
         if (!$this->open->isMock()) {
@@ -91,14 +92,31 @@ class WxappSetService
             }
         }
 
+        // 认证状态：verify_type_id，0=微信认证（小程序），-1 表示未认证
+        $verifyType = (int) ($auth['verify_type_id'] ?? -1);
+        $authtype   = (int) ($row['authtype'] ?? 0);
+
+        // 服务类目：授权 func_info 中 27 为小程序服务类目，真实类目需类目接口补充
+        $categories = [];
+        if (!empty($auth['func_info'])) {
+            $func = json_decode((string) $auth['func_info'], true);
+            if (is_array($func)) {
+                $categories = $func;
+            }
+        }
+
         return [
-            'appid'         => $appid,
-            'nickname'      => (string) ($row['nickname'] ?? ''),
-            'headimg'       => (string) ($row['headimg'] ?? ''),
-            'signature'     => (string) ($row['signature'] ?? ''),
-            'search_status' => $searchStatus,
-            'authtype'      => (int) ($row['authtype'] ?? 0),
-            'is_mock'       => $this->open->isMock(),
+            'appid'          => $appid,
+            'nickname'       => (string) ($row['nickname'] ?? '') ?: (string) ($auth['nick_name'] ?? ''),
+            'headimg'        => (string) ($row['headimg'] ?? '') ?: (string) ($auth['head_img'] ?? ''),
+            'signature'      => (string) ($row['signature'] ?? ''),
+            'principal_name' => (string) ($auth['principal_name'] ?? ''),
+            'verify_type'    => $verifyType,
+            'verified'       => $verifyType >= 0,
+            'categories'     => $categories,
+            'search_status'  => $searchStatus,
+            'authtype'       => $authtype,
+            'is_mock'        => $this->open->isMock(),
         ];
     }
 

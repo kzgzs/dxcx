@@ -111,7 +111,13 @@ export interface WxappAccountInfo {
   nickname: string
   headimg: string
   signature: string
+  principal_name: string
+  verify_type: number
+  verified: boolean
+  categories: Array<Record<string, unknown>>
   search_status: number
+  authtype: number
+  is_mock: boolean
 }
 
 export interface WxappServerDomain {

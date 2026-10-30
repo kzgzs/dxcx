@@ -163,7 +163,7 @@ const FIELD_DEFS: Record<PlatformKey, FieldDef[]> = {
     { key: 'qrcode', label: '小程序码', image: true, group: '基础信息' },
     { key: 'wxpay', label: '支付状态', radio: RADIO_ONOFF, group: '微信支付设置', staticHelp: 'jsapi' },
     { key: 'wxpay_appid', label: '支付APPID', group: '微信支付设置', help: '公众号的appid' },
-    { key: 'wxpay_type', label: '微信支付模式', radio: RADIO_WXPAY_MODE, group: '微信支付设置' },
+    { key: 'wxpay_type', label: '微支付模式', radio: RADIO_WXPAY_MODE, group: '微信支付设置' },
     { key: 'wxpay_mchid', label: '支付商户号', group: '微信支付设置' },
     { key: 'wxpay_mchkey', label: '支付密钥', secret: true, group: '微信支付设置', help: WXPAY_MCHKEY_HELP, helpLink: WXPAY_MCH_LINK },
     { key: 'wxpay_apiclient_cert', label: 'PEM证书', pem: true, pemName: 'apiclient_cert.pem', group: '微信支付设置', help: 'apiclient_cert.pem ' + WXPAY_CERT_HELP, helpLink: WXPAY_MCH_LINK },
@@ -185,7 +185,7 @@ const FIELD_DEFS: Record<PlatformKey, FieldDef[]> = {
   h5: [
     { key: 'wxpay', label: '支付状态', radio: RADIO_ONOFF, group: '微信支付设置', staticHelp: 'jsapi' },
     { key: 'appid', label: '支付APPID', group: '微信支付设置', help: '公众号的appid' },
-    { key: 'wxpay_type', label: '微信支付模式', radio: RADIO_WXPAY_MODE, group: '微信支付设置' },
+    { key: 'wxpay_type', label: '微支付模式', radio: RADIO_WXPAY_MODE, group: '微信支付设置' },
     { key: 'wxpay_mchid', label: '支付商户号', group: '微信支付设置' },
     { key: 'wxpay_mchkey', label: '支付密钥', secret: true, group: '微信支付设置', help: WXPAY_MCHKEY_HELP, helpLink: WXPAY_MCH_LINK },
     { key: 'wxpay_apiclient_cert', label: 'PEM证书', pem: true, pemName: 'apiclient_cert.pem', group: '微信支付设置', help: 'apiclient_cert.pem ' + WXPAY_CERT_HELP, helpLink: WXPAY_MCH_LINK },
@@ -200,8 +200,8 @@ const FIELD_DEFS: Record<PlatformKey, FieldDef[]> = {
     { key: '_app_tip', label: '', static: 'apptip', group: '绑定微信开放平台' },
     { key: 'appid', label: 'AppID', group: '绑定微信开放平台' },
     { key: 'appsecret', label: 'AppSecret', group: '绑定微信开放平台' },
-    { key: 'wxpay', label: '微信支付状态', radio: RADIO_ONOFF, group: '微信支付设置' },
-    { key: 'wxpay_type', label: '微信支付模式', radio: RADIO_WXPAY_MODE, group: '微信支付设置' },
+    { key: 'wxpay', label: '微支付状态', radio: RADIO_ONOFF, group: '微信支付设置' },
+    { key: 'wxpay_type', label: '微支付模式', radio: RADIO_WXPAY_MODE, group: '微信支付设置' },
     { key: 'wxpay_mchid', label: '支付商户号', group: '微信支付设置' },
     { key: 'wxpay_mchkey', label: '支付密钥', secret: true, group: '微信支付设置', help: WXPAY_MCHKEY_HELP, helpLink: WXPAY_MCH_LINK },
     { key: 'wxpay_apiclient_cert', label: 'PEM证书', pem: true, pemName: 'apiclient_cert.pem', group: '微信支付设置', help: 'apiclient_cert.pem ' + WXPAY_CERT_HELP, helpLink: WXPAY_MCH_LINK },
@@ -629,7 +629,7 @@ onMounted(() => {
             </el-form-item>
           </template>
           <el-form-item class="save-row">
-            <el-button type="primary" :loading="saving" @click="onSave">保存</el-button>
+            <el-button type="primary" :loading="saving" @click="onSave">{{ activeTab === 'h5' ? '提交' : '保存' }}</el-button>
             <el-button v-if="hasDownloadCode" :loading="codeLoading" @click="onDownloadCode">下载代码包</el-button>
             <span class="save-tip">密钥类字段保存后不再明文显示，留空表示沿用原值。</span>
           </el-form-item>
